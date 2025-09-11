@@ -40,21 +40,21 @@ def display_results(results):
     st.subheader("Validation Details")
     tdt_list = ['All'] + results['summary']['TDT'].tolist()
 
+    match_filter = st.selectbox("Filter by TDT", options=tdt_list, key=f"match_filter_{results['summary']['TDT'].iloc[0]}")
+
     st.markdown("#### Matches")
-    match_filter = st.selectbox("Filter by TDT (Matches)", options=tdt_list, key=f"match_filter_{results['summary']['TDT'].iloc[0]}")
     matches_to_show = results['matches']
     if match_filter != 'All':
         matches_to_show = results['matches'][results['matches']['TDT'] == match_filter]
     st.dataframe(matches_to_show, use_container_width=True)
-    st.metric("Total Matches", len(results['matches']))
+    st.metric("Total Matches", len(matches_to_show))
 
     st.markdown("#### Mismatches")
-    mismatch_filter = st.selectbox("Filter by TDT (Mismatches)", options=tdt_list, key=f"mismatch_filter_{results['summary']['TDT'].iloc[0]}")
     mismatches_to_show = results['mismatches']
-    if mismatch_filter != 'All':
-        mismatches_to_show = results['mismatches'][results['mismatches']['TDT'] == mismatch_filter]
+    if match_filter != 'All':
+        mismatches_to_show = results['mismatches'][results['mismatches']['TDT'] == match_filter]
     st.dataframe(mismatches_to_show, use_container_width=True)
-    st.metric("Total Mismatches", len(results['mismatches']))
+    st.metric("Total Mismatches", len(mismatches_to_show))
 
 # --- Sidebar UI (Remains mostly the same) ---
 with st.sidebar:
