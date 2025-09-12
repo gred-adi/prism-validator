@@ -80,7 +80,7 @@ def validate_data(tdt_dfs, prism_df):
     if not all_mismatches:
         mismatches_df = pd.DataFrame()
     else:
-        mismatches_df = pd.concat(all_mismatches, ignore_index=True)
+        mismatches_df = pd.concat(all_mismatches, ignore_index=True) if all_mismatches else pd.DataFrame()
         # Clean up the final dataframe for display, focusing on the compared columns
         mismatches_df = mismatches_df[[
             'TDT', 'METRIC_NAME', 'Status', 
@@ -90,7 +90,7 @@ def validate_data(tdt_dfs, prism_df):
     if not all_matches:
         matches_df = pd.DataFrame()
     else:
-        matches_df = pd.concat(all_matches, ignore_index=True)
+        matches_df = pd.concat(all_matches, ignore_index=True) if all_matches else pd.DataFrame()
          # Clean up the matches dataframe for display
         matches_df = matches_df[[
             'TDT', 'METRIC_NAME', 'POINT_TYPE_TDT'
