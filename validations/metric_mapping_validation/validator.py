@@ -67,7 +67,7 @@ def validate_data(tdt_dfs, prism_df):
 
         # --- Collect Summary Data ---
         summary_data.append({
-            "MODEL": tdt_name, "Match Count": len(match_rows), "Mismatch Count": len(mismatch_rows),
+            "Model": tdt_name, "Match Count": len(match_rows), "Mismatch Count": len(mismatch_rows),
             "Total Metric Records": len(excel_df.drop_duplicates(subset=['METRIC_NAME']))
         })
 

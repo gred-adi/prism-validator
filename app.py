@@ -31,8 +31,11 @@ if 'uploaded_file_state' not in st.session_state:
     st.session_state.uploaded_file_state = None
 
 # --- Reusable Helper Functions ---
-def display_results(results, key_prefix):
-    """Helper function to display the validation results UI."""
+def display_results(results, key_prefix, filter_column_name):
+    """
+    Helper function to display results.
+    Now accepts a `filter_column_name` to make it generic.
+    """
     if not results or results['summary'].empty:
         st.info("Run the validation to see the results.")
         return
@@ -40,26 +43,35 @@ def display_results(results, key_prefix):
     st.subheader("Validation Summary")
     st.dataframe(results['summary'], use_container_width=True)
     st.subheader("Validation Details")
-    tdt_list = ['All'] + results['summary']['TDT'].tolist()
 
-    # A single filter for both tables
-    tdt_filter = st.selectbox("Filter by TDT", options=tdt_list, key=f"tdt_filter_{key_prefix}")
+    if filter_column_name not in results['summary'].columns:
+        st.error(f"Cannot generate filter because the expected column '{filter_column_name}' was not found in the summary.")
+        return
+
+    filter_options = ['All'] + results['summary'][filter_column_name].tolist()
+    
+    tdt_filter = st.selectbox(
+        f"Filter by {filter_column_name}",
+        options=filter_options,
+        key=f"tdt_filter_{key_prefix}"
+    )
 
     st.markdown("#### Matches")
     matches_to_show = results['matches']
-    if tdt_filter != 'All':
-        matches_to_show = results['matches'][results['matches']['TDT'] == tdt_filter]
+    # FIX: Check if the filter column exists before trying to filter.
+    # This prevents a crash if the dataframe is empty.
+    if tdt_filter != 'All' and filter_column_name in matches_to_show.columns:
+        matches_to_show = matches_to_show[matches_to_show[filter_column_name] == tdt_filter]
     st.dataframe(matches_to_show, use_container_width=True)
-    # Metric now shows the count for the filtered selection
-    st.metric("Total Matches", len(matches_to_show))
+    st.metric("Total Matches Shown", len(matches_to_show))
 
     st.markdown("#### Mismatches")
     mismatches_to_show = results['mismatches']
-    if tdt_filter != 'All':
-        mismatches_to_show = results['mismatches'][results['mismatches']['TDT'] == tdt_filter]
+    # FIX: Apply the same check to the mismatches dataframe.
+    if tdt_filter != 'All' and filter_column_name in mismatches_to_show.columns:
+        mismatches_to_show = mismatches_to_show[mismatches_to_show[filter_column_name] == tdt_filter]
     st.dataframe(mismatches_to_show, use_container_width=True)
-    # Metric now shows the count for the filtered selection
-    st.metric("Total Mismatches", len(mismatches_to_show))
+    st.metric("Total Mismatches Shown", len(mismatches_to_show))
 
 # --- Sidebar UI (Unchanged) ---
 with st.sidebar:
