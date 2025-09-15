@@ -2,18 +2,20 @@ import pandas as pd
 import streamlit as st
 
 @st.cache_data
-def validate_data(tdt_dfs, prism_df):
+def validate_data(model_dfs, prism_df):
     """
     Performs the comparison logic for the 'Metric Mapping' section.
-    Compares POINT NAME, POINT DESCRIPTION, FUNCTION, and POINT TYPE.
+    This version uses "Model" as the key identifier and separates mismatches by column.
     """
-    all_mismatches = []
+    # Create a copy to avoid modifying the cached dataframe.
+    prism_df = prism_df.copy()
+
     all_matches = []
     summary_data = []
-
-    # Rename PRISM columns to be consistent
+    
+    # 1. Rename PRISM columns for consistency first.
     prism_df.rename(columns={
-        "FORM NAME": "TDT",
+        "FORM NAME": "Model",
         "METRIC NAME": "METRIC_NAME",
         "POINT NAME": "POINT_NAME",
         "POINT DESCRIPTION": "POINT_DESCRIPTION",
@@ -21,25 +23,27 @@ def validate_data(tdt_dfs, prism_df):
         "POINT TYPE": "POINT_TYPE"
     }, inplace=True)
 
-    # Clean the PRISM METRIC_NAME by removing the specified prefix
+    # 2. Apply data transformations on the newly renamed columns.
     if 'METRIC_NAME' in prism_df.columns:
         prism_df['METRIC_NAME'] = prism_df['METRIC_NAME'].str.replace('AP-TVI-', '', regex=False)
     
     if 'POINT_TYPE' in prism_df.columns:
-        # Note: .str.replace is used on the Series for consistency
         prism_df['POINT_TYPE'] = prism_df['POINT_TYPE'].str.title().str.replace('Prism Calc', 'PRiSM Calc', regex=False)
     
     if 'FUNCTION' in prism_df.columns:
-        # Note: .str.replace is used on the Series for consistency
-        prism_df['FUNCTION'] = prism_df['FUNCTION'].str.title().str.replace('NON-MODELED', 'Not Modeled', regex=False)
+        prism_df['FUNCTION'] = prism_df['FUNCTION'].str.title().str.replace('Non-Modeled', 'Not Modeled', regex=False)
 
-    # Columns to compare between TDT (Excel) and PRISM (SQL)
+
     columns_to_compare = ['POINT_NAME', 'POINT_DESCRIPTION', 'FUNCTION', 'POINT_TYPE']
+    
+    # Dictionary to hold lists of mismatch dataframes
+    mismatches_by_column = {col: [] for col in columns_to_compare}
+    mismatches_by_column['Missing_in_PRISM'] = []
+    mismatches_by_column['Missing_in_TDT'] = []
 
-    for tdt_name, excel_df in tdt_dfs.items():
-        prism_sub_df = prism_df[prism_df["TDT"] == tdt_name].copy()
+    for model_name, excel_df in model_dfs.items():
+        prism_sub_df = prism_df[prism_df["Model"] == model_name].copy()
 
-        # Merge dataframes on the metric name
         merged_df = pd.merge(
             excel_df.drop_duplicates(subset=['METRIC_NAME']),
             prism_sub_df.drop_duplicates(subset=['METRIC_NAME']),
@@ -49,44 +53,78 @@ def validate_data(tdt_dfs, prism_df):
             indicator=True
         )
 
-        # --- Identify Discrepancies ---
-        mismatch_conditions = []
+        # --- Identify Perfect Matches ---
+        # A record is a match only if it exists in both and all compared columns are equal.
+        match_mask = (merged_df['_merge'] == 'both')
         for col in columns_to_compare:
-            col_tdt = f"{col}_TDT"
-            col_prism = f"{col}_PRISM"
-            mismatch_conditions.append(
-                merged_df[col_tdt].astype(str).str.upper() != merged_df[col_prism].astype(str).str.upper()
-            )
-
-        data_mismatch = (merged_df['_merge'] == 'both') & (pd.concat(mismatch_conditions, axis=1).any(axis=1))
-        missing_in_prism = merged_df['_merge'] == 'left_only'
-        missing_in_tdt = merged_df['_merge'] == 'right_only'
+            # Standard comparison condition
+            condition = (merged_df[f"{col}_TDT"].astype(str).str.upper() == merged_df[f"{col}_PRISM"].astype(str).str.upper())
+            
+            condition |= (merged_df['POINT_TYPE_TDT'] == 'PRiSM Calc')
+            
+            match_mask &= condition
         
-        mismatch_rows = merged_df[data_mismatch | missing_in_prism | missing_in_tdt].copy()
-        match_rows = merged_df[(merged_df['_merge'] == 'both') & ~data_mismatch].copy()
-
-        # --- Collect Summary Data ---
-        summary_data.append({
-            "Model": tdt_name, "Match Count": len(match_rows), "Mismatch Count": len(mismatch_rows),
-            "Total Metric Records": len(excel_df.drop_duplicates(subset=['METRIC_NAME']))
-        })
-
-        # --- Process Detailed Mismatch Data ---
-        if not mismatch_rows.empty:
-            mismatch_rows['Status'] = 'Data Mismatch'
-            mismatch_rows.loc[missing_in_prism, 'Status'] = 'Missing in PRISM'
-            mismatch_rows.loc[missing_in_tdt, 'Status'] = 'Missing in TDT (Excel)'
-            mismatch_rows['TDT'] = tdt_name
-            all_mismatches.append(mismatch_rows)
-
-        # --- Process Detailed Match Data ---
+        match_rows = merged_df[match_mask].copy()
         if not match_rows.empty:
-            match_rows['TDT'] = tdt_name
+            match_rows['Model'] = model_name
             all_matches.append(match_rows)
 
-    # --- Create Final DataFrames ---
-    summary_df = pd.DataFrame(summary_data)
-    mismatches_df = pd.concat(all_mismatches, ignore_index=True) if all_mismatches else pd.DataFrame()
-    matches_df = pd.concat(all_matches, ignore_index=True) if all_matches else pd.DataFrame()
+        # --- Identify Mismatches by Specific Column ---
+        for col in columns_to_compare:
+            # Standard mismatch condition
+            col_mismatch_mask = (merged_df['_merge'] == 'both') & \
+                                (merged_df[f"{col}_TDT"].astype(str).str.upper() != merged_df[f"{col}_PRISM"].astype(str).str.upper())
+            
+            # Only flag a mismatch if the POINT_TYPE_TDT value is NOT 'PRiSM Calc'.
+            col_mismatch_mask &= (merged_df['POINT_TYPE_TDT'] != 'PRiSM Calc')
+            
+            if col_mismatch_mask.any():
+                mismatch_subset = merged_df.loc[col_mismatch_mask, ['METRIC_NAME', f'{col}_TDT', f'{col}_PRISM']].copy()
+                mismatch_subset['Model'] = model_name
+                mismatches_by_column[col].append(mismatch_subset)
+        
+        # --- Identify Records Missing from a Source ---
+        missing_in_prism_rows = merged_df[merged_df['_merge'] == 'left_only'].copy()
+        if not missing_in_prism_rows.empty:
+            missing_in_prism_rows['Model'] = model_name
+            mismatches_by_column['Missing_in_PRISM'].append(missing_in_prism_rows)
 
-    return summary_df, matches_df, mismatches_df
+        missing_in_tdt_rows = merged_df[merged_df['_merge'] == 'right_only'].copy()
+        if not missing_in_tdt_rows.empty:
+            missing_in_tdt_rows['Model'] = model_name
+            mismatches_by_column['Missing_in_TDT'].append(missing_in_tdt_rows)
+            
+        # --- Append Summary Data ---
+        total_mismatch_count = len(merged_df[~match_mask])
+        summary_data.append({
+            "Model": model_name,
+            "Match Count": len(match_rows),
+            "Mismatch Count": total_mismatch_count,
+            "Total Model Records": len(excel_df.drop_duplicates(subset=['METRIC_NAME']))
+        })
+
+    # --- Create Final DataFrames and Dictionary ---
+    summary_df = pd.DataFrame(summary_data)
+    matches_df = pd.concat(all_matches, ignore_index=True) if all_matches else pd.DataFrame()
+    
+    # Reorder columns in matches_df for better readability
+    if not matches_df.empty:
+        new_column_order = ['Model', 'METRIC_NAME']
+        for col in columns_to_compare:
+            new_column_order.append(f"{col}_TDT")
+            new_column_order.append(f"{col}_PRISM")
+        
+        # Select only the desired columns in the specified order
+        final_columns = [col for col in new_column_order if col in matches_df.columns]
+        matches_df = matches_df[final_columns]
+
+    final_mismatches_dict = {}
+    for mismatch_type, df_list in mismatches_by_column.items():
+        if df_list:
+            final_mismatches_dict[mismatch_type] = pd.concat(df_list, ignore_index=True)
+        else:
+            # Ensure an empty DataFrame is present if there are no mismatches of a type
+            final_mismatches_dict[mismatch_type] = pd.DataFrame()
+
+    return summary_df, matches_df, final_mismatches_dict
+

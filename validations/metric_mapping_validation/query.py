@@ -26,13 +26,29 @@ def get_query():
             FORM_METRIC.PointTypeMetricID AS [METRIC ID]
         FROM
             prismdb.dbo.Projects FORM
-            LEFT JOIN prismdb.dbo.Assets ASSET ON FORM.AssetID = ASSET.AssetID LEFT JOIN prismdb.dbo.Projects PARENT ON FORM.ParentTemplateID = PARENT.ProjectID LEFT JOIN prismdb.dbo.ProjectPoints FORM_POINTS ON FORM.ProjectID = FORM_POINTS.ProjectID AND FORM_POINTS.PointTypeID IN (1, 2) LEFT JOIN prismdb.dbo.PointTypeMetric FORM_METRIC ON FORM_POINTS.PointTypeMetricID = FORM_METRIC.PointTypeMetricID LEFT JOIN prismdb.dbo.SystemPoints FORM_POINTS_SYS ON FORM_POINTS.SystemPointId = FORM_POINTS_SYS.Id LEFT JOIN prismdb.dbo.ProjectPoints FORM_POINTS_DETAIL ON FORM.ProjectID = FORM_POINTS_DETAIL.ProjectID AND FORM_POINTS.OrderIndex = FORM_POINTS_DETAIL.OrderIndex AND ((FORM_POINTS.PointTypeID = 1 AND FORM_POINTS_DETAIL.PointTypeID <> 2) OR (FORM_POINTS.PointTypeID = 2 AND FORM_POINTS_DETAIL.PointTypeID = 2)) LEFT JOIN prismdb.dbo.PointCalc FORM_POINTS_CALC ON FORM_POINTS.ProjectPointID = FORM_POINTS_CALC.ProjectPointID LEFT JOIN prismdb.dbo.FaultDiagnostic FAULT ON (FORM.PROJECTTYPEID = 0 AND FORM.ParentTemplateID = FAULT.TemplateID) OR (FORM.PROJECTTYPEID = 2 AND FORM.ProjectID = FAULT.TemplateID) LEFT JOIN prismdb.dbo.FaultSignatureDev FAULT_DETAIL ON FAULT.FaultDiagnosticID = FAULT_DETAIL.FaultDiagnosticID AND FORM_POINTS.PointTypeMetricID = FAULT_DETAIL.PointTypeMetricID LEFT JOIN prismdb.dbo.ProfilePoints FORM_DEPLOYED_PROFILE ON FORM.DeployedProfileID = FORM_DEPLOYED_PROFILE.ProfileID AND FORM_POINTS.ProjectPointID = FORM_DEPLOYED_PROFILE.ProjectPointID LEFT JOIN prismdb.dbo.PointFilters FORM_FILTER ON FORM_POINTS.ProjectPointID = FORM_FILTER.PROJECTPOINTID
+            LEFT JOIN prismdb.dbo.Assets ASSET ON FORM.AssetID = ASSET.AssetID LEFT JOIN prismdb.dbo.Projects PARENT ON FORM.ParentTemplateID = PARENT.ProjectID LEFT JOIN prismdb.dbo.ProjectPoints FORM_POINTS ON FORM.ProjectID = FORM_POINTS.ProjectID AND FORM_POINTS.PointTypeID IN (1, 2) LEFT JOIN prismdb.dbo.PointTypeMetric FORM_METRIC ON FORM_POINTS.PointTypeMetricID = FORM_METRIC.PointTypeMetricID LEFT JOIN prismdb.dbo.SystemPoints FORM_POINTS_SYS ON FORM_POINTS.SystemPointId = FORM_POINTS_SYS.Id LEFT JOIN prismdb.dbo.ProjectPoints FORM_POINTS_DETAIL ON FORM_POINTS.ProjectID = FORM_POINTS_DETAIL.ProjectID AND FORM_POINTS.OrderIndex = FORM_POINTS_DETAIL.OrderIndex AND ((FORM_POINTS.PointTypeID = 1 AND FORM_POINTS_DETAIL.PointTypeID <> 2) OR (FORM_POINTS.PointTypeID = 2 AND FORM_POINTS_DETAIL.PointTypeID = 2)) LEFT JOIN prismdb.dbo.PointCalc FORM_POINTS_CALC ON FORM_POINTS.ProjectPointID = FORM_POINTS_CALC.ProjectPointID LEFT JOIN prismdb.dbo.FaultDiagnostic FAULT ON (FORM.PROJECTTYPEID = 0 AND FORM.ParentTemplateID = FAULT.TemplateID) OR (FORM.PROJECTTYPEID = 2 AND FORM.ProjectID = FAULT.TemplateID) LEFT JOIN prismdb.dbo.FaultSignatureDev FAULT_DETAIL ON FAULT.FaultDiagnosticID = FAULT_DETAIL.FaultDiagnosticID AND FORM_POINTS.PointTypeMetricID = FAULT_DETAIL.PointTypeMetricID LEFT JOIN prismdb.dbo.ProfilePoints FORM_DEPLOYED_PROFILE ON FORM.DeployedProfileID = FORM_DEPLOYED_PROFILE.ProfileID AND FORM_POINTS.ProjectPointID = FORM_DEPLOYED_PROFILE.ProjectPointID LEFT JOIN prismdb.dbo.PointFilters FORM_FILTER ON FORM_POINTS.ProjectPointID = FORM_FILTER.PROJECTPOINTID
         GROUP BY
             ASSET.Description, FORM.PROJECTTYPEID, FORM.Name, PARENT.Name, FORM_POINTS_SYS.DigitalGroupID, FORM_POINTS_CALC.PointCalcID, FORM_POINTS.ConstrainedPt, FORM_METRIC.Description, FORM_POINTS.name, FORM_POINTS.Description, FORM_POINTS.ExtendedID, FORM_POINTS.ExtendedDescription, FORM_POINTS.Units, FORM_POINTS.PointTypeID, FORM_POINTS_DETAIL.PointTypeID, FORM.DeployedProfileID, FORM.ProjectID, FORM_POINTS.ProjectPointID, PARENT.ProjectID, FORM_DEPLOYED_PROFILE.ProjectPointID, FORM_METRIC.PointTypeMetricID, FORM.PollingInterval, FORM_POINTS_DETAIL.ProjectPointID
     ),
+    -- CTE to replicate the SINE_TDT_SENSOR_NON_EXIST_REV view logic
     NON_EXIST_REV_LOGIC AS (
         SELECT
-            PROJECT_ASSET.Description AS [ASSET], 'PROJECT' AS [FORM TYPE], IIF(PROJECT.DeployedProfileID IS NULL, 'N', 'Y') AS [DEPLOYED], MissingMetrics.ProjectName AS [FORM NAME], TEMPLATE.Name AS [PARENT TEMPLATE NAME], X.[INTERVAL TIME (SEC)], X.[POINT TYPE], 'N' AS [CONSTRAINED POINT], X.[METRIC NAME], X.[FUNCTION], '' AS [POINT NAME], '' AS [POINT DESCRIPTION], '' AS [POINT UNIT], X.[THRESHOLD TYPE], MissingMetrics.ProjectID AS [FORM ID], MissingMetrics.[METRIC ID] AS [METRIC ID]
+            PROJECT_ASSET.Description AS [ASSET],
+            'PROJECT' AS [FORM TYPE],
+            IIF(PROJECT.DeployedProfileID IS NULL, 'N', 'Y') AS [DEPLOYED],
+            MissingMetrics.ProjectName AS [FORM NAME],
+            TEMPLATE.Name AS [PARENT TEMPLATE NAME],
+            X.[INTERVAL TIME (SEC)],
+            X.[POINT TYPE],
+            'N' AS [CONSTRAINED POINT],
+            X.[METRIC NAME],
+            X.[FUNCTION],
+            '' AS [POINT NAME],
+            '' AS [POINT DESCRIPTION],
+            '' AS [POINT UNIT],
+            X.[THRESHOLD TYPE],
+            MissingMetrics.ProjectID AS [FORM ID],
+            MissingMetrics.[METRIC ID] AS [METRIC ID]
         FROM (
             SELECT P.Name AS ProjectName, PTM.PointTypeMetricID AS [METRIC ID], PTM.Description AS [METRIC NAME], P.ProjectID AS ProjectID, T.ProjectID AS TemplateID, T.Name AS TemplateName FROM prismdb.dbo.Projects T LEFT JOIN prismdb.dbo.ProjectPoints TP ON T.ProjectID = TP.ProjectID AND TP.PointTypeID = 1 LEFT JOIN prismdb.dbo.PointTypeMetric PTM ON TP.PointTypeMetricID = PTM.PointTypeMetricID LEFT JOIN prismdb.dbo.Projects P ON T.ProjectID = P.ParentTemplateID WHERE T.PROJECTTYPEID = 2 AND P.PROJECTTYPEID = 0
             EXCEPT
@@ -43,6 +59,7 @@ def get_query():
         LEFT JOIN prismdb.dbo.Projects TEMPLATE ON MissingMetrics.TemplateID = TEMPLATE.ProjectID
         LEFT JOIN prismdb.dbo.Assets PROJECT_ASSET ON PROJECT.AssetID = PROJECT_ASSET.AssetID
     ),
+    -- Combine the results of the two CTEs using UNION
     COMBINED_LOGIC AS (
         SELECT [FORM ID], [FORM NAME], [METRIC ID], [METRIC NAME], [POINT NAME], [POINT DESCRIPTION], [POINT UNIT], [CONSTRAINED POINT], [FUNCTION], [POINT TYPE], [FORM TYPE], [DEPLOYED], [THRESHOLD TYPE] FROM EXIST_REV_LOGIC
         UNION

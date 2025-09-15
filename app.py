@@ -1,18 +1,15 @@
+import pandas as pd
 import streamlit as st
 from db_utils import PrismDB
 
-# --- Import for Metric Validation ---
-# This new structure makes it clear which logic belongs to which section
+# --- Import validation-specific modules ---
 from validations.metric_validation.query import get_query as get_metric_query
 from validations.metric_validation.parser import parse_excel as parse_metric_excel
 from validations.metric_validation.validator import validate_data as validate_metric_data
 
-# --- Imports for Metric Mapping Validation ---
 from validations.metric_mapping_validation.query import get_query as get_metric_mapping_query
 from validations.metric_mapping_validation.parser import parse_excel as parse_metric_mapping_excel
 from validations.metric_mapping_validation.validator import validate_data as validate_metric_mapping_data
-
-# (You will add imports for the other sections here as you build them)
 
 # --- Page Configuration ---
 st.set_page_config(page_title="PRISM Config Validator", layout="wide")
@@ -34,7 +31,7 @@ if 'uploaded_file_state' not in st.session_state:
 def display_results(results, key_prefix, filter_column_name):
     """
     Helper function to display results.
-    Now accepts a `filter_column_name` to make it generic.
+    Now handles both single DataFrame and dictionary of DataFrames for mismatches.
     """
     if not results or results['summary'].empty:
         st.info("Run the validation to see the results.")
@@ -56,22 +53,37 @@ def display_results(results, key_prefix, filter_column_name):
         key=f"tdt_filter_{key_prefix}"
     )
 
+    # --- Display Matches ---
     st.markdown("#### Matches")
-    matches_to_show = results['matches']
-    # FIX: Check if the filter column exists before trying to filter.
-    # This prevents a crash if the dataframe is empty.
+    matches_to_show = results.get('matches', pd.DataFrame())
     if tdt_filter != 'All' and filter_column_name in matches_to_show.columns:
         matches_to_show = matches_to_show[matches_to_show[filter_column_name] == tdt_filter]
     st.dataframe(matches_to_show, use_container_width=True)
     st.metric("Total Matches Shown", len(matches_to_show))
 
+    # --- Display Mismatches ---
     st.markdown("#### Mismatches")
-    mismatches_to_show = results['mismatches']
-    # FIX: Apply the same check to the mismatches dataframe.
-    if tdt_filter != 'All' and filter_column_name in mismatches_to_show.columns:
-        mismatches_to_show = mismatches_to_show[mismatches_to_show[filter_column_name] == tdt_filter]
-    st.dataframe(mismatches_to_show, use_container_width=True)
-    st.metric("Total Mismatches Shown", len(mismatches_to_show))
+    mismatches_data = results.get('mismatches', {})
+    
+    # FIX: Check if mismatches is a dictionary (new structure) or a DataFrame (old structure)
+    if isinstance(mismatches_data, dict):
+        total_mismatches_shown = 0
+        for mismatch_type, mismatch_df in mismatches_data.items():
+            if not mismatch_df.empty:
+                st.markdown(f"##### {mismatch_type.replace('_', ' ').title()}")
+                mismatches_to_show = mismatch_df
+                if tdt_filter != 'All' and filter_column_name in mismatches_to_show.columns:
+                    mismatches_to_show = mismatches_to_show[mismatches_to_show[filter_column_name] == tdt_filter]
+                
+                st.dataframe(mismatches_to_show, use_container_width=True)
+                total_mismatches_shown += len(mismatches_to_show)
+        st.metric("Total Mismatches Shown", total_mismatches_shown)
+    else: # Fallback for old structure (single DataFrame)
+        mismatches_to_show = mismatches_data
+        if tdt_filter != 'All' and filter_column_name in mismatches_to_show.columns:
+            mismatches_to_show = mismatches_to_show[mismatches_to_show[filter_column_name] == tdt_filter]
+        st.dataframe(mismatches_to_show, use_container_width=True)
+        st.metric("Total Mismatches Shown", len(mismatches_to_show))
 
 # --- Sidebar UI (Unchanged) ---
 with st.sidebar:
@@ -130,7 +142,6 @@ with tab1:
                     }
                 except Exception as e:
                     st.error(f"An error occurred: {e}")
-    # Call with the correct column name "TDT"
     display_results(st.session_state.validation_states["metric_validation"]["results"], "metric_val", "TDT")
 
 # --- Tab 2: Metric Mapping Validation ---
@@ -150,7 +161,6 @@ with tab2:
                     }
                 except Exception as e:
                     st.error(f"An error occurred: {e}")
-    # Call with the correct column name "Model"
     display_results(st.session_state.validation_states["metric_mapping"]["results"], "metric_map", "Model")
 
 # --- Tab 3: Failure Diagnostics Validation (Placeholder) ---
