@@ -61,10 +61,8 @@ def validate_data(tdt_dfs, prism_df):
             
             if col_mismatch_mask.any():
                 mismatch_subset = merged_df.loc[col_mismatch_mask, ['FAILURE_MODE', 'METRIC_NAME', f'{col}_TDT', f'{col}_PRISM']].copy()
-                # mismatch_subset.rename(columns={f'{col}_TDT': 'TDT_Value', f'{col}_PRISM': 'PRISM_Value'}, inplace=True)
+                mismatch_subset.rename(columns={f'{col}_TDT': 'TDT_Value', f'{col}_PRISM': 'PRISM_Value'}, inplace=True)
                 mismatch_subset['TDT'] = tdt_name
-                # Reorder columns
-                # mismatch_subset = mismatch_subset[['TDT', 'FAILURE_MODE', 'METRIC_NAME', 'TDT_Value', 'PRISM_Value']]
                 mismatches_by_column[col].append(mismatch_subset)
 
         # --- Identify Records Missing from a Source ---
@@ -104,11 +102,10 @@ def validate_data(tdt_dfs, prism_df):
     for mismatch_type, df_list in mismatches_by_column.items():
         if df_list:
             df = pd.concat(df_list, ignore_index=True)
-            
             # Define the ideal column order for each mismatch type
             col_order = ['TDT'] + join_keys
             if mismatch_type in columns_to_compare:
-                col_order.extend([f'{mismatch_type}_TDT', f'{mismatch_type}_PRISM'])
+                col_order.extend(['TDT_Value', 'PRISM_Value'])
             else: # For missing records, show all available columns
                 tdt_cols = sorted([c for c in df.columns if '_TDT' in c])
                 prism_cols = sorted([c for c in df.columns if '_PRISM' in c])

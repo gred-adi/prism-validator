@@ -82,25 +82,13 @@ def validate_data(model_dfs, prism_df):
         # --- Identify and format Records Missing from a Source ---
         missing_in_prism_rows = merged_df[merged_df['_merge'] == 'left_only'].copy()
         if not missing_in_prism_rows.empty:
-            cols_to_keep = ['METRIC_NAME'] + [f"{c}_TDT" for c in columns_to_compare]
-            missing_subset = missing_in_prism_rows[cols_to_keep].copy()
-            missing_subset.rename(columns={f"{c}_TDT": c for c in columns_to_compare}, inplace=True)
-            missing_subset['Model'] = model_name
-            # Reorder columns
-            final_cols = ['Model', 'METRIC_NAME'] + columns_to_compare
-            missing_subset = missing_subset[final_cols]
-            mismatches_by_column['Missing_in_PRISM'].append(missing_subset)
+            missing_in_prism_rows['Model'] = model_name
+            mismatches_by_column['Missing_in_PRISM'].append(missing_in_prism_rows)
 
         missing_in_tdt_rows = merged_df[merged_df['_merge'] == 'right_only'].copy()
         if not missing_in_tdt_rows.empty:
-            cols_to_keep = ['METRIC_NAME'] + [f"{c}_PRISM" for c in columns_to_compare]
-            missing_subset = missing_in_tdt_rows[cols_to_keep].copy()
-            missing_subset.rename(columns={f"{c}_PRISM": c for c in columns_to_compare}, inplace=True)
-            missing_subset['Model'] = model_name
-            # Reorder columns
-            final_cols = ['Model', 'METRIC_NAME'] + columns_to_compare
-            missing_subset = missing_subset[final_cols]
-            mismatches_by_column['Missing_in_TDT'].append(missing_subset)
+            missing_in_tdt_rows['Model'] = model_name
+            mismatches_by_column['Missing_in_TDT'].append(missing_in_tdt_rows)
             
         # --- Append Summary Data ---
         total_mismatch_count = len(merged_df[~match_mask])
@@ -127,6 +115,25 @@ def validate_data(model_dfs, prism_df):
     for mismatch_type, df_list in mismatches_by_column.items():
         if df_list:
             final_mismatches_dict[mismatch_type] = pd.concat(df_list, ignore_index=True)
+        else:
+            final_mismatches_dict[mismatch_type] = pd.DataFrame()
+
+    # Reorder columns for each type of mismatch
+    final_mismatches_dict = {}
+    for mismatch_type, df_list in mismatches_by_column.items():
+        if df_list:
+            df = pd.concat(df_list, ignore_index=True)
+            # Define the ideal column order for each mismatch type
+            col_order = ['Model', 'METRIC_NAME']    
+            if mismatch_type in columns_to_compare:
+                col_order.extend(['TDT_Value', 'PRISM_Value'])
+            else: # For missing records, show all available columns
+                tdt_cols = sorted([c for c in df.columns if '_TDT' in c])
+                prism_cols = sorted([c for c in df.columns if '_PRISM' in c])
+                col_order.extend(tdt_cols + prism_cols)
+
+            # Filter to only existing columns before reordering
+            final_mismatches_dict[mismatch_type] = df[[c for c in col_order if c in df.columns]]
         else:
             final_mismatches_dict[mismatch_type] = pd.DataFrame()
 
