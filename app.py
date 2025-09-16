@@ -62,7 +62,7 @@ def display_results(results, key_prefix, filter_column_name):
         total_mismatches_shown = 0
         for mismatch_type, mismatch_df in mismatches_data.items():
             if not mismatch_df.empty:
-                st.markdown(f"##### {mismatch_type.replace('_', ' ').title()}")
+                st.markdown(f"##### {mismatch_type.replace('_', ' ').upper()}")
                 mismatches_to_show = mismatch_df
                 if tdt_filter != 'All' and filter_column_name in mismatches_to_show.columns:
                     mismatches_to_show = mismatches_to_show[mismatches_to_show[filter_column_name] == tdt_filter]
@@ -146,7 +146,7 @@ with tab2:
                 summary, matches, mismatches = validate_metric_mapping_data(model_dfs, prism_df)
                 st.session_state.validation_states["metric_mapping"]["results"] = {'summary': summary, 'matches': matches, 'mismatches': mismatches}
             except Exception as e: st.error(f"An error occurred: {e}")
-    display_results(st.session_state.validation_states["metric_mapping"]["results"], "metric_map", "Model")
+    display_results(st.session_state.validation_states["metric_mapping"]["results"], "metric_map", "MODEL")
 
 # --- Tab 3: Failure Diagnostics Validation ---
 with tab3:
@@ -175,5 +175,5 @@ with tab4:
                 summary, matches, mismatches = validate_filter_data(model_dfs, prism_df)
                 st.session_state.validation_states["filter_validation"]["results"] = {'summary': summary, 'matches': matches, 'mismatches': mismatches}
             except Exception as e: st.error(f"An error occurred: {e}")
-    display_results(st.session_state.validation_states["filter_validation"]["results"], "filter_val", "Model")
+    display_results(st.session_state.validation_states["filter_validation"]["results"], "filter_val", "MODEL")
 

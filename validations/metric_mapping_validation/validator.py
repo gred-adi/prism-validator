@@ -5,7 +5,7 @@ import streamlit as st
 def validate_data(model_dfs, prism_df):
     """
     Performs the comparison logic for the 'Metric Mapping' section.
-    This version uses "Model" as the key identifier and separates mismatches by column.
+    This version uses 'MODEL' as the key identifier and separates mismatches by column.
     """
     # Create a copy to avoid modifying the cached dataframe.
     prism_df = prism_df.copy()
@@ -15,7 +15,7 @@ def validate_data(model_dfs, prism_df):
     
     # 1. Rename PRISM columns for consistency first.
     prism_df.rename(columns={
-        "FORM NAME": "Model",
+        "FORM NAME": 'MODEL',
         "METRIC NAME": "METRIC_NAME",
         "POINT NAME": "POINT_NAME",
         "POINT DESCRIPTION": "POINT_DESCRIPTION",
@@ -42,7 +42,7 @@ def validate_data(model_dfs, prism_df):
     mismatches_by_column['Missing_in_TDT'] = []
 
     for model_name, excel_df in model_dfs.items():
-        prism_sub_df = prism_df[prism_df["Model"] == model_name].copy()
+        prism_sub_df = prism_df[prism_df['MODEL'] == model_name].copy()
 
         merged_df = pd.merge(
             excel_df.drop_duplicates(subset=['METRIC_NAME']),
@@ -62,7 +62,7 @@ def validate_data(model_dfs, prism_df):
         
         match_rows = merged_df[match_mask].copy()
         if not match_rows.empty:
-            match_rows['Model'] = model_name
+            match_rows['MODEL'] = model_name
             all_matches.append(match_rows)
 
         # --- Identify Mismatches by Specific Column ---
@@ -74,26 +74,26 @@ def validate_data(model_dfs, prism_df):
             if col_mismatch_mask.any():
                 mismatch_subset = merged_df.loc[col_mismatch_mask, ['METRIC_NAME', f'{col}_TDT', f'{col}_PRISM']].copy()
                 mismatch_subset.rename(columns={f'{col}_TDT': 'TDT_Value', f'{col}_PRISM': 'PRISM_Value'}, inplace=True)
-                mismatch_subset['Model'] = model_name
+                mismatch_subset['MODEL'] = model_name
                 # Reorder columns
-                mismatch_subset = mismatch_subset[['Model', 'METRIC_NAME', 'TDT_Value', 'PRISM_Value']]
+                mismatch_subset = mismatch_subset[['MODEL', 'METRIC_NAME', 'TDT_Value', 'PRISM_Value']]
                 mismatches_by_column[col].append(mismatch_subset)
         
         # --- Identify and format Records Missing from a Source ---
         missing_in_prism_rows = merged_df[merged_df['_merge'] == 'left_only'].copy()
         if not missing_in_prism_rows.empty:
-            missing_in_prism_rows['Model'] = model_name
+            missing_in_prism_rows['MODEL'] = model_name
             mismatches_by_column['Missing_in_PRISM'].append(missing_in_prism_rows)
 
         missing_in_tdt_rows = merged_df[merged_df['_merge'] == 'right_only'].copy()
         if not missing_in_tdt_rows.empty:
-            missing_in_tdt_rows['Model'] = model_name
+            missing_in_tdt_rows['MODEL'] = model_name
             mismatches_by_column['Missing_in_TDT'].append(missing_in_tdt_rows)
             
         # --- Append Summary Data ---
         total_mismatch_count = len(merged_df[~match_mask])
         summary_data.append({
-            "Model": model_name,
+            'MODEL': model_name,
             "Match Count": len(match_rows),
             "Mismatch Count": total_mismatch_count,
             "Total Model Records": len(excel_df.drop_duplicates(subset=['METRIC_NAME']))
@@ -104,7 +104,7 @@ def validate_data(model_dfs, prism_df):
     matches_df = pd.concat(all_matches, ignore_index=True) if all_matches else pd.DataFrame()
     
     if not matches_df.empty:
-        new_column_order = ['Model', 'METRIC_NAME']
+        new_column_order = ['MODEL', 'METRIC_NAME']
         for col in columns_to_compare:
             new_column_order.append(f"{col}_TDT")
             new_column_order.append(f"{col}_PRISM")
@@ -124,7 +124,7 @@ def validate_data(model_dfs, prism_df):
         if df_list:
             df = pd.concat(df_list, ignore_index=True)
             # Define the ideal column order for each mismatch type
-            col_order = ['Model', 'METRIC_NAME']    
+            col_order = ['MODEL', 'METRIC_NAME']    
             if mismatch_type in columns_to_compare:
                 col_order.extend(['TDT_Value', 'PRISM_Value'])
             else: # For missing records, show all available columns
