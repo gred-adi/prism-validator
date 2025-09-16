@@ -15,6 +15,10 @@ from validations.filter_validation.query import get_query as get_filter_query
 from validations.filter_validation.parser import parse_excel as parse_filter_excel
 from validations.filter_validation.validator import validate_data as validate_filter_data
 
+from validations.failure_diagnostics_validation.query import get_query as get_failure_diag_query
+from validations.failure_diagnostics_validation.parser import parse_excel as parse_failure_diag_excel
+from validations.failure_diagnostics_validation.validator import validate_data as validate_failure_diag_data
+
 # --- Page Configuration ---
 st.set_page_config(page_title="PRISM Config Validator", layout="wide")
 
@@ -23,53 +27,37 @@ if 'validation_states' not in st.session_state:
     st.session_state.validation_states = {
         "metric_validation": {"results": None},
         "metric_mapping": {"results": None},
-        "failure_diagnostics": {"results": None},
+        "failure_diagnostics": {"results": None}, # New state for this section
         "filter_validation": {"results": None}
     }
 if 'db' not in st.session_state:
     st.session_state.db = None
-if 'uploaded_file_state' not in st.session_state:
-    st.session_state.uploaded_file_state = None
+if 'uploaded_survey_file' not in st.session_state:
+    st.session_state.uploaded_survey_file = None
+if 'uploaded_diag_file' not in st.session_state: # NEW: State for the diagnostics file
+    st.session_state.uploaded_diag_file = None
 
-# --- Reusable Helper Functions ---
+# --- Reusable Helper Functions (Unchanged) ---
 def display_results(results, key_prefix, filter_column_name):
-    """
-    Helper function to display results.
-    Now handles both single DataFrame and dictionary of DataFrames for mismatches.
-    """
     if not results or results['summary'].empty:
         st.info("Run the validation to see the results.")
         return
-
     st.subheader("Validation Summary")
     st.dataframe(results['summary'], use_container_width=True)
     st.subheader("Validation Details")
-
     if filter_column_name not in results['summary'].columns:
-        st.error(f"Cannot generate filter because the expected column '{filter_column_name}' was not found in the summary.")
+        st.error(f"Cannot generate filter; expected column '{filter_column_name}' not in summary.")
         return
-
     filter_options = ['All'] + results['summary'][filter_column_name].tolist()
-    
-    tdt_filter = st.selectbox(
-        f"Filter by {filter_column_name}",
-        options=filter_options,
-        key=f"tdt_filter_{key_prefix}"
-    )
-
-    # --- Display Matches ---
+    tdt_filter = st.selectbox(f"Filter by {filter_column_name}", options=filter_options, key=f"tdt_filter_{key_prefix}")
     st.markdown("#### Matches")
     matches_to_show = results.get('matches', pd.DataFrame())
     if tdt_filter != 'All' and filter_column_name in matches_to_show.columns:
         matches_to_show = matches_to_show[matches_to_show[filter_column_name] == tdt_filter]
     st.dataframe(matches_to_show, use_container_width=True)
     st.metric("Total Matches Shown", len(matches_to_show))
-
-    # --- Display Mismatches ---
     st.markdown("#### Mismatches")
     mismatches_data = results.get('mismatches', {})
-    
-    # FIX: Check if mismatches is a dictionary (new structure) or a DataFrame (old structure)
     if isinstance(mismatches_data, dict):
         total_mismatches_shown = 0
         for mismatch_type, mismatch_df in mismatches_data.items():
@@ -78,25 +66,23 @@ def display_results(results, key_prefix, filter_column_name):
                 mismatches_to_show = mismatch_df
                 if tdt_filter != 'All' and filter_column_name in mismatches_to_show.columns:
                     mismatches_to_show = mismatches_to_show[mismatches_to_show[filter_column_name] == tdt_filter]
-                
                 st.dataframe(mismatches_to_show, use_container_width=True)
                 total_mismatches_shown += len(mismatches_to_show)
         st.metric("Total Mismatches Shown", total_mismatches_shown)
-    else: # Fallback for old structure (single DataFrame)
+    else:
         mismatches_to_show = mismatches_data
         if tdt_filter != 'All' and filter_column_name in mismatches_to_show.columns:
             mismatches_to_show = mismatches_to_show[mismatches_to_show[filter_column_name] == tdt_filter]
         st.dataframe(mismatches_to_show, use_container_width=True)
         st.metric("Total Mismatches Shown", len(mismatches_to_show))
 
-# --- Sidebar UI (Unchanged) ---
+# --- Sidebar UI ---
 with st.sidebar:
     st.header("1. Database Connection")
     db_host = st.text_input("Host", value=st.secrets.get("db", {}).get("host", ""))
     db_name = st.text_input("Database", value=st.secrets.get("db", {}).get("database", ""))
     db_user = st.text_input("User", value=st.secrets.get("db", {}).get("user", ""))
     db_pass = st.text_input("Password", type="password", value=st.secrets.get("db", {}).get("password", ""))
-
     if st.button("Connect to Database"):
         with st.spinner("Connecting..."):
             try:
@@ -106,21 +92,28 @@ with st.sidebar:
             except Exception as e:
                 st.session_state.db = None
                 st.error(f"❌ Connection failed: {e}")
-
-    if st.session_state.db:
-        st.success("Database is connected.")
-    else:
-        st.warning("Database is not connected.")
-
+    if st.session_state.db: st.success("Database is connected.")
+    else: st.warning("Database is not connected.")
+    
     st.markdown("---")
-    st.header("2. Upload Reference File")
-    uploaded_file = st.file_uploader("Upload Excel Reference", type=["xlsx"])
-    if uploaded_file:
-        st.session_state.uploaded_file_state = uploaded_file
+    # UPDATED: Section for multiple file uploads
+    st.header("2. Upload Reference Files")
+    uploaded_survey = st.file_uploader("Upload Consolidated Survey File", type=["xlsx"], key="survey_uploader")
+    if uploaded_survey:
+        st.session_state.uploaded_survey_file = uploaded_survey
+
+    uploaded_diag = st.file_uploader("Upload Consolidated Failure Diagnostics File", type=["xlsx"], key="diag_uploader")
+    if uploaded_diag:
+        st.session_state.uploaded_diag_file = uploaded_diag
 
 # --- Main Page UI ---
 st.title("PRISM Configuration Validator")
 st.markdown("Select a validation type from the tabs below and click 'Run Validation'.")
+
+# NEW: Centralized check for all prerequisites
+prerequisites_met = st.session_state.db and st.session_state.uploaded_survey_file and st.session_state.uploaded_diag_file
+if not prerequisites_met:
+    st.warning("Please connect to the database and upload BOTH reference files in the sidebar to proceed.")
 
 tab1, tab2, tab3, tab4 = st.tabs([
     "Metric Validation (Template)",
@@ -132,65 +125,55 @@ tab1, tab2, tab3, tab4 = st.tabs([
 # --- Tab 1: Metric Validation ---
 with tab1:
     st.header("Metric Validation (TDT vs PRISM Template)")
-    if st.button("Run Metric Validation", key="run_metric_validation"):
-        if not st.session_state.db or not st.session_state.uploaded_file_state:
-            st.warning("Please connect to the database and upload a file first.")
-        else:
-            with st.spinner('Running metric validation...'):
-                try:
-                    prism_df = st.session_state.db.run_query(get_metric_query())
-                    tdt_dfs = parse_metric_excel(st.session_state.uploaded_file_state)
-                    summary, matches, mismatches = validate_metric_data(tdt_dfs, prism_df)
-                    st.session_state.validation_states["metric_validation"]["results"] = {
-                        'summary': summary, 'matches': matches, 'mismatches': mismatches
-                    }
-                except Exception as e:
-                    st.error(f"An error occurred: {e}")
+    if st.button("Run Metric Validation", key="run_metric_validation", disabled=not prerequisites_met):
+        with st.spinner('Running metric validation...'):
+            try:
+                prism_df = st.session_state.db.run_query(get_metric_query())
+                tdt_dfs = parse_metric_excel(st.session_state.uploaded_survey_file)
+                summary, matches, mismatches = validate_metric_data(tdt_dfs, prism_df)
+                st.session_state.validation_states["metric_validation"]["results"] = {'summary': summary, 'matches': matches, 'mismatches': mismatches}
+            except Exception as e: st.error(f"An error occurred: {e}")
     display_results(st.session_state.validation_states["metric_validation"]["results"], "metric_val", "TDT")
 
 # --- Tab 2: Metric Mapping Validation ---
 with tab2:
     st.header("Metric Mapping Validation (TDT vs PRISM Project)")
-    if st.button("Run Metric Mapping Validation", key="run_metric_mapping"):
-        if not st.session_state.db or not st.session_state.uploaded_file_state:
-            st.warning("Please connect to the database and upload a file first.")
-        else:
-            with st.spinner('Running metric mapping validation...'):
-                try:
-                    prism_df = st.session_state.db.run_query(get_metric_mapping_query())
-                    model_dfs = parse_metric_mapping_excel(st.session_state.uploaded_file_state)
-                    summary, matches, mismatches = validate_metric_mapping_data(model_dfs, prism_df)
-                    st.session_state.validation_states["metric_mapping"]["results"] = {
-                        'summary': summary, 'matches': matches, 'mismatches': mismatches
-                    }
-                except Exception as e:
-                    st.error(f"An error occurred: {e}")
+    if st.button("Run Metric Mapping Validation", key="run_metric_mapping", disabled=not prerequisites_met):
+        with st.spinner('Running metric mapping validation...'):
+            try:
+                prism_df = st.session_state.db.run_query(get_metric_mapping_query())
+                model_dfs = parse_metric_mapping_excel(st.session_state.uploaded_survey_file)
+                summary, matches, mismatches = validate_metric_mapping_data(model_dfs, prism_df)
+                st.session_state.validation_states["metric_mapping"]["results"] = {'summary': summary, 'matches': matches, 'mismatches': mismatches}
+            except Exception as e: st.error(f"An error occurred: {e}")
     display_results(st.session_state.validation_states["metric_mapping"]["results"], "metric_map", "Model")
 
-# --- Tab 3: Failure Diagnostics Validation (Placeholder) ---
+# --- Tab 3: Failure Diagnostics Validation ---
 with tab3:
     st.header("Failure Diagnostics Validation (TDT vs PRISM Template)")
-    st.info("This section is under construction.")
-    if st.button("Run Failure Diagnostics Validation", key="run_failure_diagnostics", disabled=True):
-        pass
+    # UPDATED: This tab is now wired up
+    if st.button("Run Failure Diagnostics Validation", key="run_failure_diagnostics", disabled=not prerequisites_met):
+        with st.spinner('Running failure diagnostics validation...'):
+            try:
+                prism_df = st.session_state.db.run_query(get_failure_diag_query())
+                # Note: It uses the dedicated diagnostics file
+                tdt_dfs = parse_failure_diag_excel(st.session_state.uploaded_diag_file)
+                summary, matches, mismatches = validate_failure_diag_data(tdt_dfs, prism_df)
+                st.session_state.validation_states["failure_diagnostics"]["results"] = {'summary': summary, 'matches': matches, 'mismatches': mismatches}
+            except Exception as e: st.error(f"An error occurred: {e}")
+    # Using "TDT" as the filter key since this is a template-based validation
+    display_results(st.session_state.validation_states["failure_diagnostics"]["results"], "failure_diag", "TDT")
 
 # --- Tab 4: Filter Validation ---
 with tab4:
     st.header("Filter Validation (TDT vs PRISM Project)")
-    # --- UPDATED: This tab is now active ---
-    if st.button("Run Filter Validation", key="run_filter_validation"):
-        if not st.session_state.db or not st.session_state.uploaded_file_state:
-            st.warning("Please connect to the database and upload a file first.")
-        else:
-            with st.spinner('Running filter validation...'):
-                try:
-                    # Use the new modules for this section
-                    prism_df = st.session_state.db.run_query(get_filter_query())
-                    model_dfs = parse_filter_excel(st.session_state.uploaded_file_state)
-                    summary, matches, mismatches = validate_filter_data(model_dfs, prism_df)
-                    st.session_state.validation_states["filter_validation"]["results"] = {
-                        'summary': summary, 'matches': matches, 'mismatches': mismatches
-                    }
-                except Exception as e:
-                    st.error(f"An error occurred: {e}")
+    if st.button("Run Filter Validation", key="run_filter_validation", disabled=not prerequisites_met):
+        with st.spinner('Running filter validation...'):
+            try:
+                prism_df = st.session_state.db.run_query(get_filter_query())
+                model_dfs = parse_filter_excel(st.session_state.uploaded_survey_file)
+                summary, matches, mismatches = validate_filter_data(model_dfs, prism_df)
+                st.session_state.validation_states["filter_validation"]["results"] = {'summary': summary, 'matches': matches, 'mismatches': mismatches}
+            except Exception as e: st.error(f"An error occurred: {e}")
     display_results(st.session_state.validation_states["filter_validation"]["results"], "filter_val", "Model")
+
