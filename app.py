@@ -11,6 +11,10 @@ from validations.metric_mapping_validation.query import get_query as get_metric_
 from validations.metric_mapping_validation.parser import parse_excel as parse_metric_mapping_excel
 from validations.metric_mapping_validation.validator import validate_data as validate_metric_mapping_data
 
+from validations.filter_validation.query import get_query as get_filter_query
+from validations.filter_validation.parser import parse_excel as parse_filter_excel
+from validations.filter_validation.validator import validate_data as validate_filter_data
+
 # --- Page Configuration ---
 st.set_page_config(page_title="PRISM Config Validator", layout="wide")
 
@@ -170,9 +174,23 @@ with tab3:
     if st.button("Run Failure Diagnostics Validation", key="run_failure_diagnostics", disabled=True):
         pass
 
-# --- Tab 4: Filter Validation (Placeholder) ---
+# --- Tab 4: Filter Validation ---
 with tab4:
     st.header("Filter Validation (TDT vs PRISM Project)")
-    st.info("This section is under construction.")
-    if st.button("Run Filter Validation", key="run_filter_validation", disabled=True):
-        pass
+    # --- UPDATED: This tab is now active ---
+    if st.button("Run Filter Validation", key="run_filter_validation"):
+        if not st.session_state.db or not st.session_state.uploaded_file_state:
+            st.warning("Please connect to the database and upload a file first.")
+        else:
+            with st.spinner('Running filter validation...'):
+                try:
+                    # Use the new modules for this section
+                    prism_df = st.session_state.db.run_query(get_filter_query())
+                    model_dfs = parse_filter_excel(st.session_state.uploaded_file_state)
+                    summary, matches, mismatches = validate_filter_data(model_dfs, prism_df)
+                    st.session_state.validation_states["filter_validation"]["results"] = {
+                        'summary': summary, 'matches': matches, 'mismatches': mismatches
+                    }
+                except Exception as e:
+                    st.error(f"An error occurred: {e}")
+    display_results(st.session_state.validation_states["filter_validation"]["results"], "filter_val", "Model")
