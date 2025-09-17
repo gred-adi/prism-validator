@@ -35,6 +35,8 @@ def validate_data(tdt_dfs, prism_df):
     for tdt_name, excel_df in tdt_dfs.items():
         prism_sub_df = prism_df[prism_df["TDT"] == tdt_name].copy()
 
+        excel_df['WEIGHT'] = pd.to_numeric(excel_df['WEIGHT'], errors='coerce')
+
         merged_df = pd.merge(
             excel_df.drop_duplicates(subset=join_keys),
             prism_sub_df.drop_duplicates(subset=join_keys),

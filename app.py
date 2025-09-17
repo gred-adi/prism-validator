@@ -1,6 +1,9 @@
 import pandas as pd
 import streamlit as st
 from db_utils import PrismDB
+import os
+import tkinter as tk
+from tkinter import filedialog
 
 # --- Import validation-specific modules ---
 from validations.metric_validation.query import get_query as get_metric_query
@@ -25,30 +28,36 @@ from validations.absolute_deviation_validation.validator import validate_data as
 
 from validations.model_deployment_config.query import get_query as get_model_deployment_query
 
+from file_generator import generate_files_from_folder, convert_dfs_to_excel_bytes
+
+# --- Import the file generator module ---
+from file_generator import generate_files_from_folder
+
 # --- Page Configuration ---
 st.set_page_config(page_title="PRISM Config Validator", layout="wide")
 
 # --- Initialize Session State ---
+if 'db' not in st.session_state: st.session_state.db = None
+if 'tdt_folder_path' not in st.session_state: st.session_state.tdt_folder_path = ""
+# NEW: States for raw DataFrames and overview
+if 'survey_df' not in st.session_state: st.session_state.survey_df = None
+if 'diag_df' not in st.session_state: st.session_state.diag_df = None
+if 'overview_df' not in st.session_state: st.session_state.overview_df = None
+# States for file bytes (for parsers and downloads)
+if 'uploaded_survey_file' not in st.session_state: st.session_state.uploaded_survey_file = None
+if 'uploaded_diag_file' not in st.session_state: st.session_state.uploaded_diag_file = None
+if 'uploaded_stats_file' not in st.session_state: st.session_state.uploaded_stats_file = None
+# States for validation results
 if 'validation_states' not in st.session_state:
     st.session_state.validation_states = {
-        "metric_validation": {"results": None},
-        "metric_mapping": {"results": None},
-        "failure_diagnostics": {"results": None},
-        "filter_validation": {"results": None},
-        "absolute_deviation": {"results": None},
-        "model_deployment_config": {"results": None} # New state
+        "metric_validation": {"results": None}, "metric_mapping": {"results": None},
+        "failure_diagnostics": {"results": None}, "filter_validation": {"results": None},
+        "absolute_deviation": {"results": None}, "model_deployment_config": {"results": None}
     }
-if 'db' not in st.session_state:
-    st.session_state.db = None
-if 'uploaded_survey_file' not in st.session_state:
-    st.session_state.uploaded_survey_file = None
-if 'uploaded_diag_file' not in st.session_state:
-    st.session_state.uploaded_diag_file = None
-if 'uploaded_stats_file' not in st.session_state:
-    st.session_state.uploaded_stats_file = None
 
-# --- Reusable Helper Functions (Unchanged) ---
+# --- Reusable Helper Functions ---
 def display_results(results, key_prefix, filter_column_name):
+    # (This function is unchanged)
     if not results or results['summary'].empty:
         st.info("Run the validation to see the results.")
         return
@@ -86,7 +95,14 @@ def display_results(results, key_prefix, filter_column_name):
         st.dataframe(mismatches_to_show, use_container_width=True)
         st.metric("Total Mismatches Shown", len(mismatches_to_show))
 
-# --- Sidebar UI (Unchanged) ---
+def select_folder():
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes('-topmost', True)
+    folder_path = filedialog.askdirectory(master=root)
+    return folder_path
+
+# --- Sidebar UI ---
 with st.sidebar:
     st.header("1. Database Connection")
     db_host = st.text_input("Host", value=st.secrets.get("db", {}).get("host", ""))
@@ -94,6 +110,7 @@ with st.sidebar:
     db_user = st.text_input("User", value=st.secrets.get("db", {}).get("user", ""))
     db_pass = st.text_input("Password", type="password", value=st.secrets.get("db", {}).get("password", ""))
     if st.button("Connect to Database"):
+        # (DB connection logic is unchanged)
         with st.spinner("Connecting..."):
             try:
                 st.session_state.db = PrismDB(db_host, db_name, db_user, db_pass)
@@ -106,43 +123,88 @@ with st.sidebar:
     else: st.warning("Database is not connected.")
     
     st.markdown("---")
-    st.header("2. Upload Reference Files")
-    uploaded_survey = st.file_uploader("Upload Consolidated Survey File", type=["xlsx"], key="survey_uploader")
-    if uploaded_survey:
-        st.session_state.uploaded_survey_file = uploaded_survey
+    
+    st.header("2. Generate Files from TDT Folder")
+    if st.button("Select TDT Folder"):
+        folder = select_folder()
+        if folder: st.session_state.tdt_folder_path = folder
+    st.text_input("Selected Folder", value=st.session_state.tdt_folder_path, disabled=True)
+    if st.button("Generate & Load Files", disabled=not st.session_state.tdt_folder_path):
+        with st.spinner("Generating reference files..."):
+            try:
+                # Generate DFs
+                s_df, d_df = generate_files_from_folder(st.session_state.tdt_folder_path)
+                st.session_state.survey_df = s_df
+                st.session_state.diag_df = d_df
+                # Create overview
+                st.session_state.overview_df = s_df[['TDT', 'Model']].drop_duplicates().sort_values(by=['TDT', 'Model']).reset_index(drop=True)
+                # Convert to bytes for parsers
+                survey_bytes, diag_bytes = convert_dfs_to_excel_bytes(s_df, d_df)
+                st.session_state.uploaded_survey_file = survey_bytes
+                st.session_state.uploaded_diag_file = diag_bytes
+                st.success("Files generated successfully!")
+            except Exception as e: st.error(f"File generation failed: {e}")
 
-    uploaded_diag = st.file_uploader("Upload Consolidated Failure Diagnostics File", type=["xlsx"], key="diag_uploader")
-    if uploaded_diag:
-        st.session_state.uploaded_diag_file = uploaded_diag
-
+    st.markdown("---")
+    st.header("3. Upload Statistics File")
     uploaded_stats = st.file_uploader("Upload Consolidated Statistics File", type=["xlsx"], key="stats_uploader")
-    if uploaded_stats:
-        st.session_state.uploaded_stats_file = uploaded_stats
+    if uploaded_stats: st.session_state.uploaded_stats_file = uploaded_stats
+
+    # --- UPDATED: Optional Downloads Section ---
+    st.markdown("---")
+    st.header("Download Generated Files")
+    st.download_button(
+        label="Download Survey File",
+        data=st.session_state.uploaded_survey_file or b"",
+        file_name="Consolidated_Point_Survey.xlsx",
+        mime="application/vnd.ms-excel",
+        disabled=st.session_state.uploaded_survey_file is None
+    )
+    st.download_button(
+        label="Download Diagnostics File",
+        data=st.session_state.uploaded_diag_file or b"",
+        file_name="Consolidated_Failure_Diagnostics.xlsx",
+        mime="application/vnd.ms-excel",
+        disabled=st.session_state.uploaded_diag_file is None
+    )
 
 # --- Main Page UI ---
 st.title("PRISM Configuration Validator")
-st.markdown("Select a validation type from the tabs below. Each tab will indicate which files are required.")
+st.markdown("Select a validation type from the tabs below.")
 
-# NEW: Added a sixth tab
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab_list = [
+    "Consolidation Overview", # NEW TAB
     "Metric Validation (Template)",
     "Metric Mapping Validation (Project)",
     "Filter Validation (Project)",
     "Failure Diagnostics Validation (Template)",
     "Absolute Deviation Validation",
     "Model Deployment Config"
-])
+]
+tabs = st.tabs(tab_list)
 
-# --- Tab 1: Metric Validation ---
-with tab1:
+# --- NEW Tab 0: Consolidation Overview ---
+with tabs[0]:
+    st.header("TDT Consolidation Overview")
+    if st.session_state.overview_df is None:
+        st.info("Select a TDT folder and click 'Generate & Load Files' in the sidebar to see the consolidation overview.")
+    else:
+        st.subheader("Consolidated TDTs and Models")
+        st.dataframe(st.session_state.overview_df, use_container_width=True)
+
+        st.subheader("Full Consolidated Survey Data")
+        st.dataframe(st.session_state.survey_df, use_container_width=True)
+
+        st.subheader("Full Consolidated Diagnostics Data")
+        st.dataframe(st.session_state.diag_df, use_container_width=True)
+
+with tabs[1]:
+    # (Tab 1 logic is unchanged)
     st.header("Metric Validation (TDT vs PRISM Template)")
-    # NEW: Per-tab prerequisite check
-    prerequisites_met_tab1 = st.session_state.db and st.session_state.uploaded_survey_file
-    if not prerequisites_met_tab1:
-        st.warning("Please connect to the database and upload the 'Consolidated Survey File' to run this validation.")
-    
-    if st.button("Run Metric Validation", key="run_metric_validation", disabled=not prerequisites_met_tab1):
-        with st.spinner('Running metric validation...'):
+    prerequisites_met = st.session_state.db and st.session_state.uploaded_survey_file
+    if not prerequisites_met: st.warning("Please connect to DB and generate the 'Consolidated Survey File'.")
+    if st.button("Run Metric Validation", key="run_metric_validation", disabled=not prerequisites_met):
+        with st.spinner('Running...'):
             try:
                 prism_df = st.session_state.db.run_query(get_metric_query())
                 tdt_dfs = parse_metric_excel(st.session_state.uploaded_survey_file)
@@ -151,49 +213,43 @@ with tab1:
             except Exception as e: st.error(f"An error occurred: {e}")
     display_results(st.session_state.validation_states["metric_validation"]["results"], "metric_val", "TDT")
 
-# --- Tab 2: Metric Mapping Validation ---
-with tab2:
+with tabs[2]:
+    # (Tab 2 logic is unchanged)
     st.header("Metric Mapping Validation (TDT vs PRISM Project)")
-    prerequisites_met_tab2 = st.session_state.db and st.session_state.uploaded_survey_file
-    if not prerequisites_met_tab2:
-        st.warning("Please connect to the database and upload the 'Consolidated Survey File' to run this validation.")
-
-    if st.button("Run Metric Mapping Validation", key="run_metric_mapping", disabled=not prerequisites_met_tab2):
-        with st.spinner('Running metric mapping validation...'):
+    prerequisites_met = st.session_state.db and st.session_state.uploaded_survey_file
+    if not prerequisites_met: st.warning("Please connect to DB and generate the 'Consolidated Survey File'.")
+    if st.button("Run Metric Mapping Validation", key="run_metric_mapping", disabled=not prerequisites_met):
+        with st.spinner('Running...'):
             try:
                 prism_df = st.session_state.db.run_query(get_metric_mapping_query())
                 model_dfs = parse_metric_mapping_excel(st.session_state.uploaded_survey_file)
                 summary, matches, mismatches = validate_metric_mapping_data(model_dfs, prism_df)
                 st.session_state.validation_states["metric_mapping"]["results"] = {'summary': summary, 'matches': matches, 'mismatches': mismatches}
             except Exception as e: st.error(f"An error occurred: {e}")
-    display_results(st.session_state.validation_states["metric_mapping"]["results"], "metric_map", "MODEL")
+    display_results(st.session_state.validation_states["metric_mapping"]["results"], "metric_map", "Model")
 
-# --- Tab 3: Filter Validation ---
-with tab3:
+with tabs[3]:
+    # (Tab 3 logic is unchanged)
     st.header("Filter Validation (TDT vs PRISM Project)")
-    prerequisites_met_tab3 = st.session_state.db and st.session_state.uploaded_survey_file
-    if not prerequisites_met_tab3:
-        st.warning("Please connect to the database and upload the 'Consolidated Survey File' to run this validation.")
-
-    if st.button("Run Filter Validation", key="run_filter_validation", disabled=not prerequisites_met_tab3):
-        with st.spinner('Running filter validation...'):
+    prerequisites_met = st.session_state.db and st.session_state.uploaded_survey_file
+    if not prerequisites_met: st.warning("Please connect to DB and generate the 'Consolidated Survey File'.")
+    if st.button("Run Filter Validation", key="run_filter_validation", disabled=not prerequisites_met):
+        with st.spinner('Running...'):
             try:
                 prism_df = st.session_state.db.run_query(get_filter_query())
                 model_dfs = parse_filter_excel(st.session_state.uploaded_survey_file)
                 summary, matches, mismatches = validate_filter_data(model_dfs, prism_df)
                 st.session_state.validation_states["filter_validation"]["results"] = {'summary': summary, 'matches': matches, 'mismatches': mismatches}
             except Exception as e: st.error(f"An error occurred: {e}")
-    display_results(st.session_state.validation_states["filter_validation"]["results"], "filter_val", "MODEL")
+    display_results(st.session_state.validation_states["filter_validation"]["results"], "filter_val", "Model")
 
-# --- Tab 4: Failure Diagnostics Validation ---
-with tab4:
+with tabs[4]:
+    # (Tab 4 logic is unchanged)
     st.header("Failure Diagnostics Validation (TDT vs PRISM Template)")
-    prerequisites_met_tab4 = st.session_state.db and st.session_state.uploaded_diag_file
-    if not prerequisites_met_tab4:
-        st.warning("Please connect to the database and upload the 'Consolidated Failure Diagnostics File' to run this validation.")
-
-    if st.button("Run Failure Diagnostics Validation", key="run_failure_diagnostics", disabled=not prerequisites_met_tab4):
-        with st.spinner('Running failure diagnostics validation...'):
+    prerequisites_met = st.session_state.db and st.session_state.uploaded_diag_file
+    if not prerequisites_met: st.warning("Please connect to DB and generate the 'Consolidated Failure Diagnostics File'.")
+    if st.button("Run Failure Diagnostics Validation", key="run_failure_diagnostics", disabled=not prerequisites_met):
+        with st.spinner('Running...'):
             try:
                 prism_df = st.session_state.db.run_query(get_failure_diag_query())
                 tdt_dfs = parse_failure_diag_excel(st.session_state.uploaded_diag_file)
@@ -202,54 +258,39 @@ with tab4:
             except Exception as e: st.error(f"An error occurred: {e}")
     display_results(st.session_state.validation_states["failure_diagnostics"]["results"], "failure_diag", "TDT")
 
-# --- Tab 5: Absolute Deviation Validation ---
-with tab5:
+with tabs[5]:
+    # (Tab 5 logic is unchanged)
     st.header("Absolute Deviation Validation")
-    prerequisites_met_tab5 = st.session_state.db and st.session_state.uploaded_stats_file
-    if not prerequisites_met_tab5:
-        st.warning("Please connect to the database and upload the 'Consolidated Statistics File' to run this validation.")
-    
-    if st.button("Run Absolute Deviation Validation", key="run_abs_dev_validation", disabled=not prerequisites_met_tab5):
-        with st.spinner('Running absolute deviation validation...'):
+    prerequisites_met = st.session_state.db and st.session_state.uploaded_stats_file
+    if not prerequisites_met: st.warning("Please connect to DB and upload the 'Consolidated Statistics File'.")
+    if st.button("Run Absolute Deviation Validation", key="run_abs_dev_validation", disabled=not prerequisites_met):
+        with st.spinner('Running...'):
             try:
                 prism_df = st.session_state.db.run_query(get_abs_dev_query())
                 model_dfs = parse_abs_dev_excel(st.session_state.uploaded_stats_file)
                 summary, matches, mismatches = validate_abs_dev_data(model_dfs, prism_df)
                 st.session_state.validation_states["absolute_deviation"]["results"] = {'summary': summary, 'matches': matches, 'mismatches': mismatches}
             except Exception as e: st.error(f"An error occurred: {e}")
-    display_results(st.session_state.validation_states["absolute_deviation"]["results"], "abs_dev", "MODEL")
+    display_results(st.session_state.validation_states["absolute_deviation"]["results"], "abs_dev", "Model")
 
-    # --- Tab 6: Model Deployment Config (NEW) ---
-with tab6:
+with tabs[6]:
+    # (Tab 6 logic is unchanged)
     st.header("Model Deployment Configuration")
-    prereqs_met_tab6 = st.session_state.db
-    if not prereqs_met_tab6:
-        st.warning("Please connect to the database to fetch deployment configurations.")
-
+    prereqs_met = st.session_state.db
+    if not prereqs_met: st.warning("Please connect to the database to fetch deployment configurations.")
     st.subheader("1. Enter Asset Descriptions")
-    assets_input = st.text_area(
-        "Enter a list of Asset Descriptions, one per line.",
-        height=150,
-        disabled=not prereqs_met_tab6,
-        value="AP-TVI-U1-BOP\nAP-TVI-U2-BOP\nAP-TVI-BOP"
-    )
-
-    if st.button("Fetch Configuration", key="fetch_deployment_config", disabled=not prereqs_met_tab6):
+    assets_input = st.text_area("Enter a list of Asset Descriptions, one per line.", height=150, disabled=not prereqs_met, value="AP-TVI-U1-BOP\nAP-TVI-U2-BOP\nAP-TVI-BOP")
+    if st.button("Fetch Configuration", key="fetch_deployment_config", disabled=not prereqs_met):
         asset_list = [asset.strip() for asset in assets_input.split('\n') if asset.strip()]
-        if not asset_list:
-            st.error("Please enter at least one Asset Description.")
+        if not asset_list: st.error("Please enter at least one Asset Description.")
         else:
-            with st.spinner("Fetching configuration from database..."):
+            with st.spinner("Fetching configuration..."):
                 try:
                     query = get_model_deployment_query(asset_list)
                     config_df = st.session_state.db.run_query(query)
                     st.session_state.validation_states["model_deployment_config"]["results"] = config_df
-                except Exception as e:
-                    st.error(f"An error occurred: {e}")
-    
+                except Exception as e: st.error(f"An error occurred: {e}")
     st.subheader("2. Deployment Configuration Results")
     results_df = st.session_state.validation_states["model_deployment_config"]["results"]
-    if results_df is not None:
-        st.dataframe(results_df, use_container_width=True)
-    else:
-        st.info("Enter Asset Descriptions and click 'Fetch Configuration' to see results.")
+    if results_df is not None: st.dataframe(results_df, use_container_width=True)
+    else: st.info("Enter Asset Descriptions and click 'Fetch Configuration' to see results.")
