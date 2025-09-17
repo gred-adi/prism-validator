@@ -226,7 +226,7 @@ with tabs[2]:
                 summary, matches, mismatches = validate_metric_mapping_data(model_dfs, prism_df)
                 st.session_state.validation_states["metric_mapping"]["results"] = {'summary': summary, 'matches': matches, 'mismatches': mismatches}
             except Exception as e: st.error(f"An error occurred: {e}")
-    display_results(st.session_state.validation_states["metric_mapping"]["results"], "metric_map", "Model")
+    display_results(st.session_state.validation_states["metric_mapping"]["results"], "metric_map", "MODEL")
 
 with tabs[3]:
     # (Tab 3 logic is unchanged)
@@ -241,7 +241,7 @@ with tabs[3]:
                 summary, matches, mismatches = validate_filter_data(model_dfs, prism_df)
                 st.session_state.validation_states["filter_validation"]["results"] = {'summary': summary, 'matches': matches, 'mismatches': mismatches}
             except Exception as e: st.error(f"An error occurred: {e}")
-    display_results(st.session_state.validation_states["filter_validation"]["results"], "filter_val", "Model")
+    display_results(st.session_state.validation_states["filter_validation"]["results"], "filter_val", "MODEL")
 
 with tabs[4]:
     # (Tab 4 logic is unchanged)
@@ -271,7 +271,7 @@ with tabs[5]:
                 summary, matches, mismatches = validate_abs_dev_data(model_dfs, prism_df)
                 st.session_state.validation_states["absolute_deviation"]["results"] = {'summary': summary, 'matches': matches, 'mismatches': mismatches}
             except Exception as e: st.error(f"An error occurred: {e}")
-    display_results(st.session_state.validation_states["absolute_deviation"]["results"], "abs_dev", "Model")
+    display_results(st.session_state.validation_states["absolute_deviation"]["results"], "abs_dev", "MODEL")
 
 with tabs[6]:
     # (Tab 6 logic is unchanged)
