@@ -35,8 +35,6 @@ def validate_data(tdt_dfs, prism_df):
     for tdt_name, excel_df in tdt_dfs.items():
         prism_sub_df = prism_df[prism_df["TDT"] == tdt_name].copy()
 
-        excel_df['WEIGHT'] = pd.to_numeric(excel_df['WEIGHT'], errors='coerce')
-
         merged_df = pd.merge(
             excel_df.drop_duplicates(subset=join_keys),
             prism_sub_df.drop_duplicates(subset=join_keys),
@@ -46,10 +44,16 @@ def validate_data(tdt_dfs, prism_df):
             indicator=True
         )
 
+        merged_df['WEIGHT_TDT'] = pd.to_numeric(merged_df['WEIGHT_TDT'], errors='coerce')
+        merged_df['WEIGHT_PRISM'] = pd.to_numeric(merged_df['WEIGHT_PRISM'], errors='coerce')
+
         # --- Identify Perfect Matches ---
         match_mask = (merged_df['_merge'] == 'both')
         for col in columns_to_compare:
-            match_mask &= (merged_df[f"{col}_TDT"].astype(str).str.upper() == merged_df[f"{col}_PRISM"].astype(str).str.upper())
+            col_tdt = merged_df[f"{col}_TDT"]
+            col_prism = merged_df[f"{col}_PRISM"]
+            # FIX: A match occurs if values are equal OR if both values are missing (NaN).
+            match_mask &= (col_tdt == col_prism) | (col_tdt.isna() & col_prism.isna())
         
         match_rows = merged_df[match_mask].copy()
         if not match_rows.empty:
@@ -58,12 +62,14 @@ def validate_data(tdt_dfs, prism_df):
 
         # --- Identify Mismatches by Specific Column ---
         for col in columns_to_compare:
-            col_mismatch_mask = (merged_df['_merge'] == 'both') & \
-                                (merged_df[f"{col}_TDT"].astype(str).str.upper() != merged_df[f"{col}_PRISM"].astype(str).str.upper())
-            
+            col_tdt = merged_df[f"{col}_TDT"]
+            col_prism = merged_df[f"{col}_PRISM"]
+            # FIX: A mismatch occurs if values are different, but NOT if both are just missing.
+            mismatch_condition = (col_tdt != col_prism) & ~(col_tdt.isna() & col_prism.isna())
+            col_mismatch_mask = (merged_df['_merge'] == 'both') & mismatch_condition
+
             if col_mismatch_mask.any():
                 mismatch_subset = merged_df.loc[col_mismatch_mask, ['FAILURE_MODE', 'METRIC_NAME', f'{col}_TDT', f'{col}_PRISM']].copy()
-                mismatch_subset.rename(columns={f'{col}_TDT': 'TDT_Value', f'{col}_PRISM': 'PRISM_Value'}, inplace=True)
                 mismatch_subset['TDT'] = tdt_name
                 mismatches_by_column[col].append(mismatch_subset)
 
