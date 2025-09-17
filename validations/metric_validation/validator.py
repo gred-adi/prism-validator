@@ -17,22 +17,16 @@ def validate_data(tdt_dfs, prism_df):
     prism_df.rename(columns={
         "FORM NAME": "TDT",
         "METRIC NAME": "METRIC_NAME",
-        "POINT TYPE": "POINT_TYPE",
-        "FUNCTION": "FUNCTION"
+        "POINT TYPE": "POINT_TYPE_PRISM"
     }, inplace=True)
 
     # Clean the PRISM METRIC_NAME by removing the specified prefix
     if 'METRIC_NAME' in prism_df.columns:
         prism_df['METRIC_NAME'] = prism_df['METRIC_NAME'].str.replace('AP-TVI-', '', regex=False)
-
-    # Apply transformations to PRISM data before comparison
-    if 'FUNCTION' in prism_df.columns:
-        prism_df['FUNCTION'] = prism_df['FUNCTION'].str.replace('NON-MODELED', 'Not Modeled', regex=False)
-        prism_df['FUNCTION'] = prism_df['FUNCTION'].str.title()
     
-    if 'POINT_TYPE' in prism_df.columns:
+    if 'POINT_TYPE_PRISM' in prism_df.columns:
         # Note: .str.replace is used on the Series for consistency
-        prism_df['POINT_TYPE'] = prism_df['POINT_TYPE'].str.title().str.replace('Prism Calc', 'PRiSM Calc', regex=False)
+        prism_df['POINT_TYPE_PRISM'] = prism_df['POINT_TYPE_PRISM'].str.title().str.replace('Prism Calc', 'PRiSM Calc', regex=False)
 
 
     for tdt_name, excel_df in tdt_dfs.items():
@@ -86,24 +80,22 @@ def validate_data(tdt_dfs, prism_df):
     if not all_mismatches:
         mismatches_df = pd.DataFrame()
     else:
-        mismatches_df = pd.concat(all_mismatches, ignore_index=True)
+        mismatches_df = pd.concat(all_mismatches, ignore_index=True) if all_mismatches else pd.DataFrame()
         # Clean up the final dataframe for display, focusing on the compared columns
         mismatches_df = mismatches_df[[
             'TDT', 'METRIC_NAME', 'Status', 
-            'POINT_TYPE_TDT', 'POINT_TYPE_PRISM',
-            'FUNCTION_TDT' # Include TDT function for context
+            'POINT_TYPE_TDT', 'POINT_TYPE_PRISM'
         ]].fillna('N/A')
 
     if not all_matches:
         matches_df = pd.DataFrame()
     else:
-        matches_df = pd.concat(all_matches, ignore_index=True)
+        matches_df = pd.concat(all_matches, ignore_index=True) if all_matches else pd.DataFrame()
          # Clean up the matches dataframe for display
         matches_df = matches_df[[
-            'TDT', 'METRIC_NAME', 'POINT_TYPE_TDT', 'FUNCTION_TDT'
+            'TDT', 'METRIC_NAME', 'POINT_TYPE_TDT'
         ]].rename(columns={
-            'POINT_TYPE_TDT': 'POINT_TYPE',
-            'FUNCTION_TDT': 'FUNCTION'
+            'POINT_TYPE_TDT': 'POINT_TYPE'
         })
     
     return summary_df, matches_df, mismatches_df
