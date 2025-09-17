@@ -5,7 +5,6 @@ def get_query():
     """
     return """
     WITH
-    -- CTE to replicate the SINE_TDT_SENSOR_EXIST_REV view logic
     EXIST_REV_LOGIC AS (
         SELECT
             ASSET.Description AS [ASSET],

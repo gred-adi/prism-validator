@@ -23,18 +23,20 @@ from validations.absolute_deviation_validation.query import get_query as get_abs
 from validations.absolute_deviation_validation.parser import parse_excel as parse_abs_dev_excel
 from validations.absolute_deviation_validation.validator import validate_data as validate_abs_dev_data
 
+from validations.model_deployment_config.query import get_query as get_model_deployment_query
 
 # --- Page Configuration ---
 st.set_page_config(page_title="PRISM Config Validator", layout="wide")
 
-# --- Initialize Session State (Unchanged) ---
+# --- Initialize Session State ---
 if 'validation_states' not in st.session_state:
     st.session_state.validation_states = {
         "metric_validation": {"results": None},
         "metric_mapping": {"results": None},
         "failure_diagnostics": {"results": None},
         "filter_validation": {"results": None},
-        "absolute_deviation": {"results": None}
+        "absolute_deviation": {"results": None},
+        "model_deployment_config": {"results": None} # New state
     }
 if 'db' not in st.session_state:
     st.session_state.db = None
@@ -121,13 +123,14 @@ with st.sidebar:
 st.title("PRISM Configuration Validator")
 st.markdown("Select a validation type from the tabs below. Each tab will indicate which files are required.")
 
-# NEW: Reordered tabs for a more logical workflow
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+# NEW: Added a sixth tab
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "Metric Validation (Template)",
     "Metric Mapping Validation (Project)",
     "Filter Validation (Project)",
     "Failure Diagnostics Validation (Template)",
-    "Absolute Deviation Validation (Project)"
+    "Absolute Deviation Validation",
+    "Model Deployment Config"
 ])
 
 # --- Tab 1: Metric Validation ---
@@ -201,7 +204,7 @@ with tab4:
 
 # --- Tab 5: Absolute Deviation Validation ---
 with tab5:
-    st.header("Absolute Deviation Validation (Project)")
+    st.header("Absolute Deviation Validation")
     prerequisites_met_tab5 = st.session_state.db and st.session_state.uploaded_stats_file
     if not prerequisites_met_tab5:
         st.warning("Please connect to the database and upload the 'Consolidated Statistics File' to run this validation.")
@@ -215,3 +218,38 @@ with tab5:
                 st.session_state.validation_states["absolute_deviation"]["results"] = {'summary': summary, 'matches': matches, 'mismatches': mismatches}
             except Exception as e: st.error(f"An error occurred: {e}")
     display_results(st.session_state.validation_states["absolute_deviation"]["results"], "abs_dev", "MODEL")
+
+    # --- Tab 6: Model Deployment Config (NEW) ---
+with tab6:
+    st.header("Model Deployment Configuration")
+    prereqs_met_tab6 = st.session_state.db
+    if not prereqs_met_tab6:
+        st.warning("Please connect to the database to fetch deployment configurations.")
+
+    st.subheader("1. Enter Asset Descriptions")
+    assets_input = st.text_area(
+        "Enter a list of Asset Descriptions, one per line.",
+        height=150,
+        disabled=not prereqs_met_tab6,
+        value="AP-TVI-U1-BOP\nAP-TVI-U2-BOP\nAP-TVI-BOP"
+    )
+
+    if st.button("Fetch Configuration", key="fetch_deployment_config", disabled=not prereqs_met_tab6):
+        asset_list = [asset.strip() for asset in assets_input.split('\n') if asset.strip()]
+        if not asset_list:
+            st.error("Please enter at least one Asset Description.")
+        else:
+            with st.spinner("Fetching configuration from database..."):
+                try:
+                    query = get_model_deployment_query(asset_list)
+                    config_df = st.session_state.db.run_query(query)
+                    st.session_state.validation_states["model_deployment_config"]["results"] = config_df
+                except Exception as e:
+                    st.error(f"An error occurred: {e}")
+    
+    st.subheader("2. Deployment Configuration Results")
+    results_df = st.session_state.validation_states["model_deployment_config"]["results"]
+    if results_df is not None:
+        st.dataframe(results_df, use_container_width=True)
+    else:
+        st.info("Enter Asset Descriptions and click 'Fetch Configuration' to see results.")

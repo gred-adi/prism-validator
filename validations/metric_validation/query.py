@@ -33,7 +33,7 @@ def get_query():
     WHERE
         FORM.PROJECTTYPEID = 2 -- This corresponds to [FORM TYPE] = 'TEMPLATE'
         AND FORM_POINTS_DETAIL.PointTypeID = 1 -- This corresponds to [THRESHOLD TYPE] = 'Input Signal'
-        AND FORM.Name LIKE '%TVI%'
+        AND FORM.Name LIKE 'AP-%'
     GROUP BY
         FORM.ProjectID,
         FORM.Name,

@@ -5,7 +5,6 @@ def get_query():
     which is important for the comparison logic.
     """
     return """
-    -- Refactored: Extract list of Fault Diagnostics [TVI BOP]
     SELECT
         TEMPLATE_FAULT.TemplateID AS [FORM ID],
         p.Name AS [FORM NAME],

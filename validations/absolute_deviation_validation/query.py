@@ -4,7 +4,6 @@ def get_query():
     The query extracts High/Low Alert and Warning thresholds for project-level models.
     """
     return """
-    -- Refactored: Extract List of Alert Threshold [TVI BOP]
     SELECT
         FORM.ProjectID AS [FORM ID],
         FORM.Name AS [FORM NAME],

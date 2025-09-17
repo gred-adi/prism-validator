@@ -5,7 +5,6 @@ def get_query():
     """
     return """
     WITH
-    -- CTE to replicate the SINE_TDT_SENSOR_EXIST_REV view logic
     EXIST_REV_LOGIC AS (
         SELECT
             ASSET.Description AS [ASSET],
@@ -30,7 +29,6 @@ def get_query():
         GROUP BY
             ASSET.Description, FORM.PROJECTTYPEID, FORM.Name, PARENT.Name, FORM_POINTS_SYS.DigitalGroupID, FORM_POINTS_CALC.PointCalcID, FORM_POINTS.ConstrainedPt, FORM_METRIC.Description, FORM_POINTS.name, FORM_POINTS.Description, FORM_POINTS.ExtendedID, FORM_POINTS.ExtendedDescription, FORM_POINTS.Units, FORM_POINTS.PointTypeID, FORM_POINTS_DETAIL.PointTypeID, FORM.DeployedProfileID, FORM.ProjectID, FORM_POINTS.ProjectPointID, PARENT.ProjectID, FORM_DEPLOYED_PROFILE.ProjectPointID, FORM_METRIC.PointTypeMetricID, FORM.PollingInterval, FORM_POINTS_DETAIL.ProjectPointID
     ),
-    -- CTE to replicate the SINE_TDT_SENSOR_NON_EXIST_REV view logic
     NON_EXIST_REV_LOGIC AS (
         SELECT
             PROJECT_ASSET.Description AS [ASSET],
