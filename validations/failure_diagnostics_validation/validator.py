@@ -70,6 +70,7 @@ def validate_data(tdt_dfs, prism_df):
 
             if col_mismatch_mask.any():
                 mismatch_subset = merged_df.loc[col_mismatch_mask, ['FAILURE_MODE', 'METRIC_NAME', f'{col}_TDT', f'{col}_PRISM']].copy()
+                mismatch_subset.rename(columns={f'{col}_TDT': 'TDT_Value', f'{col}_PRISM': 'PRISM_Value'}, inplace=True)
                 mismatch_subset['TDT'] = tdt_name
                 mismatches_by_column[col].append(mismatch_subset)
 
