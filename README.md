@@ -111,12 +111,41 @@ prism-validator/
 ├── file_generator.py        # Logic to consolidate TDT files
 │
 ├── validations/             # Package containing all validation-specific modules
+│   ├── __init__.py          # Makes 'validations' a Python package, allowing imports
+│   │
 │   ├── metric_validation/
+│   │   ├── __init__.py      # Makes this sub-directory a package
+│   │   ├── query.py         # Contains the specific SQL query for this validation
+│   │   ├── parser.py        # Handles parsing the required Excel sheets for this validation
+│   │   └── validator.py     # Contains the core data comparison and result generation logic
+│   │
 │   ├── metric_mapping_validation/
+│   │   ├── __init__.py
+│   │   ├── query.py
+│   │   ├── parser.py
+│   │   └── validator.py
+│   │
 │   ├── filter_validation/
+│   │   ├── __init__.py
+│   │   ├── query.py
+│   │   ├── parser.py
+│   │   └── validator.py
+│   │
 │   ├── failure_diagnostics_validation/
+│   │   ├── __init__.py
+│   │   ├── query.py
+│   │   ├── parser.py
+│   │   └── validator.py
+│   │
 │   ├── absolute_deviation_validation/
+│   │   ├── __init__.py
+│   │   ├── query.py
+│   │   ├── parser.py
+│   │   └── validator.py
+│   │
 │   └── model_deployment_config/
+│       ├── __init__.py
+│       └── query.py         # Fetches deployment info; no validation needed
 │
 ├── pyproject.toml           # Project metadata and dependencies for uv/pip
 └── README.md                # This file
