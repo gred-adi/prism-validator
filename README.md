@@ -6,7 +6,7 @@ The application features a modular architecture, allowing for easy extension and
 
 ## ✨ Key Features
 *   **Modular Validation Tabs:** Each validation type is organized into its own dedicated tab for a clean user experience.
-Consolidation Overview
+    *   Consolidation Overview
     *   Metric Validation (Template)
     *   Metric Mapping Validation (Project)
     *   Filter Validation (Project)
