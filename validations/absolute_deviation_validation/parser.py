@@ -20,7 +20,8 @@ def parse_excel(uploaded_file):
     # --- Data Cleaning and Feature Engineering ---
     # Extract the base metric name from the 'Point Name' column
     def extract_metric(row):
-        parts = re.split(r'\s*\(', row['Point Name'], 1)
+        # rsplit splits from the right, so with maxsplit=1, it finds the last '('
+        parts = row['Point Name'].rsplit('(', 1)
         return parts[0].strip() if parts else row['Point Name'].strip()
 
     df['METRIC_NAME'] = df.apply(extract_metric, axis=1)
