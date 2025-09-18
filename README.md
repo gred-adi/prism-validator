@@ -33,35 +33,33 @@ Before you begin, ensure you have the following installed:
 
 ### 2. Setup Instructions
 
-**Step 1: Clone the Repository**
+**Step 1: Download the Code**
+  1. Navigate to the GitHub repository page `https://github.com/gred-adi/prism-validator/`
+  2. Click the green `< > Code` button.
+  3. Click **"Download ZIP"**.
+  4. Find the downloaded ZIP file on your computer and **unzip it**.
+
+**Step 2: Create Home Directory**
+  1. Navigate to your **Documents** folder.
+  2. Transfer the unzipped folder called `prism-validator`.
+
+**Step 3: Initialize the Development Environment**
   
-  Open your terminal or command prompt and clone the project to your local machine.
+  Prerequisites: You'll need uv and VS Code installed before you can initialize the development environment.
+  1. Open **VS Code**.
+  2. Open the `prism-validator` folder you created by selecting **File > Open Folder**.
+  3. Open a **VS Code terminal** by clicking the **three-button menu** in the top-left corner of the VS Code window, then selecting **Terminal**.
+  4. In the terminal, select **Command Prompt** by clicking the dropdown next to **PowerShell**.
+  5. Run the following command to initialize the development environment:
+     ```
+     uv init
+     ```
+     This command will set up the necessary files like `pyproject.toml` and `python-environment`.
+
+**Step 4: Configure** `pyproject.toml`
   
-  ```
-  git clone [https://github.com/your-username/prism-validator.git](https://github.com/your-username/prism-validator.git)
-  cd prism-validator
-  ```
-      
-**Step 2: Create the Secrets File**
-
-The application requires a `secrets.toml` file to store your database credentials.
-1. Create a new folder named `.streamlit` inside the `prism-validator` directory.
-2. Inside the .streamlit folder, create a new file named secrets.toml.
-3. Add your database credentials to this file using the following format:
-
-    ```
-    [db]
-    host = "YOUR_DATABASE_HOST"
-    database = "YOUR_DATABASE_NAME"
-    user = "YOUR_USERNAME"
-    password = "YOUR_PASSWORD"
-    ```
-        
-**Step 3: Set Up Virtual Environment and Install Dependencies with** `uv`
-
-Using `uv` is the recommended way to manage the project environment.
-
-  1. Before creating the environment, ensure your `pyproject.toml` file contains the correct dependencies. Open the `pyproject.toml` file located in the root of the `prism-validator` directory.
+  The pyproject.toml file defines the dependencies and configurations for your Python project. You can edit it to specify the versions and libraries you need.
+  1. Open the `pyproject.toml` file created during the `uv init` process.
   2. Replace its entire content with the following:
       ```
       [project]
@@ -78,10 +76,33 @@ Using `uv` is the recommended way to manage the project environment.
           "xlsxwriter"
       ]
       ```
-  3. Install all the project dependencies from the `pyproject.toml` file by running the following command:
+      
+**Step 5: Set Up Virtual Environment and Install Dependencies**
+  1. Install all the project dependencies from the `pyproject.toml` file by running the following command:
       ```
       uv sync
       ```
+      This will install all the dependencies listed in the `pyproject.toml file` and set up a virtual environment (`.venv`), ensuring your project’s dependencies are isolated from your system Python.
+     
+  2. Run the following command to activate the environment:
+      ```
+      .venv\Scripts\activate
+      ```
+      
+**Step 6: Create the Secrets File**
+
+The application requires a `secrets.toml` file to store your database credentials.
+1. Create a new folder named `.streamlit` inside the `prism-validator` directory.
+2. Inside the .streamlit folder, create a new file named secrets.toml.
+3. Add your database credentials to this file using the following format:
+
+    ```
+    [db]
+    host = "YOUR_DATABASE_HOST"
+    database = "YOUR_DATABASE_NAME"
+    user = "YOUR_USERNAME"
+    password = "YOUR_PASSWORD"
+    ```
 
 ### 3. Running the Application
 Once the setup is complete, you can run the Streamlit application with a single command:
