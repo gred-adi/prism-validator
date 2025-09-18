@@ -59,22 +59,26 @@ The application requires a `secrets.toml` file to store your database credential
         
 **Step 3: Set Up Virtual Environment and Install Dependencies with** `uv`
 
-Using uv is the recommended way to manage the project environment.
-  1. Create a virtual environment:
+Using `uv` is the recommended way to manage the project environment.
+
+  1. Before creating the environment, ensure your `pyproject.toml` file contains the correct dependencies. Open the `pyproject.toml` file located in the root of the `prism-validator` directory.
+  2. Replace its entire content with the following:
       ```
-      uv venv
+      [project]
+      name = "prism-validator"
+      version = "1.0.0"
+      description = "A Streamlit application to validate PRISM configurations against generated reference files from TDTs."
+      readme = "README.md"
+      requires-python = ">=3.9"
+      dependencies = [
+          "streamlit",
+          "pandas",
+          "pyodbc",
+          "openpyxl",
+          "xlsxwriter"
+      ]
       ```
-  2. Activate the environment:
-    
-      *  On Windows (Command Prompt):
-          ```
-          .venv\Scripts\activate
-          ```
-      *  On macOS and Linux (Bash):
-          ```
-          source .venv/bin/activate
-          ```
-  3. Install all the project dependencies from the pyproject.toml file:
+  3. Install all the project dependencies from the `pyproject.toml` file by running the following command:
       ```
       uv sync
       ```
