@@ -19,7 +19,7 @@ def parse_excel(uploaded_file):
     df['Metric'] = df['Metric'].str.replace('  ', ' ', regex=False).str.strip()
 
     # Select and deduplicate required columns
-    df = df[['Model', 'Metric', 'Canary Point Name', 'Canary Description', 'Function', 'Point Type']].drop_duplicates()
+    df = df[['Model', 'Metric', 'Canary Point Name', 'Canary Description', 'Function', 'Point Type', 'Unit']].drop_duplicates()
 
     # Group into a dictionary of DataFrames, with Model as the key
     grouped_data = df.groupby('Model')
@@ -27,7 +27,7 @@ def parse_excel(uploaded_file):
     for model_name, group in grouped_data:
         subtable = group.drop(columns=['Model']).reset_index(drop=True)
         # Standardize column names for easier comparison later
-        subtable.columns = ['METRIC_NAME', 'POINT_NAME', 'POINT_DESCRIPTION', 'FUNCTION', 'POINT_TYPE']
+        subtable.columns = ['METRIC_NAME', 'POINT_NAME', 'POINT_DESCRIPTION', 'FUNCTION', 'POINT_TYPE', 'POINT_UNIT']
         model_subtables[model_name] = subtable
 
     return model_subtables

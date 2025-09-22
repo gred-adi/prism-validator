@@ -20,7 +20,8 @@ def validate_data(model_dfs, prism_df):
         "POINT NAME": "POINT_NAME",
         "POINT DESCRIPTION": "POINT_DESCRIPTION",
         "FUNCTION": "FUNCTION",
-        "POINT TYPE": "POINT_TYPE"
+        "POINT TYPE": "POINT_TYPE",
+        "POINT UNIT": "POINT_UNIT"
     }, inplace=True)
 
     # 2. Apply data transformations on the newly renamed columns.
@@ -34,7 +35,7 @@ def validate_data(model_dfs, prism_df):
         prism_df['FUNCTION'] = prism_df['FUNCTION'].str.title().str.replace('Non-Modeled', 'Not Modeled', regex=False)
 
 
-    columns_to_compare = ['POINT_NAME', 'POINT_DESCRIPTION', 'FUNCTION', 'POINT_TYPE']
+    columns_to_compare = ['POINT_NAME', 'POINT_DESCRIPTION', 'FUNCTION', 'POINT_TYPE', 'POINT_UNIT']
     
     # Dictionary to hold lists of mismatch dataframes
     mismatches_by_column = {col: [] for col in columns_to_compare}
