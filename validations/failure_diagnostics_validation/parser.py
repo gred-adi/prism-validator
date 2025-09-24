@@ -23,6 +23,12 @@ def parse_excel(uploaded_file):
     # Replace hyphen with arrow to match SQL output
     df['Direction'] = df['Direction'].str.replace("-", "→", regex=False)
 
+    df['Failure Mode'] = (
+        df['Failure Mode']
+        .str.strip()                               # remove leading/trailing spaces
+        .str.replace(r'\s+', ' ', regex=True)      # collapse multiple spaces
+    )
+
     # Select and deduplicate required columns
     df = df[['TDT', 'Failure Mode', 'Metric', 'Direction', 'Weighting']].drop_duplicates()
 
