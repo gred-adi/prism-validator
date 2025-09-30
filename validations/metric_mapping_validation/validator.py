@@ -57,8 +57,19 @@ def validate_data(model_dfs, prism_df):
         # --- Identify Perfect Matches ---
         match_mask = (merged_df['_merge'] == 'both')
         for col in columns_to_compare:
-            condition = (merged_df[f"{col}_TDT"].astype(str).str.upper() == merged_df[f"{col}_PRISM"].astype(str).str.upper())
-            condition |= (merged_df['POINT_TYPE_TDT'] == 'PRiSM Calc')
+            # Condition 1: The values in the column match (case-insensitive).
+            values_match = (merged_df[f"{col}_TDT"].astype(str).str.upper() == merged_df[f"{col}_PRISM"].astype(str).str.upper())
+            
+            # Condition 2: The TDT point type is 'PRiSM Calc', which generally overrides the check for a match.
+            is_prism_calc_override = (merged_df['POINT_TYPE_TDT'] == 'PRiSM Calc')
+
+            # EXCEPTION: The override does not apply if the current column is 'POINT_UNIT'.
+            # 'POINT_UNIT' must always match, regardless of the point type.
+            if col == 'POINT_UNIT':
+                condition = values_match
+            else:
+                condition = values_match | is_prism_calc_override
+            
             match_mask &= condition
         
         match_rows = merged_df[match_mask].copy()
@@ -68,9 +79,15 @@ def validate_data(model_dfs, prism_df):
 
         # --- Identify Mismatches by Specific Column ---
         for col in columns_to_compare:
-            col_mismatch_mask = (merged_df['_merge'] == 'both') & \
-                                (merged_df[f"{col}_TDT"].astype(str).str.upper() != merged_df[f"{col}_PRISM"].astype(str).str.upper())
-            col_mismatch_mask &= (merged_df['POINT_TYPE_TDT'] != 'PRiSM Calc')
+            # A base mismatch occurs if values are different (case-insensitive).
+            values_mismatch = (merged_df[f"{col}_TDT"].astype(str).str.upper() != merged_df[f"{col}_PRISM"].astype(str).str.upper())
+            
+            col_mismatch_mask = (merged_df['_merge'] == 'both') & values_mismatch
+            
+            # EXCEPTION: For columns other than 'POINT_UNIT', a mismatch is ignored if the TDT point type is 'PRiSM Calc'.
+            # 'POINT_UNIT' mismatches are always flagged.
+            if col != 'POINT_UNIT':
+                col_mismatch_mask &= (merged_df['POINT_TYPE_TDT'] != 'PRiSM Calc')
             
             if col_mismatch_mask.any():
                 mismatch_subset = merged_df.loc[col_mismatch_mask, ['METRIC_NAME', f'{col}_TDT', f'{col}_PRISM']].copy()
