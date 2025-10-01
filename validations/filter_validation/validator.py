@@ -2,7 +2,22 @@ import pandas as pd
 import streamlit as st
 
 def clean_filter_string(series):
-    """ Standardize filter strings for comparison """
+    """
+    Standardizes a pandas Series of filter strings for reliable comparison.
+
+    This helper function performs several cleaning steps:
+    - Converts all values to strings.
+    - Converts text to lowercase.
+    - Replaces the '=' character with the phrase 'equal to'.
+    - Strips leading/trailing whitespace.
+    - Handles None or empty inputs gracefully.
+
+    Args:
+        series (pd.Series): A pandas Series containing the filter strings.
+
+    Returns:
+        pd.Series: The cleaned and standardized pandas Series.
+    """
     if series is None:
         return ""
     return series.astype(str).str.lower().str.replace('=', 'equal to', regex=False).str.strip()
@@ -10,7 +25,35 @@ def clean_filter_string(series):
 @st.cache_data
 def validate_data(model_dfs, prism_df):
     """
-    Performs the comparison logic for the 'Filter Validation' section.
+    Compares TDT and PRISM data for filter configurations.
+
+    This function performs the core validation by comparing the parsed TDT Excel
+    data against PRISM database data for each model. It uses a helper function,
+    `clean_filter_string`, to standardize the filter text before comparison.
+
+    The comparison logic identifies:
+    - **Matches:** Records where the cleaned filter strings are identical.
+    - **Mismatches:** Records found in both sources but with different filter strings.
+    - **Missing Records:** Records found in one source but not the other.
+
+    The function is cached with `@st.cache_data` for performance optimization.
+
+    Args:
+        model_dfs (dict[str, pd.DataFrame]): A dictionary where keys are model
+            names and values are DataFrames of parsed filter data from the TDT.
+        prism_df (pd.DataFrame): A DataFrame containing the corresponding
+            filter data queried from the PRISM database.
+
+    Returns:
+        tuple[pd.DataFrame, pd.DataFrame, dict[str, pd.DataFrame]]: A tuple
+        containing three elements:
+        1. summary_df (pd.DataFrame): A DataFrame summarizing the validation
+           results per model with match and mismatch counts.
+        2. matches_df (pd.DataFrame): A DataFrame of all records that matched
+           perfectly between the TDT and PRISM data.
+        3. mismatches_dict (dict[str, pd.DataFrame]): A dictionary where each
+           key is a mismatch type ('FILTER', 'Missing_in_PRISM', 'Missing_in_TDT')
+           and the value is a DataFrame of the mismatched records.
     """
     prism_df = prism_df.copy()
 

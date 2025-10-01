@@ -4,8 +4,29 @@ import streamlit as st
 @st.cache_data
 def parse_excel(uploaded_file):
     """
-    Processes the uploaded Excel file for the 'Metric Mapping' section.
-    Parses the 'Consolidated Point Survey' sheet and groups by 'Model'.
+    Parses the 'Consolidated Point Survey' sheet for metric mapping validation.
+
+    This function reads the specified sheet from the uploaded Excel file, performs
+    data cleaning on 'Model' and 'Metric' columns, and selects the columns
+    relevant for metric mapping. It then groups the data by model name.
+
+    The function returns a dictionary of DataFrames, where each DataFrame
+    contains the mapping details for a specific model with standardized column
+    names for easy comparison in the validation step. The function is cached
+    for performance.
+
+    Args:
+        uploaded_file (UploadedFile): The file-like object from Streamlit's
+            file uploader, which is the 'Consolidated_Point_Survey.xlsx' file.
+
+    Returns:
+        dict[str, pd.DataFrame]: A dictionary where each key is an uppercase
+        model name and the value is a DataFrame with standardized columns
+        ('METRIC_NAME', 'POINT_NAME', 'POINT_DESCRIPTION', etc.) for that model.
+
+    Raises:
+        ValueError: If the 'Consolidated Point Survey' sheet is not found
+            in the uploaded Excel file.
     """
     xls = pd.ExcelFile(uploaded_file)
 

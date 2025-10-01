@@ -4,8 +4,30 @@ import streamlit as st
 @st.cache_data
 def parse_excel(uploaded_file):
     """
-    Processes the uploaded Excel file for the 'Filter' section.
-    Parses the 'Filter Summary' sheet and groups by 'Model'.
+    Parses the 'Filter Summary' sheet from the consolidated survey Excel file.
+
+    This function reads the specified sheet, constructs a descriptive filter
+    string from the 'Filter Condition' and 'Filter Value' columns, and then
+    formats the data for validation. It handles numerical formatting to ensure
+    clean comparisons.
+
+    The data is grouped by model name, and the function returns a dictionary
+    of DataFrames, where each DataFrame contains the filter configurations for
+    a specific model. The function is cached to improve performance.
+
+    Args:
+        uploaded_file (UploadedFile): The file-like object from Streamlit's
+            file uploader, which should be the 'Consolidated_Point_Survey.xlsx'
+            file.
+
+    Returns:
+        dict[str, pd.DataFrame]: A dictionary where each key is an uppercase
+        model name and the value is a DataFrame with standardized columns
+        ('METRIC_NAME', 'FILTER') for that model.
+
+    Raises:
+        ValueError: If the required 'Filter Summary' sheet is not found in
+            the uploaded Excel file.
     """
     xls = pd.ExcelFile(uploaded_file)
 

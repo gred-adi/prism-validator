@@ -1,7 +1,26 @@
 def get_query():
     """
-    Returns the SQL query for Metric Mapping Validation.
-    The hardcoded ProjectID filter has been removed to make it adaptive.
+    Constructs and returns the SQL query for metric mapping validation.
+
+    This query is designed to retrieve a comprehensive list of all metric
+    mappings for project-level models. It uses several Common Table
+    Expressions (CTEs) to build the final result set.
+
+    The main logic involves:
+    1.  **`EXIST_REV_LOGIC`**: Gathers detailed information for all points that
+        currently exist in both projects and templates.
+    2.  **`NON_EXIST_REV_LOGIC`**: Identifies metrics that are defined in a
+        parent template but have not been implemented in a child project,
+        effectively finding missing points.
+    3.  **`COMBINED_LOGIC`**: Merges the results from the two CTEs above to
+        create a complete picture of all expected and existing metric mappings.
+    4.  **Final `SELECT`**: Filters the combined data to return only the
+        records relevant for project-level validation, focusing on 'Input Signal'
+        points that have a specific point name assigned.
+
+    Returns:
+        str: A multi-line string containing the complete SQL query for
+             retrieving metric mapping configurations.
     """
     return """
     WITH

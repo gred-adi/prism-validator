@@ -1,7 +1,22 @@
 def get_query():
     """
-    Returns the SQL query for Absolute Deviation Validation.
-    The query extracts High/Low Alert and Warning thresholds for project-level models.
+    Constructs and returns the SQL query for absolute deviation validation.
+
+    This query retrieves threshold data for project-level models from the PRISM
+    database. It specifically fetches high/low alert and warning thresholds
+    for points configured with 'Absolute Signal Deviation'. The query joins
+    several tables to link projects, points, metrics, and their corresponding
+    threshold values.
+
+    The query filters for:
+    - Projects of type 'PROJECT' (ProjectTypeID = 0).
+    - Points with a threshold type of 'Absolute Signal Deviation' (PointTypeID = 8).
+    - Deployed projects (DeployedProfileID IS NOT NULL).
+    - Project names starting with 'AP-'.
+    - Metrics that have at least a 'HIGH WARNING' threshold defined.
+
+    Returns:
+        str: A multi-line string containing the complete SQL query.
     """
     return """
     SELECT

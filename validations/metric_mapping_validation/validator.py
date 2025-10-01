@@ -4,8 +4,40 @@ import streamlit as st
 @st.cache_data
 def validate_data(model_dfs, prism_df):
     """
-    Performs the comparison logic for the 'Metric Mapping' section.
-    This version uses 'MODEL' as the key identifier and separates mismatches by column.
+    Compares TDT and PRISM data for metric mapping configurations.
+
+    This function performs the core validation for metric mappings by comparing
+    parsed TDT data against PRISM database data for each model. It joins the
+    data on 'METRIC_NAME' to align records from both sources.
+
+    The comparison logic includes special handling for 'PRiSM Calc' point types,
+    where certain mismatches are ignored because the calculation is defined
+    within PRISM itself.
+
+    The validation identifies:
+    - **Matches:** Records where all compared columns are identical. The 'PRiSM
+      Calc' type in the TDT will override most checks, except for 'POINT_UNIT'.
+    - **Mismatches:** Records in both sources with differing values, categorized
+      by the specific column that has the mismatch.
+    - **Missing Records:** Records present in one source but not the other.
+
+    The function is cached with `@st.cache_data` for performance.
+
+    Args:
+        model_dfs (dict[str, pd.DataFrame]): A dictionary where keys are model
+            names and values are DataFrames of parsed metric mapping data from the TDT.
+        prism_df (pd.DataFrame): A DataFrame containing the corresponding
+            metric mapping data queried from the PRISM database.
+
+    Returns:
+        tuple[pd.DataFrame, pd.DataFrame, dict[str, pd.DataFrame]]: A tuple
+        containing three elements:
+        1. summary_df (pd.DataFrame): A DataFrame summarizing results per model,
+           including match and mismatch counts.
+        2. matches_df (pd.DataFrame): A DataFrame of all records that matched.
+        3. mismatches_dict (dict[str, pd.DataFrame]): A dictionary where keys
+           are mismatch types (e.g., 'POINT_NAME', 'Missing_in_PRISM') and
+           values are DataFrames of the corresponding mismatched records.
     """
     # Create a copy to avoid modifying the cached dataframe.
     prism_df = prism_df.copy()

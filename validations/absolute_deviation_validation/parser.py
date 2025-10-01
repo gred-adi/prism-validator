@@ -5,9 +5,29 @@ import re
 @st.cache_data
 def parse_excel(uploaded_file):
     """
-    Processes the uploaded 'Consolidated Statistics' Excel file.
-    Parses the 'Statistics' sheet, extracts the metric from the point name,
-    and groups the data by 'Model'.
+    Parses the 'Consolidated Statistics' Excel file for absolute deviation data.
+
+    This function reads the 'Statistics' sheet from the uploaded Excel file,
+    performs necessary data cleaning, and transforms the data into a format
+    suitable for validation. It extracts a base metric name from the 'Point Name'
+    column, selects and renames relevant columns, and groups the data by model.
+
+    The function is cached using `@st.cache_data` to improve performance by
+    avoiding reprocessing of the same file.
+
+    Args:
+        uploaded_file (UploadedFile): The file-like object uploaded via
+            Streamlit's file uploader, expected to be an Excel file.
+
+    Returns:
+        dict[str, pd.DataFrame]: A dictionary where each key is an uppercase
+        model name and the value is a DataFrame containing the threshold
+        data ('METRIC_NAME', 'HIGH ALERT', 'HIGH WARNING', 'LOW WARNING',
+        'LOW ALERT') for that model.
+
+    Raises:
+        ValueError: If the required 'Statistics' sheet is not found in the
+            uploaded Excel file.
     """
     xls = pd.ExcelFile(uploaded_file)
     sheet_name = "Statistics"

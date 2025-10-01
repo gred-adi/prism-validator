@@ -57,6 +57,23 @@ if 'validation_states' not in st.session_state:
 
 # --- Reusable Helper Functions ---
 def display_results(results, key_prefix, filter_column_name):
+    """
+    Renders the validation results in the Streamlit UI.
+
+    This function displays a summary DataFrame, followed by detailed tables
+    for matches and mismatches. It includes a selectbox to filter the
+    detailed results based on a specified column (e.g., 'TDT' or 'MODEL').
+
+    Args:
+        results (dict | None): A dictionary containing the validation results.
+            Expected keys are 'summary' (pd.DataFrame), 'matches' (pd.DataFrame),
+            and 'mismatches' (dict[str, pd.DataFrame] or pd.DataFrame). If None
+            or empty, an info message is shown.
+        key_prefix (str): A unique string prefix to use for Streamlit widget
+            keys to prevent key collisions between different validation tabs.
+        filter_column_name (str): The name of the column in the summary/detail
+            DataFrames to use for filtering (e.g., 'TDT', 'MODEL').
+    """
     # (This function is unchanged)
     if not results or results['summary'].empty:
         st.info("Run the validation to see the results.")
@@ -96,6 +113,18 @@ def display_results(results, key_prefix, filter_column_name):
         st.metric("Total Mismatches Shown", len(mismatches_to_show))
 
 def select_folder():
+    """
+    Opens a native OS folder selection dialog for the user.
+
+    This function uses Tkinter to create a hidden root window, which then
+    launches the system's file dialog to select a directory. This provides a
+    more familiar user experience than Streamlit's default file uploader for
+    selecting entire folders.
+
+    Returns:
+        str: The absolute path of the folder selected by the user. Returns
+             an empty string if the user cancels the dialog.
+    """
     root = tk.Tk()
     root.withdraw()
     root.attributes('-topmost', True)

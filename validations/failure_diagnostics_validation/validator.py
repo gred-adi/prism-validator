@@ -4,8 +4,37 @@ import streamlit as st
 @st.cache_data
 def validate_data(tdt_dfs, prism_df):
     """
-    Performs the comparison logic for the 'Failure Diagnostics' section.
-    Compares Direction and Weight, separates mismatches by column, and reorders columns.
+    Compares TDT and PRISM data for failure diagnostics configurations.
+
+    This function performs the core validation by comparing data from parsed TDT
+    Excel files against data from the PRISM database. It iterates through each TDT,
+    joining the data on 'FAILURE_MODE' and 'METRIC_NAME'.
+
+    The comparison logic identifies:
+    - **Perfect Matches:** Records where 'DIRECTION' and 'WEIGHT' are identical.
+    - **Mismatches:** Records found in both sources but with differing values
+      for 'DIRECTION' or 'WEIGHT'. These are categorized by the mismatched column.
+    - **Missing Records:** Records found in one source but not the other.
+
+    Special handling is included for `NaN` values to ensure they are compared
+    correctly. The function is cached to optimize performance.
+
+    Args:
+        tdt_dfs (dict[str, pd.DataFrame]): A dictionary where keys are TDT names
+            and values are DataFrames of parsed failure diagnostics data.
+        prism_df (pd.DataFrame): A DataFrame containing the corresponding
+            failure diagnostics data queried from the PRISM database.
+
+    Returns:
+        tuple[pd.DataFrame, pd.DataFrame, dict[str, pd.DataFrame]]: A tuple
+        containing three elements:
+        1. summary_df (pd.DataFrame): A DataFrame summarizing the validation
+           results per TDT with match and mismatch counts.
+        2. matches_df (pd.DataFrame): A DataFrame of all records that
+           matched perfectly between the TDT and PRISM data.
+        3. mismatches_dict (dict[str, pd.DataFrame]): A dictionary where each
+           key is a mismatch type (e.g., 'DIRECTION', 'Missing_in_PRISM')
+           and the value is a DataFrame of the mismatched records.
     """
     prism_df = prism_df.copy()
     all_matches = []

@@ -1,7 +1,26 @@
 def get_query():
     """
-    Returns the SQL query for Filter Validation.
-    The hardcoded ProjectID filter has been removed to make it adaptive.
+    Constructs and returns the SQL query for filter validation.
+
+    This complex query is designed to retrieve all filter conditions associated
+    with 'Input Signal' points within projects. It uses several Common Table
+    Expressions (CTEs) to build the final result set.
+
+    The main logic involves:
+    1.  **`EXIST_REV_LOGIC`**: Gathers detailed information about every point,
+        crucially using a `STUFF` and `FOR XML PATH` clause to aggregate
+        multiple filter rules (both active and disabled) for a single point
+        into a comma-separated string.
+    2.  **`NON_EXIST_REV_LOGIC`**: Identifies metrics present in a parent
+        template but missing from a child project.
+    3.  **`COMBINED_LOGIC`**: Merges the results from the two CTEs above.
+    4.  **Final `SELECT`**: Filters the combined data to return only the
+        relevant records for validation: specifically, project-level
+        'Input Signal' points that have at least one filter condition defined.
+
+    Returns:
+        str: A multi-line string containing the complete SQL query for
+             retrieving filter configurations.
     """
     return """
     WITH

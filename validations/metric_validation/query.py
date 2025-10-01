@@ -1,5 +1,23 @@
 def get_query():
-    """Returns the SQL query for Metric Validation."""
+    """
+    Constructs and returns the SQL query for metric validation.
+
+    This query retrieves metric configuration data from the PRISM database,
+    focusing specifically on templates (`PROJECTTYPEID = 2`). It determines
+    the function and point type of each metric using `CASE` statements based
+    on various attributes and joins.
+
+    The main logic involves:
+    -   Joining projects, points, and metrics tables.
+    -   Using `LEFT JOIN`s to check for fault diagnostics, digital groups, and
+        PRISM calculations to categorize the `FUNCTION` and `POINT TYPE`.
+    -   Filtering for records where the form type is 'TEMPLATE', the threshold
+        type is 'Input Signal', and the template name starts with 'AP-'.
+    -   Grouping the results to ensure a unique entry per metric configuration.
+
+    Returns:
+        str: A multi-line string containing the complete SQL query.
+    """
     return """
     SELECT
         FORM.ProjectID AS [FORM ID],

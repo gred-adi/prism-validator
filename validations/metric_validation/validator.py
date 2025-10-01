@@ -2,12 +2,35 @@ import pandas as pd
 
 def validate_data(tdt_dfs, prism_df):
     """
-    Performs a robust comparison between TDT and PRISM dataframes.
+    Compares TDT and PRISM data for metric configurations.
 
-    Returns three dataframes:
-    1. summary_df: Counts of matches and mismatches per TDT.
-    2. matches_df: Records that match perfectly.
-    3. mismatches_df: Records with discrepancies or those missing from either source.
+    This function performs a detailed comparison between metric data parsed from
+    TDT files and the corresponding data queried from the PRISM database. It
+    iterates through each TDT, using a pandas merge to identify matches,
+    mismatches, and missing records based on the 'POINT_TYPE'.
+
+    The comparison logic identifies:
+    - **Matches:** Records where 'POINT_TYPE' is identical in both sources.
+    - **Mismatches:** Records found in both sources but with a different
+      'POINT_TYPE'.
+    - **Missing Records:** Records found in one source but not the other.
+
+    Args:
+        tdt_dfs (dict[str, pd.DataFrame]): A dictionary where keys are TDT names
+            and values are DataFrames of parsed metric data from the TDT files.
+        prism_df (pd.DataFrame): A DataFrame containing the corresponding metric
+            data queried from the PRISM database.
+
+    Returns:
+        tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]: A tuple containing three
+        elements:
+        1. summary_df (pd.DataFrame): A DataFrame summarizing the validation
+           results per TDT, including match and mismatch counts.
+        2. matches_df (pd.DataFrame): A DataFrame of all records that matched
+           perfectly between the TDT and PRISM data.
+        3. mismatches_df (pd.DataFrame): A single DataFrame containing all
+           discrepancies, with a 'Status' column indicating the type of
+           mismatch (e.g., 'Point Type Mismatch', 'Missing in PRISM').
     """
     all_mismatches = []
     all_matches = []
@@ -104,7 +127,17 @@ def validate_data(tdt_dfs, prism_df):
 def generate_pdf_report(matches_df, mismatches_df):
     """
     (Placeholder) Generates a PDF report from the validation results.
-    This functionality can be implemented in the future.
+
+    This function is intended for future implementation of a PDF reporting
+    feature. Currently, it serves as a placeholder and does not generate a
+    report.
+
+    Args:
+        matches_df (pd.DataFrame): DataFrame containing the matched records.
+        mismatches_df (pd.DataFrame): DataFrame containing the mismatched records.
+
+    Returns:
+        bytes: An empty byte string, as the function is not implemented.
     """
     # To prevent errors if this function were accidentally called,
     # it returns empty bytes. The UI button is disabled.

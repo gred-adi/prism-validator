@@ -1,8 +1,22 @@
 def get_query():
     """
-    Returns the SQL query for Failure Diagnostics Validation.
-    Note: The NCHAR() function is used to produce unicode arrows for direction,
-    which is important for the comparison logic.
+    Constructs and returns the SQL query for failure diagnostics validation.
+
+    This query retrieves the configuration of failure diagnostics from the
+    PRISM database. It joins tables to link templates (projects), fault
+    diagnostics, and their detailed signatures, including the metric,
+    direction, and priority weight.
+
+    A key feature of this query is the use of the `NCHAR()` function to
+    translate a numerical direction value (`updownvalue`) into Unicode arrow
+    characters (e.g., ↑, ↓, →). This is crucial for matching against the
+    TDT reference data.
+
+    The query filters for project names that start with 'AP-'.
+
+    Returns:
+        str: A multi-line string containing the complete SQL query for
+             failure diagnostics.
     """
     return """
     SELECT

@@ -4,8 +4,38 @@ import streamlit as st
 @st.cache_data
 def validate_data(model_dfs, prism_df):
     """
-    Performs the comparison logic for the 'Absolute Deviation' section.
-    Compares alert and warning thresholds.
+    Compares TDT and PRISM data for absolute deviation thresholds.
+
+    This function executes the core validation logic by comparing the parsed
+    Excel data (TDT) against the data queried from the PRISM database. It
+    iterates through each model, performing a detailed comparison on key metrics.
+
+    The comparison identifies:
+    - **Perfect Matches:** Records where all threshold values are identical.
+    - **Column-Specific Mismatches:** Records that exist in both sources but
+      have differing values for one or more threshold columns.
+    - **Missing Records:** Records present in one source but not the other.
+
+    The function is cached with `@st.cache_data` to optimize performance by
+    avoiding re-computation when inputs have not changed.
+
+    Args:
+        model_dfs (dict[str, pd.DataFrame]): A dictionary where keys are model
+            names and values are DataFrames containing the parsed TDT data
+            for absolute deviation thresholds.
+        prism_df (pd.DataFrame): A DataFrame containing the corresponding
+            threshold data queried from the PRISM database.
+
+    Returns:
+        tuple[pd.DataFrame, pd.DataFrame, dict[str, pd.DataFrame]]: A tuple
+        containing three elements:
+        1. summary_df (pd.DataFrame): A DataFrame summarizing the validation
+           results per model, including match and mismatch counts.
+        2. matches_df (pd.DataFrame): A DataFrame containing all records that
+           matched perfectly between the TDT and PRISM data.
+        3. mismatches_dict (dict[str, pd.DataFrame]): A dictionary where each
+           key is a type of mismatch (e.g., 'HIGH ALERT', 'Missing_in_PRISM')
+           and the value is a DataFrame of the corresponding mismatched records.
     """
     prism_df = prism_df.copy()
     all_matches = []

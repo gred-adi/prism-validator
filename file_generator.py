@@ -6,6 +6,19 @@ import streamlit as st
 
 # --- Helper functions (from your script, largely unchanged) ---
 def _process_survey_sheets(file_path, survey_data_list):
+    """
+    Processes the 'Point Survey' and related sheets from a single TDT Excel file.
+
+    This function reads the 'Version', 'Point Survey', 'Attribute', and
+    'Calculation' sheets. It extracts data for each model defined in the
+    'Point Survey' sheet, merges it with attribute and calculation details,
+    and appends the resulting DataFrame to a list.
+
+    Args:
+        file_path (str): The full path to the TDT Excel file.
+        survey_data_list (list): A list to which the processed survey
+            DataFrames will be appended. This list is modified in place.
+    """
     # (This function's internal logic remains the same as your provided script)
     xls = pd.ExcelFile(file_path)
     if 'Point Survey' not in xls.sheet_names:
@@ -49,6 +62,18 @@ def _process_survey_sheets(file_path, survey_data_list):
         start_col = end_col
 
 def _process_diagnostic_sheet(file_path, diag_data_list):
+    """
+    Processes the 'Diagnostic' sheet from a single TDT Excel file.
+
+    This function reads the 'Version' and 'Diagnostic' sheets. It extracts
+    data for each failure mode defined in the 'Diagnostic' sheet and appends
+    the resulting DataFrame to a list.
+
+    Args:
+        file_path (str): The full path to the TDT Excel file.
+        diag_data_list (list): A list to which the processed diagnostic
+            DataFrames will be appended. This list is modified in place.
+    """
     # (This function's internal logic remains the same as your provided script)
     xls = pd.ExcelFile(file_path)
     if 'Diagnostic' not in xls.sheet_names:
@@ -81,7 +106,22 @@ def _process_diagnostic_sheet(file_path, diag_data_list):
 
 # --- NEW: Helper function to create the filter summary ---
 def _create_filter_summary(all_survey_data):
-    """Creates the filter summary DataFrame from the consolidated survey data."""
+    """
+    Creates a filter summary DataFrame from the consolidated survey data.
+
+    This function filters the main survey DataFrame to include only rows
+    where 'Filter Condition' is not null. It then selects and renames
+    columns to create a clean summary table.
+
+    Args:
+        all_survey_data (pd.DataFrame): The consolidated DataFrame containing
+            all survey data from the TDT files.
+
+    Returns:
+        pd.DataFrame: A new DataFrame containing a summary of all filter
+            conditions. If the 'Filter Condition' column is not found,
+            it returns an empty DataFrame with the expected schema.
+    """
     if 'Filter Condition' not in all_survey_data.columns:
         # Return an empty df with expected columns if the necessary column is missing
         return pd.DataFrame(columns=['TDT', 'Model', 'Metric', 'Point Name', 'Constraint', 'Filter Condition', 'Filter Value'])
@@ -104,8 +144,25 @@ def _create_filter_summary(all_survey_data):
 def generate_files_from_folder(folder_path):
     """
     Scans a folder for TDT Excel files and consolidates them into two DataFrames.
+
+    This function iterates over all `.xlsx` files in the specified folder,
+    calling helper functions to process the 'Point Survey' and 'Diagnostic'
+    sheets from each. It then concatenates the results into two main
+    DataFrames. The function is cached by Streamlit to avoid reprocessing
+    the same folder.
+
+    Args:
+        folder_path (str): The path to the folder containing the TDT Excel files.
+
     Returns:
-        A tuple of two pandas DataFrames: (survey_df, diag_df)
+        tuple[pd.DataFrame, pd.DataFrame]: A tuple containing two pandas
+        DataFrames: the consolidated survey DataFrame and the consolidated
+        diagnostic DataFrame.
+
+    Raises:
+        FileNotFoundError: If no `.xlsx` files are found in the specified folder.
+        ValueError: If no valid survey or diagnostic data can be consolidated
+            from the files.
     """
     tdt_files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith('.xlsx') and not f.startswith('~')]
     if not tdt_files:
@@ -142,10 +199,21 @@ def generate_files_from_folder(folder_path):
 # --- UPDATED: Optional Excel Conversion Function ---
 def convert_dfs_to_excel_bytes(survey_df, diag_df):
     """
-    Converts the survey and diagnostic DataFrames into in-memory Excel files,
-    including the new 'Filter Summary' sheet in the survey file.
+    Converts survey and diagnostic DataFrames into in-memory Excel files.
+
+    This function takes two DataFrames, writes them to separate in-memory
+    IO buffers as Excel files, and returns the byte representations. The survey
+    Excel buffer includes a main 'Consolidated Point Survey' sheet and a
+    'Filter Summary' sheet.
+
+    Args:
+        survey_df (pd.DataFrame): The consolidated survey data.
+        diag_df (pd.DataFrame): The consolidated diagnostic data.
+
     Returns:
-        A tuple of two in-memory bytes objects: (survey_excel_bytes, diag_excel_bytes)
+        tuple[io.BytesIO, io.BytesIO]: A tuple containing two `BytesIO`
+        objects. The first is the in-memory Excel file for survey data,
+        and the second is for the diagnostic data.
     """
     output_survey = io.BytesIO()
     with pd.ExcelWriter(output_survey, engine='xlsxwriter') as writer:

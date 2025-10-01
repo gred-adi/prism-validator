@@ -175,3 +175,13 @@ prism-validator/
 ├── pyproject.toml           # Project metadata and dependencies for uv/pip
 └── README.md                # This file
 ```
+
+<br>
+
+# 📖 Code Documentation and Standards
+
+This repository is thoroughly documented to ensure clarity and maintainability.
+
+*   **Full Docstring Coverage:** Every public function, method, and class across the entire codebase includes a comprehensive docstring.
+*   **Google Style Guide:** All docstrings adhere to the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings), clearly explaining the purpose, arguments, return values, and any exceptions raised by the code.
+*   **Developer-Friendly:** This high level of documentation makes it easier for new developers to understand the codebase, contribute effectively, and debug issues.

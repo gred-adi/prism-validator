@@ -1,12 +1,22 @@
 def get_query(asset_descriptions: list):
     """
-    Generates the SQL query for Model Deployment Config based on a dynamic list of assets.
-    
+    Constructs a SQL query to fetch model deployment configurations.
+
+    This function dynamically generates a SQL query based on a list of asset
+    descriptions provided by the user. It retrieves configuration details
+    for deployed models associated with the specified assets, focusing on
+    the 'Overall Model Residual' thresholds.
+
+    The function safely formats the list of asset descriptions into a string
+    for use in an `IN` clause to prevent SQL injection vulnerabilities.
+
     Args:
-        asset_descriptions: A list of asset description strings provided by the user.
+        asset_descriptions (list[str]): A list of asset description strings
+            to be included in the query's `WHERE` clause.
 
     Returns:
-        A formatted SQL query string.
+        str: A formatted SQL query string. If the input list is empty, it
+             returns a query that safely selects no results.
     """
     if not asset_descriptions:
         # Return a query that safely yields no results if the list is empty.
