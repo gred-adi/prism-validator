@@ -103,9 +103,18 @@ def validate_data(model_dfs, prism_df):
 
     matches_df = pd.concat(all_matches, ignore_index=True) if all_matches else pd.DataFrame()
     if not matches_df.empty:
+        # Define the ideal column order
         col_order = ['MODEL'] + join_keys
-        for col in columns_to_compare: col_order.extend([f'{col}_TDT', f'{col}_PRISM'])
-        matches_df = matches_df[[c for c in col_order if c in matches_df.columns]]
+        for col in columns_to_compare:
+            col_order.extend([f'{col}_TDT', f'{col}_PRISM'])
+
+        # Get existing columns in the ideal order and then the rest
+        existing_cols_in_order = [c for c in col_order if c in matches_df.columns]
+        remaining_cols = [c for c in matches_df.columns if c not in existing_cols_in_order]
+
+        # Combine to get the final order
+        final_order = existing_cols_in_order + remaining_cols
+        matches_df = matches_df[final_order]
 
     final_mismatches_dict = {}
     for mismatch_type, df_list in mismatches_by_column.items():

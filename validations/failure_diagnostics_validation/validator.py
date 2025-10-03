@@ -100,6 +100,13 @@ def validate_data(tdt_dfs, prism_df):
     summary_df = pd.DataFrame(summary_data)
     all_entries_df = pd.concat(all_entries_dfs, ignore_index=True) if all_entries_dfs else pd.DataFrame()
     
+    # Format WEIGHT columns to remove trailing '.0'
+    if not all_entries_df.empty:
+        for col in ['WEIGHT_TDT', 'WEIGHT_PRISM']:
+            if col in all_entries_df.columns:
+                # Using .astype(str) to handle mixed types and replacing .0 for whole numbers
+                all_entries_df[col] = all_entries_df[col].astype(str).str.replace(r'\.0$', '', regex=True).replace('nan', pd.NA)
+
     # Reorder columns for the 'All Entries' table
     if not all_entries_df.empty:
         # Define the ideal column order
@@ -117,8 +124,18 @@ def validate_data(tdt_dfs, prism_df):
 
     matches_df = pd.concat(all_matches, ignore_index=True) if all_matches else pd.DataFrame()
     if not matches_df.empty:
-        col_order = ['TDT'] + join_keys + [f'{c}_TDT' for c in columns_to_compare] + [f'{c}_PRISM' for c in columns_to_compare]
-        matches_df = matches_df[[c for c in col_order if c in matches_df.columns]]
+        # Define the ideal column order
+        col_order = ['TDT'] + join_keys
+        for col in columns_to_compare:
+            col_order.extend([f'{col}_TDT', f'{col}_PRISM'])
+
+        # Get existing columns in the ideal order and then the rest
+        existing_cols_in_order = [c for c in col_order if c in matches_df.columns]
+        remaining_cols = [c for c in matches_df.columns if c not in existing_cols_in_order]
+
+        # Combine to get the final order
+        final_order = existing_cols_in_order + remaining_cols
+        matches_df = matches_df[final_order]
 
     final_mismatches_dict = {}
     for mismatch_type, df_list in mismatches_by_column.items():
