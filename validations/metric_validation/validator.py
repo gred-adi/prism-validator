@@ -2,38 +2,29 @@ import pandas as pd
 
 def validate_data(tdt_dfs, prism_df):
     """
-    Performs a robust comparison between TDT and PRISM dataframes.
-
-    Returns three dataframes:
-    1. summary_df: Counts of matches and mismatches per TDT.
-    2. matches_df: Records that match perfectly.
-    3. mismatches_df: Records with discrepancies or those missing from either source.
+    Performs a robust comparison between TDT and PRISM dataframes and
+    returns a dictionary of results.
     """
     all_mismatches = []
     all_matches = []
-    summary_data = [] # To store summary counts
+    summary_data = []
+    all_entries_dfs = []  # To store each model's merged df
 
-    # Standardize PRISM column names to match Excel processing output
+    # 1. Rename and clean PRISM columns
     prism_df.rename(columns={
         "FORM NAME": "TDT",
         "METRIC NAME": "METRIC_NAME",
         "POINT TYPE": "POINT_TYPE_PRISM"
     }, inplace=True)
-
-    # Clean the PRISM METRIC_NAME by removing the specified prefix
     if 'METRIC_NAME' in prism_df.columns:
         prism_df['METRIC_NAME'] = prism_df['METRIC_NAME'].str.replace('AP-TVI-', '', regex=False)
-    
     if 'POINT_TYPE_PRISM' in prism_df.columns:
-        # Note: .str.replace is used on the Series for consistency
         prism_df['POINT_TYPE_PRISM'] = prism_df['POINT_TYPE_PRISM'].str.title().str.replace('Prism Calc', 'PRiSM Calc', regex=False)
 
-
+    # 2. Iterate through each TDT and compare
     for tdt_name, excel_df in tdt_dfs.items():
-        # Filter PRISM data for the current TDT
         prism_sub_df = prism_df[prism_df["TDT"] == tdt_name].copy()
 
-        # Perform an outer merge to find all matches and differences.
         merged_df = pd.merge(
             excel_df.drop_duplicates(subset=['METRIC_NAME']),
             prism_sub_df.drop_duplicates(subset=['METRIC_NAME']),
@@ -42,6 +33,11 @@ def validate_data(tdt_dfs, prism_df):
             suffixes=('_TDT', '_PRISM'),
             indicator=True
         )
+
+        # Store the full merged df for the "All Entries" table
+        merged_with_tdt = merged_df.copy()
+        merged_with_tdt['TDT'] = tdt_name
+        all_entries_dfs.append(merged_with_tdt)
 
         # --- Identify Discrepancies using Vectorized Operations ---
         data_mismatch = (merged_df['_merge'] == 'both') & (merged_df['POINT_TYPE_TDT'] != merged_df['POINT_TYPE_PRISM'])
@@ -65,7 +61,7 @@ def validate_data(tdt_dfs, prism_df):
             mismatch_rows['Status'] = 'Point Type Mismatch'
             mismatch_rows.loc[missing_in_prism, 'Status'] = 'Missing in PRISM'
             mismatch_rows.loc[missing_in_tdt, 'Status'] = 'Missing in TDT (Excel)'
-            mismatch_rows['TDT'] = tdt_name # Add TDT name for context
+            mismatch_rows['TDT'] = tdt_name
             all_mismatches.append(mismatch_rows)
 
         # --- Process Matches for Detailed Table ---
@@ -73,40 +69,26 @@ def validate_data(tdt_dfs, prism_df):
             match_rows['TDT'] = tdt_name
             all_matches.append(match_rows)
 
-
-    # --- Create final DataFrames ---
+    # 3. Create final DataFrames
     summary_df = pd.DataFrame(summary_data)
+    all_entries_df = pd.concat(all_entries_dfs, ignore_index=True) if all_entries_dfs else pd.DataFrame()
 
-    if not all_mismatches:
-        mismatches_df = pd.DataFrame()
-    else:
-        mismatches_df = pd.concat(all_mismatches, ignore_index=True) if all_mismatches else pd.DataFrame()
-        # Clean up the final dataframe for display, focusing on the compared columns
+    mismatches_df = pd.concat(all_mismatches, ignore_index=True) if all_mismatches else pd.DataFrame()
+    if not mismatches_df.empty:
         mismatches_df = mismatches_df[[
             'TDT', 'METRIC_NAME', 'Status', 
             'POINT_TYPE_TDT', 'POINT_TYPE_PRISM'
         ]].fillna('N/A')
 
-    if not all_matches:
-        matches_df = pd.DataFrame()
-    else:
-        matches_df = pd.concat(all_matches, ignore_index=True) if all_matches else pd.DataFrame()
-         # Clean up the matches dataframe for display
+    matches_df = pd.concat(all_matches, ignore_index=True) if all_matches else pd.DataFrame()
+    if not matches_df.empty:
         matches_df = matches_df[[
             'TDT', 'METRIC_NAME', 'POINT_TYPE_TDT'
-        ]].rename(columns={
-            'POINT_TYPE_TDT': 'POINT_TYPE'
-        })
+        ]].rename(columns={'POINT_TYPE_TDT': 'POINT_TYPE'})
     
-    return summary_df, matches_df, mismatches_df
-
-# Placeholder for PDF report generation.
-def generate_pdf_report(matches_df, mismatches_df):
-    """
-    (Placeholder) Generates a PDF report from the validation results.
-    This functionality can be implemented in the future.
-    """
-    # To prevent errors if this function were accidentally called,
-    # it returns empty bytes. The UI button is disabled.
-    print("NOTE: PDF generation is a placeholder and is not implemented.")
-    return b""
+    return {
+        "summary": summary_df,
+        "matches": matches_df,
+        "mismatches": mismatches_df,
+        "all_entries": all_entries_df
+    }

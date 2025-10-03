@@ -5,30 +5,28 @@ import streamlit as st
 def validate_data(model_dfs, prism_df):
     """
     Performs the comparison logic for the 'Absolute Deviation' section.
-    Compares alert and warning thresholds.
+    Compares alert and warning thresholds and returns a dictionary of results.
     """
     prism_df = prism_df.copy()
     all_matches = []
     summary_data = []
+    all_entries_dfs = []  # To store each model's merged df
 
     # 1. Rename and clean PRISM columns
     prism_df.rename(columns={
         "FORM NAME": "MODEL",
         "METRIC NAME": "METRIC_NAME",
-        # Threshold columns match Excel, no rename needed if they are identical
     }, inplace=True)
-
-    # Remove all rows where METRIC_NAME is NaN (null).
     prism_df = prism_df.dropna(subset=["METRIC_NAME"])
 
-    # Dictionary to hold lists of mismatch dataframes
+    # 2. Setup for comparison
     columns_to_compare = ['HIGH ALERT', 'HIGH WARNING', 'LOW WARNING', 'LOW ALERT']
     mismatches_by_column = {col: [] for col in columns_to_compare}
     mismatches_by_column['Missing_in_PRISM'] = []
     mismatches_by_column['Missing_in_TDT'] = []
-    
     join_keys = ['METRIC_NAME']
 
+    # 3. Iterate through each model and compare
     for model_name, excel_df in model_dfs.items():
         prism_sub_df = prism_df[prism_df["MODEL"] == model_name].copy()
 
@@ -41,10 +39,14 @@ def validate_data(model_dfs, prism_df):
             indicator=True
         )
 
+        # Store the full merged df for the "All Entries" table
+        merged_with_model = merged_df.copy()
+        merged_with_model['MODEL'] = model_name
+        all_entries_dfs.append(merged_with_model)
+
         # --- Identify Perfect Matches ---
         match_mask = (merged_df['_merge'] == 'both')
         for col in columns_to_compare:
-            # Compare as numbers, handling NaNs
             match_mask &= (pd.to_numeric(merged_df[f'{col}_TDT'], errors='coerce') == pd.to_numeric(merged_df[f'{col}_PRISM'], errors='coerce'))
         
         match_rows = merged_df[match_mask].copy()
@@ -56,7 +58,6 @@ def validate_data(model_dfs, prism_df):
         for col in columns_to_compare:
             col_mismatch_mask = (merged_df['_merge'] == 'both') & \
                                 (pd.to_numeric(merged_df[f"{col}_TDT"], errors='coerce') != pd.to_numeric(merged_df[f"{col}_PRISM"], errors='coerce'))
-            
             if col_mismatch_mask.any():
                 mismatch_subset = merged_df.loc[col_mismatch_mask, ['METRIC_NAME', f'{col}_TDT', f'{col}_PRISM']].copy()
                 mismatch_subset['MODEL'] = model_name
@@ -82,8 +83,9 @@ def validate_data(model_dfs, prism_df):
             "Total TDT Records": len(excel_df.drop_duplicates(subset=join_keys))
         })
 
-    # --- Create Final DataFrames and Dictionary ---
+    # 4. Create Final DataFrames and Dictionary
     summary_df = pd.DataFrame(summary_data)
+    all_entries_df = pd.concat(all_entries_dfs, ignore_index=True) if all_entries_dfs else pd.DataFrame()
     
     matches_df = pd.concat(all_matches, ignore_index=True) if all_matches else pd.DataFrame()
     if not matches_df.empty:
@@ -106,4 +108,9 @@ def validate_data(model_dfs, prism_df):
         else:
             final_mismatches_dict[mismatch_type] = pd.DataFrame()
 
-    return summary_df, matches_df, final_mismatches_dict
+    return {
+        "summary": summary_df,
+        "matches": matches_df,
+        "mismatches": final_mismatches_dict,
+        "all_entries": all_entries_df
+    }
