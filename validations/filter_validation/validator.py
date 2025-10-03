@@ -10,12 +10,13 @@ def clean_filter_string(series):
 @st.cache_data
 def validate_data(model_dfs, prism_df):
     """
-    Performs the comparison logic for the 'Filter Validation' section.
+    Performs the comparison logic for the 'Filter Validation' section and
+    returns a dictionary of results.
     """
     prism_df = prism_df.copy()
-
     all_matches = []
     summary_data = []
+    all_entries_dfs = []  # To store each model's merged df
 
     # 1. Rename and clean PRISM columns
     prism_df.rename(columns={
@@ -23,16 +24,16 @@ def validate_data(model_dfs, prism_df):
         "METRIC NAME": "METRIC_NAME",
         "FILTER": "FILTER"
     }, inplace=True)
-    
     prism_df['METRIC_NAME'] = prism_df['METRIC_NAME'].str.replace('AP-TVI-', '', regex=False)
 
-    # Dictionary to hold mismatch results
+    # 2. Setup for comparison
     mismatches_dict = {
         'FILTER': [],
         'Missing_in_PRISM': [],
         'Missing_in_TDT': []
     }
 
+    # 3. Iterate through each model and compare
     for model_name, excel_df in model_dfs.items():
         prism_sub_df = prism_df[prism_df['MODEL'] == model_name].copy()
 
@@ -48,10 +49,14 @@ def validate_data(model_dfs, prism_df):
             indicator=True
         )
 
+        # Store the full merged df for the "All Entries" table
+        merged_with_model = merged_df.copy()
+        merged_with_model['MODEL'] = model_name
+        all_entries_dfs.append(merged_with_model)
+
         # --- Identify Matches and Mismatches ---
         match_mask = (merged_df['_merge'] == 'both') & \
                      (merged_df['FILTER_CLEAN_TDT'] == merged_df['FILTER_CLEAN_PRISM'])
-        
         mismatch_mask = (merged_df['_merge'] == 'both') & \
                         (merged_df['FILTER_CLEAN_TDT'] != merged_df['FILTER_CLEAN_PRISM'])
 
@@ -69,7 +74,6 @@ def validate_data(model_dfs, prism_df):
             mismatch_subset = mismatch_rows[['METRIC_NAME', 'FILTER_TDT', 'FILTER_PRISM']].copy()
             mismatch_subset.rename(columns={'FILTER_TDT': 'TDT_Value', 'FILTER_PRISM': 'PRISM_Value'}, inplace=True)
             mismatch_subset['MODEL'] = model_name
-            # Reorder columns
             mismatch_subset = mismatch_subset[['MODEL', 'METRIC_NAME', 'TDT_Value', 'PRISM_Value']]
             mismatches_dict['FILTER'].append(mismatch_subset)
         
@@ -77,7 +81,6 @@ def validate_data(model_dfs, prism_df):
             missing_subset = missing_in_prism_rows[['METRIC_NAME', 'FILTER_TDT']].copy()
             missing_subset.rename(columns={'FILTER_TDT': 'FILTER'}, inplace=True)
             missing_subset['MODEL'] = model_name
-            # Reorder columns
             missing_subset = missing_subset[['MODEL', 'METRIC_NAME', 'FILTER']]
             mismatches_dict['Missing_in_PRISM'].append(missing_subset)
 
@@ -85,7 +88,6 @@ def validate_data(model_dfs, prism_df):
             missing_subset = missing_in_tdt_rows[['METRIC_NAME', 'FILTER_PRISM']].copy()
             missing_subset.rename(columns={'FILTER_PRISM': 'FILTER'}, inplace=True)
             missing_subset['MODEL'] = model_name
-            # Reorder columns
             missing_subset = missing_subset[['MODEL', 'METRIC_NAME', 'FILTER']]
             mismatches_dict['Missing_in_TDT'].append(missing_subset)
             
@@ -97,12 +99,41 @@ def validate_data(model_dfs, prism_df):
             "Total Model Records": len(excel_df.drop_duplicates(subset=['METRIC_NAME']))
         })
 
-    # --- Create Final DataFrames and Dictionary ---
+    # 4. Create Final DataFrames and Dictionary
     summary_df = pd.DataFrame(summary_data)
+    all_entries_df = pd.concat(all_entries_dfs, ignore_index=True) if all_entries_dfs else pd.DataFrame()
+
+    # Reorder columns for the 'All Entries' table
+    if not all_entries_df.empty:
+        # Define the ideal column order
+        col_order = ['MODEL', 'METRIC_NAME', 'FILTER_TDT', 'FILTER_PRISM']
+
+        # Get existing columns in the ideal order and then the rest
+        existing_cols_in_order = [c for c in col_order if c in all_entries_df.columns]
+        remaining_cols = [c for c in all_entries_df.columns if c not in existing_cols_in_order]
+
+        # Combine to get the final order
+        final_order = existing_cols_in_order + remaining_cols
+        all_entries_df = all_entries_df[final_order]
+
     matches_df = pd.concat(all_matches, ignore_index=True) if all_matches else pd.DataFrame()
     if not matches_df.empty:
-         matches_df = matches_df[['MODEL', 'METRIC_NAME', 'FILTER_TDT', 'FILTER_PRISM']]
+        # Define the ideal column order
+        col_order = ['MODEL', 'METRIC_NAME', 'FILTER_TDT', 'FILTER_PRISM']
+
+        # Get existing columns in the ideal order and then the rest
+        existing_cols_in_order = [c for c in col_order if c in matches_df.columns]
+        remaining_cols = [c for c in matches_df.columns if c not in existing_cols_in_order]
+
+        # Combine to get the final order
+        final_order = existing_cols_in_order + remaining_cols
+        matches_df = matches_df[final_order]
 
     final_mismatches_dict = {key: pd.concat(val, ignore_index=True) if val else pd.DataFrame() for key, val in mismatches_dict.items()}
 
-    return summary_df, matches_df, final_mismatches_dict
+    return {
+        "summary": summary_df,
+        "matches": matches_df,
+        "mismatches": final_mismatches_dict,
+        "all_entries": all_entries_df
+    }

@@ -56,29 +56,89 @@ if 'validation_states' not in st.session_state:
     }
 
 # --- Reusable Helper Functions ---
+def highlight_diff(data, color='background-color: #FFCCCB'):
+    """
+    Highlights cells in PRISM columns that do not match their corresponding TDT column.
+    Returns a DataFrame of styles.
+    """
+    attr = f'{color}'
+    # Create a new DataFrame of the same shape as `data` to store styles, initialized with empty strings
+    style_df = pd.DataFrame('', index=data.index, columns=data.columns)
+
+    # Find pairs of TDT/PRISM columns to compare
+    prism_cols = [c for c in data.columns if c.endswith('_PRISM')]
+
+    for p_col in prism_cols:
+        t_col = p_col.replace('_PRISM', '_TDT')
+        if t_col in data.columns:
+            # Using .astype(str) for robust comparison across dtypes and NaNs
+            is_mismatch = data[p_col].astype(str) != data[t_col].astype(str)
+            # Apply the style attribute to the PRISM column where there is a mismatch
+            style_df.loc[is_mismatch, p_col] = attr
+
+    return style_df
+
 def display_results(results, key_prefix, filter_column_name):
-    # (This function is unchanged)
-    if not results or results['summary'].empty:
+    """
+    Generic function to display validation results in a consistent format.
+    Includes a summary table, a filter, and detailed tables for matches,
+    mismatches, and (conditionally) all entries.
+    """
+    if not results or results.get('summary', pd.DataFrame()).empty:
         st.info("Run the validation to see the results.")
         return
+
     st.subheader("Validation Summary")
     st.dataframe(results['summary'], use_container_width=True)
+
     st.subheader("Validation Details")
+    # Ensure the filter column exists before proceeding
     if filter_column_name not in results['summary'].columns:
         st.error(f"Cannot generate filter; expected column '{filter_column_name}' not in summary.")
         return
+
+    # --- Create Filter Dropdown ---
     filter_options = ['All'] + results['summary'][filter_column_name].tolist()
-    tdt_filter = st.selectbox(f"Filter by {filter_column_name}", options=filter_options, key=f"tdt_filter_{key_prefix}")
+    tdt_filter = st.selectbox(
+        f"Filter by {filter_column_name}",
+        options=filter_options,
+        key=f"tdt_filter_{key_prefix}"
+    )
+
+    # --- Conditionally Display "All Entries" Table ---
+    all_entries_df = results.get('all_entries')
+    if tdt_filter != 'All' and all_entries_df is not None and not all_entries_df.empty:
+        st.markdown("#### All Entries (Filtered)")
+        # Ensure the filter column exists in the all_entries dataframe
+        if filter_column_name in all_entries_df.columns:
+            all_entries_to_show = all_entries_df[all_entries_df[filter_column_name] == tdt_filter].copy()
+            # Optional: Add a column to show match status
+            if '_merge' in all_entries_to_show.columns:
+                all_entries_to_show['Status'] = all_entries_to_show['_merge'].replace({
+                    'both': 'Match/Mismatch',
+                    'left_only': 'Missing in PRISM',
+                    'right_only': 'Missing in TDT'
+                })
+            st.dataframe(all_entries_to_show.style.apply(highlight_diff, axis=None), use_container_width=True)
+            st.metric("Total Entries Shown", len(all_entries_to_show))
+        else:
+            st.warning(f"Filter column '{filter_column_name}' not found in the 'All Entries' table.")
+
+
+    # --- Display Matches Table ---
     st.markdown("#### Matches")
     matches_to_show = results.get('matches', pd.DataFrame())
     if tdt_filter != 'All' and filter_column_name in matches_to_show.columns:
         matches_to_show = matches_to_show[matches_to_show[filter_column_name] == tdt_filter]
     st.dataframe(matches_to_show, use_container_width=True)
     st.metric("Total Matches Shown", len(matches_to_show))
+
+    # --- Display Mismatches Tables ---
     st.markdown("#### Mismatches")
     mismatches_data = results.get('mismatches', {})
+    total_mismatches_shown = 0
+
     if isinstance(mismatches_data, dict):
-        total_mismatches_shown = 0
         for mismatch_type, mismatch_df in mismatches_data.items():
             if not mismatch_df.empty:
                 st.markdown(f"##### {mismatch_type.replace('_', ' ').title()}")
@@ -87,13 +147,14 @@ def display_results(results, key_prefix, filter_column_name):
                     mismatches_to_show = mismatches_to_show[mismatches_to_show[filter_column_name] == tdt_filter]
                 st.dataframe(mismatches_to_show, use_container_width=True)
                 total_mismatches_shown += len(mismatches_to_show)
-        st.metric("Total Mismatches Shown", total_mismatches_shown)
-    else:
+    elif isinstance(mismatches_data, pd.DataFrame) and not mismatches_data.empty:
         mismatches_to_show = mismatches_data
         if tdt_filter != 'All' and filter_column_name in mismatches_to_show.columns:
             mismatches_to_show = mismatches_to_show[mismatches_to_show[filter_column_name] == tdt_filter]
         st.dataframe(mismatches_to_show, use_container_width=True)
-        st.metric("Total Mismatches Shown", len(mismatches_to_show))
+        total_mismatches_shown = len(mismatches_to_show)
+
+    st.metric("Total Mismatches Shown", total_mismatches_shown)
 
 def select_folder():
     root = tk.Tk()
@@ -199,7 +260,6 @@ with tabs[0]:
         st.dataframe(st.session_state.diag_df, use_container_width=True)
 
 with tabs[1]:
-    # (Tab 1 logic is unchanged)
     st.header("Metric Validation (TDT vs PRISM Template)")
     prerequisites_met = st.session_state.db and st.session_state.uploaded_survey_file
     if not prerequisites_met: st.warning("Please connect to DB and generate the 'Consolidated Survey File'.")
@@ -208,13 +268,13 @@ with tabs[1]:
             try:
                 prism_df = st.session_state.db.run_query(get_metric_query())
                 tdt_dfs = parse_metric_excel(st.session_state.uploaded_survey_file)
-                summary, matches, mismatches = validate_metric_data(tdt_dfs, prism_df)
-                st.session_state.validation_states["metric_validation"]["results"] = {'summary': summary, 'matches': matches, 'mismatches': mismatches}
+                # The validator now returns a dictionary
+                results = validate_metric_data(tdt_dfs, prism_df)
+                st.session_state.validation_states["metric_validation"]["results"] = results
             except Exception as e: st.error(f"An error occurred: {e}")
     display_results(st.session_state.validation_states["metric_validation"]["results"], "metric_val", "TDT")
 
 with tabs[2]:
-    # (Tab 2 logic is unchanged)
     st.header("Metric Mapping Validation (TDT vs PRISM Project)")
     prerequisites_met = st.session_state.db and st.session_state.uploaded_survey_file
     if not prerequisites_met: st.warning("Please connect to DB and generate the 'Consolidated Survey File'.")
@@ -223,13 +283,13 @@ with tabs[2]:
             try:
                 prism_df = st.session_state.db.run_query(get_metric_mapping_query())
                 model_dfs = parse_metric_mapping_excel(st.session_state.uploaded_survey_file)
-                summary, matches, mismatches = validate_metric_mapping_data(model_dfs, prism_df)
-                st.session_state.validation_states["metric_mapping"]["results"] = {'summary': summary, 'matches': matches, 'mismatches': mismatches}
+                # The validator now returns a dictionary
+                results = validate_metric_mapping_data(model_dfs, prism_df)
+                st.session_state.validation_states["metric_mapping"]["results"] = results
             except Exception as e: st.error(f"An error occurred: {e}")
     display_results(st.session_state.validation_states["metric_mapping"]["results"], "metric_map", "MODEL")
 
 with tabs[3]:
-    # (Tab 3 logic is unchanged)
     st.header("Filter Validation (TDT vs PRISM Project)")
     prerequisites_met = st.session_state.db and st.session_state.uploaded_survey_file
     if not prerequisites_met: st.warning("Please connect to DB and generate the 'Consolidated Survey File'.")
@@ -238,13 +298,13 @@ with tabs[3]:
             try:
                 prism_df = st.session_state.db.run_query(get_filter_query())
                 model_dfs = parse_filter_excel(st.session_state.uploaded_survey_file)
-                summary, matches, mismatches = validate_filter_data(model_dfs, prism_df)
-                st.session_state.validation_states["filter_validation"]["results"] = {'summary': summary, 'matches': matches, 'mismatches': mismatches}
+                # The validator now returns a dictionary
+                results = validate_filter_data(model_dfs, prism_df)
+                st.session_state.validation_states["filter_validation"]["results"] = results
             except Exception as e: st.error(f"An error occurred: {e}")
     display_results(st.session_state.validation_states["filter_validation"]["results"], "filter_val", "MODEL")
 
 with tabs[4]:
-    # (Tab 4 logic is unchanged)
     st.header("Failure Diagnostics Validation (TDT vs PRISM Template)")
     prerequisites_met = st.session_state.db and st.session_state.uploaded_diag_file
     if not prerequisites_met: st.warning("Please connect to DB and generate the 'Consolidated Failure Diagnostics File'.")
@@ -253,13 +313,13 @@ with tabs[4]:
             try:
                 prism_df = st.session_state.db.run_query(get_failure_diag_query())
                 tdt_dfs = parse_failure_diag_excel(st.session_state.uploaded_diag_file)
-                summary, matches, mismatches = validate_failure_diag_data(tdt_dfs, prism_df)
-                st.session_state.validation_states["failure_diagnostics"]["results"] = {'summary': summary, 'matches': matches, 'mismatches': mismatches}
+                # The validator now returns a dictionary
+                results = validate_failure_diag_data(tdt_dfs, prism_df)
+                st.session_state.validation_states["failure_diagnostics"]["results"] = results
             except Exception as e: st.error(f"An error occurred: {e}")
     display_results(st.session_state.validation_states["failure_diagnostics"]["results"], "failure_diag", "TDT")
 
 with tabs[5]:
-    # (Tab 5 logic is unchanged)
     st.header("Absolute Deviation Validation")
     prerequisites_met = st.session_state.db and st.session_state.uploaded_stats_file
     if not prerequisites_met: st.warning("Please connect to DB and upload the 'Consolidated Statistics File'.")
@@ -268,8 +328,9 @@ with tabs[5]:
             try:
                 prism_df = st.session_state.db.run_query(get_abs_dev_query())
                 model_dfs = parse_abs_dev_excel(st.session_state.uploaded_stats_file)
-                summary, matches, mismatches = validate_abs_dev_data(model_dfs, prism_df)
-                st.session_state.validation_states["absolute_deviation"]["results"] = {'summary': summary, 'matches': matches, 'mismatches': mismatches}
+                # The validator now returns a dictionary
+                results = validate_abs_dev_data(model_dfs, prism_df)
+                st.session_state.validation_states["absolute_deviation"]["results"] = results
             except Exception as e: st.error(f"An error occurred: {e}")
     display_results(st.session_state.validation_states["absolute_deviation"]["results"], "abs_dev", "MODEL")
 
