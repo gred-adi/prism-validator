@@ -100,6 +100,21 @@ def validate_data(tdt_dfs, prism_df):
     summary_df = pd.DataFrame(summary_data)
     all_entries_df = pd.concat(all_entries_dfs, ignore_index=True) if all_entries_dfs else pd.DataFrame()
     
+    # Reorder columns for the 'All Entries' table
+    if not all_entries_df.empty:
+        # Define the ideal column order
+        col_order = ['TDT'] + join_keys
+        for col in columns_to_compare:
+            col_order.extend([f'{col}_TDT', f'{col}_PRISM'])
+
+        # Get existing columns in the ideal order and then the rest
+        existing_cols_in_order = [c for c in col_order if c in all_entries_df.columns]
+        remaining_cols = [c for c in all_entries_df.columns if c not in existing_cols_in_order]
+
+        # Combine to get the final order
+        final_order = existing_cols_in_order + remaining_cols
+        all_entries_df = all_entries_df[final_order]
+
     matches_df = pd.concat(all_matches, ignore_index=True) if all_matches else pd.DataFrame()
     if not matches_df.empty:
         col_order = ['TDT'] + join_keys + [f'{c}_TDT' for c in columns_to_compare] + [f'{c}_PRISM' for c in columns_to_compare]

@@ -87,6 +87,20 @@ def validate_data(model_dfs, prism_df):
     summary_df = pd.DataFrame(summary_data)
     all_entries_df = pd.concat(all_entries_dfs, ignore_index=True) if all_entries_dfs else pd.DataFrame()
     
+    # Reorder columns for the 'All Entries' table
+    if not all_entries_df.empty:
+        # Define the ideal column order
+        col_order = ['MODEL'] + join_keys
+        for col in columns_to_compare:
+            col_order.extend([f'{col}_TDT', f'{col}_PRISM'])
+
+        # Get remaining columns that are not in the specified order
+        remaining_cols = [c for c in all_entries_df.columns if c not in col_order]
+
+        # Combine the ordered columns with the remaining ones
+        final_order = col_order + remaining_cols
+        all_entries_df = all_entries_df[final_order]
+
     matches_df = pd.concat(all_matches, ignore_index=True) if all_matches else pd.DataFrame()
     if not matches_df.empty:
         col_order = ['MODEL'] + join_keys

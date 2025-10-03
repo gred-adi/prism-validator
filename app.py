@@ -56,6 +56,28 @@ if 'validation_states' not in st.session_state:
     }
 
 # --- Reusable Helper Functions ---
+def highlight_diff(data, color='background-color: #FFCCCB'):
+    """
+    Highlights cells in PRISM columns that do not match their corresponding TDT column.
+    Returns a DataFrame of styles.
+    """
+    attr = f'{color}'
+    # Create a new DataFrame of the same shape as `data` to store styles, initialized with empty strings
+    style_df = pd.DataFrame('', index=data.index, columns=data.columns)
+
+    # Find pairs of TDT/PRISM columns to compare
+    prism_cols = [c for c in data.columns if c.endswith('_PRISM')]
+
+    for p_col in prism_cols:
+        t_col = p_col.replace('_PRISM', '_TDT')
+        if t_col in data.columns:
+            # Using .astype(str) for robust comparison across dtypes and NaNs
+            is_mismatch = data[p_col].astype(str) != data[t_col].astype(str)
+            # Apply the style attribute to the PRISM column where there is a mismatch
+            style_df.loc[is_mismatch, p_col] = attr
+
+    return style_df
+
 def display_results(results, key_prefix, filter_column_name):
     """
     Generic function to display validation results in a consistent format.
@@ -97,7 +119,7 @@ def display_results(results, key_prefix, filter_column_name):
                     'left_only': 'Missing in PRISM',
                     'right_only': 'Missing in TDT'
                 })
-            st.dataframe(all_entries_to_show, use_container_width=True)
+            st.dataframe(all_entries_to_show.style.apply(highlight_diff, axis=None), use_container_width=True)
             st.metric("Total Entries Shown", len(all_entries_to_show))
         else:
             st.warning(f"Filter column '{filter_column_name}' not found in the 'All Entries' table.")
