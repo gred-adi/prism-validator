@@ -57,8 +57,12 @@ def validate_data(model_dfs, prism_df):
         match_mask = (merged_df['_merge'] == 'both')
         for col in columns_to_compare:
             values_match = (merged_df[f"{col}_TDT"].astype(str).str.upper() == merged_df[f"{col}_PRISM"].astype(str).str.upper())
-            is_prism_calc_override = (merged_df['POINT_TYPE_TDT'] == 'PRiSM Calc')
-            condition = values_match if col == 'POINT_UNIT' else (values_match | is_prism_calc_override)
+            is_prism_calc = (merged_df['POINT_TYPE_TDT'] == 'PRiSM Calc')
+
+            # For PRiSM Calc, other columns don't need to match. For non-PRiSM Calc, all columns must match.
+            # A column is considered "matching" if the values match, OR if it's a PRiSM Calc
+            # and the column is not POINT_UNIT or FUNCTION.
+            condition = values_match | (is_prism_calc & (col not in ['POINT_UNIT', 'FUNCTION']))
             match_mask &= condition
         
         match_rows = merged_df[match_mask].copy()
@@ -70,8 +74,13 @@ def validate_data(model_dfs, prism_df):
         for col in columns_to_compare:
             values_mismatch = (merged_df[f"{col}_TDT"].astype(str).str.upper() != merged_df[f"{col}_PRISM"].astype(str).str.upper())
             col_mismatch_mask = (merged_df['_merge'] == 'both') & values_mismatch
-            if col != 'POINT_UNIT':
-                col_mismatch_mask &= (merged_df['POINT_TYPE_TDT'] != 'PRiSM Calc')
+
+            is_prism_calc = merged_df['POINT_TYPE_TDT'] == 'PRiSM Calc'
+
+            # A mismatch is relevant if it's NOT a PRiSM Calc point,
+            # OR if it IS a PRiSM Calc point AND the column is POINT_UNIT or FUNCTION.
+            mismatch_is_relevant = ~is_prism_calc | (is_prism_calc & (col in ['POINT_UNIT', 'FUNCTION']))
+            col_mismatch_mask &= mismatch_is_relevant
             
             if col_mismatch_mask.any():
                 mismatch_subset = merged_df.loc[col_mismatch_mask, ['METRIC_NAME', f'{col}_TDT', f'{col}_PRISM']].copy()
