@@ -5,11 +5,14 @@ import re
 import streamlit as st
 
 # --- Helper functions (from your script, largely unchanged) ---
-def _process_survey_sheets(file_path, survey_data_list):
-    # (This function's internal logic remains the same as your provided script)
-    xls = pd.ExcelFile(file_path)
+def _process_survey_sheets(uploaded_file, survey_data_list):
+    """
+    Processes the 'Point Survey' and related sheets from a single TDT Excel file.
+    """
+    # pd.ExcelFile can read an UploadedFile object directly
+    xls = pd.ExcelFile(uploaded_file)
     if 'Point Survey' not in xls.sheet_names:
-        st.warning(f"'Point Survey' sheet not found in {os.path.basename(file_path)}")
+        st.warning(f"'Point Survey' sheet not found in {uploaded_file.name}")
         return
 
     df_version = pd.read_excel(xls, 'Version', header=None, nrows=5)
@@ -48,11 +51,13 @@ def _process_survey_sheets(file_path, survey_data_list):
                 survey_data_list.append(sub_table_df)
         start_col = end_col
 
-def _process_diagnostic_sheet(file_path, diag_data_list):
-    # (This function's internal logic remains the same as your provided script)
-    xls = pd.ExcelFile(file_path)
+def _process_diagnostic_sheet(uploaded_file, diag_data_list):
+    """
+    Processes the 'Diagnostic' sheet from a single TDT Excel file.
+    """
+    xls = pd.ExcelFile(uploaded_file)
     if 'Diagnostic' not in xls.sheet_names:
-        st.warning(f"'Diagnostic' sheet not found in {os.path.basename(file_path)}")
+        st.warning(f"'Diagnostic' sheet not found in {uploaded_file.name}")
         return
 
     df_version = pd.read_excel(xls, 'Version', header=None, nrows=5)
@@ -99,26 +104,27 @@ def _create_filter_summary(all_survey_data):
     filter_df.rename(columns={'Canary Point Name': 'Point Name'}, inplace=True)
     return filter_df
 
-# --- Main Generator Function (unchanged) ---
+# --- Main Generator Function (MODIFIED) ---
 @st.cache_data
-def generate_files_from_folder(folder_path):
+def generate_files_from_uploads(uploaded_files):
     """
-    Scans a folder for TDT Excel files and consolidates them into two DataFrames.
+    Scans a list of uploaded TDT Excel files and consolidates them into two DataFrames.
     Returns:
         A tuple of two pandas DataFrames: (survey_df, diag_df)
     """
-    tdt_files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith('.xlsx') and not f.startswith('~')]
-    if not tdt_files:
-        raise FileNotFoundError(f"No Excel files (.xlsx) found in the folder: {folder_path}")
+    if not uploaded_files:
+        raise FileNotFoundError(f"No Excel files (.xlsx) were uploaded.")
 
     all_survey_data = []
     all_diag_data = []
-    for file_path in tdt_files:
+    # Iterate over the list of UploadedFile objects
+    for file_obj in uploaded_files:
         try:
-            _process_survey_sheets(file_path, all_survey_data)
-            _process_diagnostic_sheet(file_path, all_diag_data)
+            # Pass the file object directly to the processing functions
+            _process_survey_sheets(file_obj, all_survey_data)
+            _process_diagnostic_sheet(file_obj, all_diag_data)
         except Exception as e:
-            st.error(f"Failed to process file {os.path.basename(file_path)}: {e}")
+            st.error(f"Failed to process file {file_obj.name}: {e}")
             continue
 
     if not all_survey_data:
@@ -129,7 +135,7 @@ def generate_files_from_folder(folder_path):
     survey_df = pd.concat(all_survey_data, ignore_index=True)
     diag_df = pd.concat(all_diag_data, ignore_index=True)
 
-    # --- NEW: Reorder columns for better presentation ---
+    # --- Reorder columns for better presentation ---
     survey_cols = ['TDT', 'Model'] + [col for col in survey_df.columns if col not in ['TDT', 'Model']]
     survey_df = survey_df[survey_cols]
 
@@ -164,4 +170,3 @@ def convert_dfs_to_excel_bytes(survey_df, diag_df):
     output_diag.seek(0)
 
     return output_survey, output_diag
-

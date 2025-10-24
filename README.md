@@ -73,7 +73,8 @@ Before you begin, ensure you have the following installed:
           "pandas",
           "pyodbc",
           "openpyxl",
-          "xlsxwriter"
+          "xlsxwriter",
+          "matplotlib"
       ]
       ```
       
