@@ -175,6 +175,7 @@ prism-validator/
 │
 ├── pyproject.toml           # Project metadata and dependencies for uv/pip
 └── README.md                # This file
+```
 
 # 📦 Packaging the Application
 
