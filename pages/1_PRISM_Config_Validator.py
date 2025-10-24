@@ -117,6 +117,11 @@ def display_results(results, key_prefix, filter_column_name):
                     'left_only': 'Missing in PRISM',
                     'right_only': 'Missing in TDT'
                 })
+
+            # --- NEW: Drop specified columns ---
+            cols_to_drop = ['_merge', 'Status', 'FORM_ID', 'METRIC_ID', 'FORM ID', 'METRIC ID', 'POINT NAME', 'FUNCTION', 'THRESHOLD TYPE']
+            all_entries_to_show = all_entries_to_show.drop(columns=[col for col in cols_to_drop if col in all_entries_to_show.columns])
+
             st.dataframe(all_entries_to_show.style.apply(highlight_diff, axis=None), use_container_width=True)
             st.metric("Total Entries Shown", len(all_entries_to_show))
         else:
@@ -128,6 +133,11 @@ def display_results(results, key_prefix, filter_column_name):
     matches_to_show = results.get('matches', pd.DataFrame())
     if tdt_filter != 'All' and filter_column_name in matches_to_show.columns:
         matches_to_show = matches_to_show[matches_to_show[filter_column_name] == tdt_filter]
+
+    # --- NEW: Drop specified columns ---
+    cols_to_drop = ['_merge', 'Status', 'FORM_ID', 'METRIC_ID', 'FORM ID', 'METRIC ID', 'POINT NAME', 'FUNCTION', 'THRESHOLD TYPE']
+    matches_to_show = matches_to_show.drop(columns=[col for col in cols_to_drop if col in matches_to_show.columns])
+
     st.dataframe(matches_to_show, use_container_width=True)
     st.metric("Total Matches Shown", len(matches_to_show))
 
