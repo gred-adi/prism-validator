@@ -1,6 +1,6 @@
 import streamlit as st
 import os
-from file_generator import generate_files_from_folder, convert_dfs_to_excel_bytes
+from file_generator import generate_files_from_uploads, convert_dfs_to_excel_bytes
 
 st.set_page_config(page_title="Home", layout="wide")
 
@@ -22,7 +22,7 @@ if uploaded_files:
         with st.spinner("Generating reference files..."):
             try:
                 # Generate DFs
-                s_df, d_df = generate_files_from_folder(uploaded_files)
+                s_df, d_df = generate_files_from_uploads(uploaded_files)
                 st.session_state.survey_df = s_df
                 st.session_state.diag_df = d_df
                 # Create overview
