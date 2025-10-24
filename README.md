@@ -175,4 +175,26 @@ prism-validator/
 │
 ├── pyproject.toml           # Project metadata and dependencies for uv/pip
 └── README.md                # This file
+
+# 📦 Packaging the Application
+
+To create a standalone executable for Windows, you can use PyInstaller. This allows you to share the application with users who do not have Python or the required dependencies installed.
+
+### 1. Install PyInstaller
+If you haven't already, install PyInstaller using pip:
+```bash
+pip install pyinstaller
+```
+
+### 2. Run the Build Command
+Navigate to the root directory of the project in your terminal and run the following command:
+```bash
+pyinstaller --name "PRISM_Config_Validator" app.py
+```
+This command will create a `dist/PRISM_Config_Validator` folder containing the executable and all necessary files.
+
+### 3. Running the Executable
+1.  Navigate to the `dist/PRISM_Config_Validator` folder.
+2.  Create a `secrets.toml` file in this folder with your database and API credentials (see "Create the Secrets File" section above for the format).
+3.  Double-click the `PRISM_Config_Validator.exe` file to run the application.
 ```

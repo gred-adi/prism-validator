@@ -2,6 +2,8 @@ import pandas as pd
 import streamlit as st
 from db_utils import PrismDB
 import os
+import toml
+import sys
 
 # --- Import validation-specific modules ---
 from validations.metric_validation.query import get_query as get_metric_query
@@ -25,6 +27,7 @@ from validations.absolute_deviation_validation.parser import parse_excel as pars
 from validations.absolute_deviation_validation.validator import validate_data as validate_abs_dev_data
 
 from validations.model_deployment_config.query import get_query as get_model_deployment_query
+from utils import load_secrets
 
 # from file_generator import generate_files_from_folder, convert_dfs_to_excel_bytes
 
@@ -164,13 +167,15 @@ def display_results(results, key_prefix, filter_column_name):
 
     st.metric("Total Mismatches Shown", total_mismatches_shown)
 
+secrets = load_secrets()
+
 # --- Sidebar UI ---
 with st.sidebar:
     st.header("1. Database Connection")
-    db_host = st.text_input("Host", value=st.secrets.get("db", {}).get("host", ""))
-    db_name = st.text_input("Database", value=st.secrets.get("db", {}).get("database", ""))
-    db_user = st.text_input("User", value=st.secrets.get("db", {}).get("user", ""))
-    db_pass = st.text_input("Password", type="password", value=st.secrets.get("db", {}).get("password", ""))
+    db_host = st.text_input("Host", value=secrets.get("db", {}).get("host", ""))
+    db_name = st.text_input("Database", value=secrets.get("db", {}).get("database", ""))
+    db_user = st.text_input("User", value=secrets.get("db", {}).get("user", ""))
+    db_pass = st.text_input("Password", type="password", value=secrets.get("db", {}).get("password", ""))
     if st.button("Connect to Database"):
         # (DB connection logic is unchanged)
         with st.spinner("Connecting..."):

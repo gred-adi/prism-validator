@@ -105,10 +105,14 @@ def convert_df_to_excel_bytes(survey_df):
     output_survey.seek(0)
     return output_survey
 
+from utils import load_secrets
+
+secrets = load_secrets()
+
 # --- Constants & Helpers ---
 # Replace with your actual API details or use Streamlit secrets
 API_URL = "https://cch.aboitizpower.com:55236/api/v2/getTagData"
-API_TOKEN = st.secrets.get("api", {}).get("token", "")
+API_TOKEN = secrets.get("api", {}).get("token", "")
 AGGREGATE_NAMES = [
     "Average", "Count", "CountInStateNonZero", "CountInStateZero", "Delta", "DeltaBounds",
     "DeltaTotalCount", "DurationBad", "DurationGood", "DurationInStateNonZero", "DurationInStateZero",
