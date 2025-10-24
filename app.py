@@ -1,9 +1,12 @@
 import streamlit as st
-from st_pages import get_nav_from_toml
 
-st.set_page_config(page_title="PRISM & Canary", layout="wide")
+pages = {
+    "Home": [st.Page("pages/Home.py", title="Home", icon="🏠")],
+    "Apps": [
+        st.Page("pages/1_PRISM_Config_Validator.py", title="PRISM Config Validator", icon="✅"),
+        st.Page("pages/2_Canary_Historian_Downloader.py", title="Canary Historian Downloader", icon="⬇️"),
+    ],
+}
 
-st.navigation(get_nav_from_toml())
-
-st.title("PRISM & Canary")
-st.markdown("Select an application from the sidebar to get started.")
+pg = st.navigation(pages)
+pg.run()
