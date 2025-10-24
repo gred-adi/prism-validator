@@ -1,0 +1,19 @@
+[[pages]]
+path = "pages/Home.py"
+name = "Home"
+icon = "🏠"
+
+[[pages]]
+name = "Apps"
+icon = "apps_icon"
+is_section = true
+
+[[pages]]
+path = "pages/1_PRISM_Config_Validator.py"
+name = "PRISM Config Validator"
+icon = "✅"
+
+[[pages]]
+path = "pages/2_Canary_Historian_Downloader.py"
+name = "Canary Historian Downloader"
+icon = "⬇️"
