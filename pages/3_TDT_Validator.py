@@ -26,83 +26,25 @@ if "tdt_diagnostics" not in st.session_state.validation_states:
     st.session_state.validation_states["tdt_diagnostics"] = {"results": None}
 
 
-# --- Helper function to highlight specific cells ---
-def highlight_duplicate_cells(row):
-    """
-    Applies a style to cells that are flagged as duplicates based on the 'Issue' column.
-    """
-    issue_to_col_map = {
-        'Duplicate Metric': 'Metric',
-        'Duplicate KKS Point Name': 'KKS Point Name',
-        'Duplicate DCS Description': 'DCS Description',
-        'Duplicate Canary Point Name': 'Canary Point Name',
-        'Duplicate Canary Description': 'Canary Description'
-    }
-    issues = str(row.get('Issue', ''))
-    styles = [''] * len(row)
-    for issue_key, col_name in issue_to_col_map.items():
-        if issue_key in issues:
-            try:
-                col_index = list(row.index).index(col_name)
-                styles[col_index] = 'background-color: #FFCCCB' # Light red
-            except ValueError:
-                pass 
-    return styles
-
 # --- Helper function to highlight rows with any issue ---
 def highlight_issue_rows(row):
     """
-    Applies a style to the entire row if the 'Issue' column is not 'OK'.
+    Applies a style to the entire row if the 'Issue' column is not '✅'.
     """
     style = 'background-color: #FFCCCB' if (pd.notna(row.get('Issue')) and row.get('Issue') != '✅') else ''
     return [style] * len(row)
 
-# --- Reusable Helper Function for Duplicate results (UPDATED) ---
-def display_duplicate_results(summary_df, details_df):
-    """
-    Displays pre-filtered TDT validation results with a summary
-    and SEPARATE sub-tables for each issue type.
-    """
-    st.subheader("Validation Summary")
-    st.dataframe(summary_df, use_container_width=True)
-
-    st.subheader("Validation Details")
-    if details_df.empty:
-        st.info("No duplicate details match your filter.")
-        return
-
-    all_issues = set()
-    details_df['Issue'].str.split(', ').apply(all_issues.update)
-    unique_issues = sorted(list(all_issues))
-
-    if not unique_issues:
-        st.info("No issues found in the filtered data.")
-        return
-
-    st.markdown(f"**Showing {len(details_df)} total duplicate entries across {len(unique_issues)} issue type(s):**")
-
-    cols_to_display = [
-        'TDT', 'Model', 'Metric', 'Point Type', 'KKS Point Name', 
-        'DCS Description', 'Canary Point Name', 'Canary Description', 'Unit', 'Issue'
-    ]
-    existing_cols_to_display = [col for col in cols_to_display if col in details_df.columns]
-
-    for issue in unique_issues:
-        st.markdown(f"#### {issue}")
-        issue_df = details_df[details_df['Issue'].str.contains(issue, na=False)].copy()
-        issue_df_filtered = issue_df[existing_cols_to_display]
-        
-        if not issue_df_filtered.empty:
-            styler = issue_df_filtered.style.apply(highlight_duplicate_cells, axis=1)
-            styler = styler.hide(subset=['Issue'], axis=1)
-            st.dataframe(styler, use_container_width=True)
-
 # --- Generic Helper for Simple Results (UPDATED) ---
-def display_simple_results(summary_df, details_df, columns_to_show, show_summary=True, summary_info_msg="No items found to summarize.", details_info_msg="No items were found in the TDTs."):
+def display_simple_results(summary_df, details_df, columns_to_show, use_model_filter=False, show_summary=True, summary_info_msg="No items found to summarize.", details_info_msg="No items were found in the TDTs."):
     """
     Displays pre-filtered TDT validation results with a summary
     and a single details table. Highlights rows with issues.
+    Now supports an optional Model filter.
     """
+    
+    # --- This helper function no longer needs to filter ---
+    # --- It just displays the pre-filtered dataframes ---
+
     if show_summary:
         st.subheader("Validation Summary")
         if summary_df.empty:
@@ -193,16 +135,17 @@ with tabs[1]:
     
     results_data = st.session_state.validation_states["tdt_point_survey"].get("results")
     
-    if not results_data or results_data.get('summary', pd.DataFrame()).empty:
-        st.info("Run the validation to see the results. No issues found.")
+    if not results_data:
+        st.info("Run the validation to see the results.")
     else:
-        summary_df = results_data['summary']
-        details_df = results_data['details']
+        summary_df = results_data.get('summary', pd.DataFrame())
+        details_df = results_data.get('details', pd.DataFrame())
 
         # --- SHARED FILTERS ---
         col1, col2 = st.columns(2)
         with col1:
-            tdt_options = ['All'] + sorted(summary_df['TDT'].unique().tolist())
+            # Use details_df for filters as it has all rows
+            tdt_options = ['All'] + sorted(details_df['TDT'].unique().tolist())
             tdt_filter = st.selectbox( 
                 "Filter by TDT", 
                 options=tdt_options, 
@@ -211,9 +154,9 @@ with tabs[1]:
         
         with col2:
             if tdt_filter == 'All':
-                model_options = ['All'] + sorted(summary_df['Model'].unique().tolist())
+                model_options = ['All'] + sorted(details_df['Model'].unique().tolist())
             else:
-                model_options = ['All'] + sorted(summary_df[summary_df['TDT'] == tdt_filter]['Model'].unique().tolist())
+                model_options = ['All'] + sorted(details_df[details_df['TDT'] == tdt_filter]['Model'].unique().tolist())
             
             model_filter = st.selectbox( 
                 "Filter by Model", 
@@ -233,8 +176,19 @@ with tabs[1]:
             summary_to_show = summary_to_show[summary_to_show['Model'] == model_filter]
             details_to_show = details_to_show[details_to_show['Model'] == model_filter]
 
-        # --- Call the display function ---
-        display_duplicate_results(summary_to_show, details_to_show)
+        # --- Call the simple display function ---
+        point_survey_cols_to_show = [
+            'TDT', 'Model', 'Metric', 'Point Type', 'KKS Point Name', 
+            'DCS Description', 'Canary Point Name', 'Canary Description', 'Unit'
+        ]
+        
+        display_simple_results(
+            summary_to_show, 
+            details_to_show,
+            point_survey_cols_to_show,
+            summary_info_msg="No points found to summarize for this filter.",
+            details_info_msg="No points found for this filter."
+        )
 
 # --- Tab 2: Calculation Validation ---
 with tabs[2]:

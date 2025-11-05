@@ -17,19 +17,21 @@ def validate_point_survey(survey_df: pd.DataFrame) -> dict:
     This validation EXCLUDES metrics where 'Point Type' is 'PRiSM Calc'.
     
     Returns:
-        A dictionary containing a summary DataFrame and a details DataFrame.
+        A dictionary containing a summary DataFrame (with '✅' for OK) and a 
+        details DataFrame (with *all* non-PRiSM Calc points).
     """
     if survey_df is None or survey_df.empty:
         return {
-            "summary": pd.DataFrame(columns=["TDT", "Model", "Duplicate Type", "Count"]),
+            "summary": pd.DataFrame(),
             "details": pd.DataFrame()
         }
 
-    # --- NEW: Filter out 'PRiSM Calc' points before validation ---
-    validation_df = survey_df[survey_df['Point Type'] != 'PRiSM Calc'].copy()
+    # 1. Filter for all points *except* PRiSM Calc
+    details_df = survey_df[survey_df['Point Type'] != 'PRiSM Calc'].copy()
+    if details_df.empty:
+        return {"summary": pd.DataFrame(), "details": pd.DataFrame()}
 
     # Columns to check for duplicates
-    # We ignore 'nan' or None values, as those aren't "duplicates"
     columns_to_check = [
         'Metric', 
         'KKS Point Name', 
@@ -38,42 +40,24 @@ def validate_point_survey(survey_df: pd.DataFrame) -> dict:
         'Canary Description'
     ]
     
-    all_duplicates_dfs = []
-
+    # 2. Find all duplicate indices and map them to an issue string
+    issue_map = {}
     for col in columns_to_check:
-        if col in validation_df.columns:
+        if col in details_df.columns:
             # Find duplicates based on TDT, Model, and the specific column
-            # Use 'validation_df' (the filtered df) for the check
-            duplicates = validation_df[validation_df.duplicated(subset=['TDT', 'Model', col], keep=False)].dropna(subset=[col]).copy()
+            duplicate_mask = details_df.duplicated(subset=['TDT', 'Model', col], keep=False) & details_df[col].notna()
+            indices = details_df[duplicate_mask].index
             
-            if not duplicates.empty:
-                duplicates['Issue'] = f"Duplicate {col}"
-                all_duplicates_dfs.append(duplicates)
+            # Map the issue to the original index
+            for idx in indices:
+                issue_map.setdefault(idx, []).append(f"Duplicate {col}")
 
-    if not all_duplicates_dfs:
-        # No duplicates found at all
-        return {
-            "summary": pd.DataFrame(columns=["TDT", "Model", "Issue", "Count"]),
-            "details": pd.DataFrame()
-        }
-
-    # Combine all found duplicates
-    details_df = pd.concat(all_duplicates_dfs, ignore_index=True)
+    # 3. Create the 'Issue' column
+    # Map the dictionary of issue lists to the dataframe's index
+    issue_series = pd.Series(issue_map).map(', '.join)
+    details_df['Issue'] = details_df.index.map(issue_series).fillna("✅")
     
-    # A single row might be a duplicate for multiple reasons (e.g., same Metric AND same Canary Point Name)
-    # We group by the row's original index to consolidate issues, then drop duplicates
-    details_df = (
-        details_df.groupby(level=0)
-        .agg({
-            **{col: 'first' for col in validation_df.columns if col in details_df.columns},
-            'Issue': lambda x: ', '.join(x.unique())
-        })
-        .reset_index(drop=True)
-        .drop_duplicates()
-        .sort_values(by=['TDT', 'Model', 'Issue'] + columns_to_check)
-    )
-
-    # Create the summary table
+    # 4. Create the summary table
     summary_df = (
         details_df.groupby(['TDT', 'Model', 'Issue'])
         .size()
