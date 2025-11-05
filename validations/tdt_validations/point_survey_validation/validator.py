@@ -14,6 +14,8 @@ def validate_point_survey(survey_df: pd.DataFrame) -> dict:
     - Canary Point Name
     - Canary Description
     
+    This validation EXCLUDES metrics where 'Point Type' is 'PRiSM Calc'.
+    
     Returns:
         A dictionary containing a summary DataFrame and a details DataFrame.
     """
@@ -22,6 +24,9 @@ def validate_point_survey(survey_df: pd.DataFrame) -> dict:
             "summary": pd.DataFrame(columns=["TDT", "Model", "Duplicate Type", "Count"]),
             "details": pd.DataFrame()
         }
+
+    # --- NEW: Filter out 'PRiSM Calc' points before validation ---
+    validation_df = survey_df[survey_df['Point Type'] != 'PRiSM Calc'].copy()
 
     # Columns to check for duplicates
     # We ignore 'nan' or None values, as those aren't "duplicates"
@@ -36,10 +41,10 @@ def validate_point_survey(survey_df: pd.DataFrame) -> dict:
     all_duplicates_dfs = []
 
     for col in columns_to_check:
-        if col in survey_df.columns:
+        if col in validation_df.columns:
             # Find duplicates based on TDT, Model, and the specific column
-            # We must dropna() so that 'None' or 'nan' values are not grouped as duplicates
-            duplicates = survey_df[survey_df.duplicated(subset=['TDT', 'Model', col], keep=False)].dropna(subset=[col]).copy()
+            # Use 'validation_df' (the filtered df) for the check
+            duplicates = validation_df[validation_df.duplicated(subset=['TDT', 'Model', col], keep=False)].dropna(subset=[col]).copy()
             
             if not duplicates.empty:
                 duplicates['Issue'] = f"Duplicate {col}"
@@ -60,7 +65,7 @@ def validate_point_survey(survey_df: pd.DataFrame) -> dict:
     details_df = (
         details_df.groupby(level=0)
         .agg({
-            **{col: 'first' for col in survey_df.columns if col in details_df.columns},
+            **{col: 'first' for col in validation_df.columns if col in details_df.columns},
             'Issue': lambda x: ', '.join(x.unique())
         })
         .reset_index(drop=True)
