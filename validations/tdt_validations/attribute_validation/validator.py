@@ -66,7 +66,7 @@ def validate_attribute(survey_df: pd.DataFrame, diag_df: pd.DataFrame) -> dict:
     issue_df = pd.concat(issues_list, axis=1)
     
     details_df['Issue'] = issue_df.apply(lambda x: ', '.join(x.dropna()), axis=1)
-    details_df['Issue'] = details_df['Issue'].replace('', 'OK')
+    details_df['Issue'] = details_df['Issue'].replace('', '✅')
 
     # 6. Create the Function Validation Summary
     function_summary = (

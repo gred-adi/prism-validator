@@ -43,7 +43,7 @@ def validate_diagnostics(diag_df: pd.DataFrame) -> dict:
     summary_df['Issue'] = np.where(
         (summary_df['Total_Weight'] != 100) & (summary_df['Total_Weight'] != 0),
         "Weight Sum != 100",
-        "OK"
+        "✅"
     )
     
     # Re-order columns for better presentation

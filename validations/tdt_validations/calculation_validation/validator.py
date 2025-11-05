@@ -52,7 +52,7 @@ def validate_calculation(survey_df: pd.DataFrame) -> dict:
     all_blank_mask = deduped_calc_df[calc_cols].isnull().all(axis=1)
     
     # 6. Create the 'Issue' column based on the mask
-    deduped_calc_df['Issue'] = np.where(all_blank_mask, "Missing all calculation details", "OK")
+    deduped_calc_df['Issue'] = np.where(all_blank_mask, "Missing all calculation details", "✅")
     
     # 7. The 'details' df is *all* unique PRiSM Calc points, now with an Issue status
     details_df = deduped_calc_df

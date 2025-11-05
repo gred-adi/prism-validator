@@ -54,7 +54,7 @@ def highlight_issue_rows(row):
     """
     Applies a style to the entire row if the 'Issue' column is not 'OK'.
     """
-    style = 'background-color: #FFCCCB' if (pd.notna(row.get('Issue')) and row.get('Issue') != 'OK') else ''
+    style = 'background-color: #FFCCCB' if (pd.notna(row.get('Issue')) and row.get('Issue') != '✅') else ''
     return [style] * len(row)
 
 # --- Reusable Helper Function for Duplicate results ---
