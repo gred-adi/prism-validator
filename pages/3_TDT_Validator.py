@@ -6,8 +6,8 @@ import os
 from validations.tdt_validations.point_survey_validation.validator import validate_point_survey
 from validations.tdt_validations.calculation_validation.validator import validate_calculation
 from validations.tdt_validations.attribute_validation.validator import validate_attribute
+from validations.tdt_validations.diagnostics_validation.validator import validate_diagnostics
 # (other imports will go here as you build them)
-# from validations.tdt_validations.diagnostics_validation.validator import validate_diagnostics
 # from validations.tdt_validations.prescriptive_validation.validator import validate_prescriptive
 
 # --- Page Configuration ---
@@ -22,6 +22,9 @@ if "tdt_calculation" not in st.session_state.validation_states:
     st.session_state.validation_states["tdt_calculation"] = {"results": None}
 if "tdt_attribute" not in st.session_state.validation_states:
     st.session_state.validation_states["tdt_attribute"] = {"results": None}
+# NEW: Add state for diagnostics validation
+if "tdt_diagnostics" not in st.session_state.validation_states:
+    st.session_state.validation_states["tdt_diagnostics"] = {"results": None}
 
 
 # --- Helper function to highlight specific cells ---
@@ -271,10 +274,9 @@ with tabs[2]:
         details_info_msg="No 'PRiSM Calc' points were found in the TDTs."
     )
 
-# --- Tab 3: Attribute Validation (UPDATED) ---
+# --- Tab 3: Attribute Validation ---
 with tabs[3]:
     st.header("Attribute Validation")
-    # --- UPDATED: Markdown Description ---
     st.markdown("Checks logic for `Function`, `Constraint`, and `Diagnostic` usage. Also checks for incomplete `Filter` definitions and provides an audit of all active filters.")
     
     prerequisites_met = (st.session_state.get('survey_df') is not None) and (st.session_state.get('diag_df') is not None)
@@ -300,7 +302,6 @@ with tabs[3]:
         st.markdown("Audits all metrics (grouped by TDT) for correct `Function`, `Constraint`, `Diagnostic` usage, and `Filter` completeness. Rows in red indicate a logical conflict.")
         
         function_results = results_data.get("function_validation")
-        # --- UPDATED: Added Filter columns to the view ---
         function_cols_to_show = [
             'TDT', 'Metric', 'Function', 'Constraint', 'Diag_Count', 'Filter Condition', 'Filter Value'
         ]
@@ -325,7 +326,7 @@ with tabs[3]:
             filter_results, 
             "tdt_attr_filter",
             filter_cols_to_show,
-            show_summary=False, # Summary table is just a count, not as useful here
+            show_summary=False,
             details_info_msg="No metrics with *complete* filters were found."
         )
     
@@ -333,19 +334,87 @@ with tabs[3]:
         st.info("Click 'Run Attribute Validation' to see the reports.")
 
 
-# --- Tab 4: Diagnostics Validation (Placeholder) ---
+# --- Tab 4: Diagnostics Validation (UPDATED) ---
 with tabs[4]:
     st.header("Diagnostics Validation")
-    st.markdown("Checks for logic in the **Diagnostic** sheets, such as enabled failure modes missing directions or weights.")
+    st.markdown("Provides a summary of Failure Modes and a drill-down to inspect metric weights and directions.")
+    
     prerequisites_met = st.session_state.get('diag_df') is not None
     if not prerequisites_met:
         st.warning("Please load TDT files on the **Home** page first.")
     
     if st.button("Run Diagnostics Validation", key="run_diag_val", disabled=not prerequisites_met):
         with st.spinner('Running...'):
-            st.info("Validation logic for 'Diagnostics' is not yet implemented.")
+            try:
+                results = validate_diagnostics(st.session_state.diag_df)
+                st.session_state.validation_states["tdt_diagnostics"]["results"] = results
+                st.success("Diagnostics Validation complete!")
+            except Exception as e: 
+                st.error(f"An error occurred: {e}")
+                st.exception(e)
+
+    # --- Display Logic for Diagnostics ---
+    results_data = st.session_state.validation_states["tdt_diagnostics"].get("results")
+    
+    if results_data and not results_data.get('summary', pd.DataFrame()).empty:
+        summary_df = results_data['summary']
+        details_df = results_data['details']
+
+        # --- 1. TDT Overview (Failure Mode Count per TDT) ---
+        st.subheader("TDT Overview")
+        overview_df = (
+            summary_df.groupby('TDT')['Failure Mode']
+            .nunique()
+            .to_frame('Unique Failure Mode Count')
+            .reset_index()
+        )
+        st.dataframe(overview_df, use_container_width=True)
+
+        # --- 2. Failure Mode Summary (Metric Count & Weight Check) ---
+        st.subheader("Failure Mode Summary")
+        st.markdown("Shows metric count and total weight per failure mode. Rows in red have a `Total_Weight` that is not 100 (or 0).")
+        st.dataframe(
+            summary_df.style.apply(highlight_issue_rows, axis=1),
+            use_container_width=True
+        )
+
+        # --- 3. Details Drill-Down ---
+        st.subheader("Details Drill-Down")
+        
+        # Create TDT filter
+        tdt_options = sorted(details_df['TDT'].unique().tolist())
+        tdt_filter = st.selectbox("Filter by TDT", options=tdt_options, key="diag_tdt_filter")
+
+        # Create Failure Mode filter based on TDT
+        if tdt_filter:
+            fm_options = sorted(
+                details_df[details_df['TDT'] == tdt_filter]['Failure Mode'].unique().tolist()
+            )
+            fm_filter = st.selectbox(
+                "Filter by Failure Mode", 
+                options=fm_options, 
+                key="diag_fm_filter"
+            )
+        
+            # Filter the details dataframe
+            filtered_details = details_df[
+                (details_df['TDT'] == tdt_filter) &
+                (details_df['Failure Mode'] == fm_filter)
+            ]
             
-    # (Display results logic will go here)
+            # Display the relevant columns
+            st.dataframe(
+                filtered_details[['Metric', 'Direction', 'Weighting']],
+                use_container_width=True
+            )
+        else:
+            st.info("Select a TDT to see failure modes.")
+
+    elif st.session_state.validation_states["tdt_diagnostics"].get("results") is None:
+        st.info("Click 'Run Diagnostics Validation' to see the reports.")
+    else:
+        st.info("No diagnostic data was found in the TDTs.")
+
 
 # --- Tab 5: Prescriptive Validation (Placeholder) ---
 with tabs[5]:
