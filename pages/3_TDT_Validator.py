@@ -35,16 +35,12 @@ def highlight_issue_rows(row):
     return [style] * len(row)
 
 # --- Generic Helper for Simple Results (UPDATED) ---
-def display_simple_results(summary_df, details_df, columns_to_show, use_model_filter=False, show_summary=True, summary_info_msg="No items found to summarize.", details_info_msg="No items were found in the TDTs."):
+def display_simple_results(summary_df, details_df, columns_to_show, show_summary=True, summary_info_msg="No items found to summarize.", details_info_msg="No items were found in the TDTs."):
     """
     Displays pre-filtered TDT validation results with a summary
     and a single details table. Highlights rows with issues.
-    Now supports an optional Model filter.
     """
     
-    # --- This helper function no longer needs to filter ---
-    # --- It just displays the pre-filtered dataframes ---
-
     if show_summary:
         st.subheader("Validation Summary")
         if summary_df.empty:
@@ -117,7 +113,8 @@ with tabs[0]:
 # --- Tab 1: Point Survey Validation ---
 with tabs[1]:
     st.header("Point Survey Validation")
-    st.markdown("Checks for duplicate entries (within the same TDT/Model) in key columns: `Metric`, `KKS Point Name`, `DCS Description`, `Canary Point Name`, and `Canary Description`. This check ignores metrics where `Point Type` is `PRiSM Calc`.")
+    # --- UPDATED: Markdown Description ---
+    st.markdown("Audits all non-`PRiSM Calc` points. It checks for: 1) **Duplicates** in key columns (`Metric`, `KKS Point Name`, etc.) and 2) **Blank Fields** for required columns (`Point Type`, `KKS Point Name`, `Unit`, etc.).")
     
     prerequisites_met = st.session_state.get('survey_df') is not None
     if not prerequisites_met:
