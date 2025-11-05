@@ -2,8 +2,9 @@ import pandas as pd
 import streamlit as st
 import os
 
-# --- Import validation-specific modules (as placeholders) ---
-# from validations.tdt_validations.point_survey_validation.validator import validate_point_survey
+# --- Import the new validator ---
+from validations.tdt_validations.point_survey_validation.validator import validate_point_survey
+# (other imports will go here as you build them)
 # from validations.tdt_validations.calculation_validation.validator import validate_calculation
 # from validations.tdt_validations.attribute_validation.validator import validate_attribute
 # from validations.tdt_validations.diagnostics_validation.validator import validate_diagnostics
@@ -15,31 +16,142 @@ st.set_page_config(page_title="TDT Validator", layout="wide")
 # --- Initialize Session State ---
 if 'validation_states' not in st.session_state:
     st.session_state.validation_states = {} # Ensure main state exists
-# Add states for new validations as needed
 if "tdt_point_survey" not in st.session_state.validation_states:
     st.session_state.validation_states["tdt_point_survey"] = {"results": None}
-if "tdt_calculation" not in st.session_state.validation_states:
-    st.session_state.validation_states["tdt_calculation"] = {"results": None}
-if "tdt_attribute" not in st.session_state.validation_states:
-    st.session_state.validation_states["tdt_attribute"] = {"results": None}
-if "tdt_diagnostics" not in st.session_state.validation_states:
-    st.session_state.validation_states["tdt_diagnostics"] = {"results": None}
-if "tdt_prescriptive" not in st.session_state.validation_states:
-    st.session_state.validation_states["tdt_prescriptive"] = {"results": None}
+# (other validation states)
 
 
-# --- Reusable Helper Functions ---
-# (You can copy display_results from 1_PRISM_Config_Validator.py here later)
-def display_placeholder_results(results, key_prefix, filter_column_name):
-    """Placeholder for displaying validation results."""
-    st.info("This is a placeholder for displaying validation results.")
-    if results:
-        st.subheader("Raw Results (Placeholder)")
-        st.dataframe(results.get('summary', pd.DataFrame()), use_container_width=True)
+# --- Helper function to highlight specific cells ---
+def highlight_duplicate_cells(row):
+    """
+    Applies a style to cells that are flagged as duplicates based on the 'Issue' column.
+    """
+    # Mapping from issue string (in 'Issue' col) to the column name
+    issue_to_col_map = {
+        'Duplicate Metric': 'Metric',
+        'Duplicate KKS Point Name': 'KKS Point Name',
+        'Duplicate DCS Description': 'DCS Description',
+        'Duplicate Canary Point Name': 'Canary Point Name',
+        'Duplicate Canary Description': 'Canary Description'
+    }
+    
+    issues = str(row.get('Issue', ''))
+    styles = [''] * len(row)
+    
+    # Always highlight the 'Issue' column itself
+    try:
+        issue_col_index = list(row.index).index('Issue')
+        styles[issue_col_index] = 'background-color: #FFCCCB' # Light red
+    except ValueError:
+        pass # 'Issue' column not found
+
+    # Highlight the specific column that has the duplicate
+    for issue_key, col_name in issue_to_col_map.items():
+        if issue_key in issues:
+            try:
+                col_index = list(row.index).index(col_name)
+                styles[col_index] = 'background-color: #FFCCCB' # Light red
+            except ValueError:
+                pass # Column not in the final view
+                
+    return styles
+
+# --- UPDATED: Reusable Helper Function for TDT Validations ---
+def display_duplicate_results(results_dict, key_prefix):
+    """
+    Displays TDT validation results with a summary, filters, and
+    SEPARATE sub-tables for each issue type, highlighting specific cells.
+    """
+    if not results_dict or results_dict.get('summary', pd.DataFrame()).empty:
+        st.info("Run the validation to see the results. No issues found.")
+        return
+
+    summary_df = results_dict['summary']
+    details_df = results_dict['details']
+
+    st.subheader("Validation Summary")
+    st.dataframe(summary_df, use_container_width=True)
+
+    st.subheader("Validation Details")
+    
+    # --- Create Filters ---
+    col1, col2 = st.columns(2)
+    with col1:
+        tdt_options = ['All'] + sorted(summary_df['TDT'].unique().tolist())
+        tdt_filter = st.selectbox(
+            "Filter by TDT",
+            options=tdt_options,
+            key=f"{key_prefix}_tdt_filter"
+        )
+    
+    with col2:
+        if tdt_filter == 'All':
+            model_options = ['All']
+        else:
+            model_options = ['All'] + sorted(summary_df[summary_df['TDT'] == tdt_filter]['Model'].unique().tolist())
+        
+        model_filter = st.selectbox(
+            "Filter by Model",
+            options=model_options,
+            key=f"{key_prefix}_model_filter",
+            disabled=(tdt_filter == 'All')
+        )
+
+    # --- Filter Data based on dropdowns ---
+    details_to_show = details_df.copy()
+    if tdt_filter != 'All':
+        details_to_show = details_to_show[details_to_show['TDT'] == tdt_filter]
+    if model_filter != 'All':
+        details_to_show = details_to_show[details_to_show['Model'] == model_filter]
+
+    if details_to_show.empty:
+        st.info("No duplicate details match your filter.")
+        return
+
+    # --- UPDATED: Split into sub-tables by issue ---
+    
+    # Get a list of all unique issues present in the *filtered* data
+    # This splits combined issues ("A, B") into separate items
+    all_issues = set()
+    details_to_show['Issue'].str.split(', ').apply(all_issues.update)
+    unique_issues = sorted(list(all_issues))
+
+    if not unique_issues:
+        st.info("No issues found in the filtered data.")
+        return
+
+    st.markdown(f"**Showing {len(details_to_show)} total duplicate entries across {len(unique_issues)} issue type(s):**")
+
+    # Define the columns you want to show
+    cols_to_display = [
+        'TDT', 'Model', 'Metric', 'Point Type', 'KKS Point Name', 
+        'DCS Description', 'Canary Point Name', 'Canary Description', 'Unit', 'Issue'
+    ]
+    # Filter the list to only columns that actually exist
+    existing_cols_to_display = [col for col in cols_to_display if col in details_to_show.columns]
+
+    # Loop through each unique issue and create a table for it
+    for issue in unique_issues:
+        st.markdown(f"#### {issue}")
+        
+        # Find all rows that contain this specific issue
+        issue_df = details_to_show[details_to_show['Issue'].str.contains(issue, na=False)].copy()
+        
+        # Filter the columns for display
+        issue_df_filtered = issue_df[existing_cols_to_display]
+        
+        if issue_df_filtered.empty:
+            st.warning(f"No data for issue: {issue}") # Should not happen, but good safety check
+        else:
+            # Apply the cell-specific styler
+            st.dataframe(
+                issue_df_filtered.style.apply(highlight_duplicate_cells, axis=1),
+                use_container_width=True
+            )
 
 
 # --- Main Page UI ---
-st.title("TDT Validator")
+st.title("TDT Configuration Validator")
 st.markdown("Select a validation type from the tabs below to check the TDT contents for correctness and completeness.")
 
 tab_list = [
@@ -57,8 +169,6 @@ with tabs[0]:
     st.header("TDT Consolidation Overview")
     st.markdown("This tab shows the consolidated data loaded from the TDT files on the **Home** page.")
     
-    # This logic is identical to tab[0] in 1_PRISM_Config_Validator
-    # It relies on session_state being populated by Home.py
     if 'overview_df' not in st.session_state or st.session_state.overview_df is None:
         st.warning("Please go to the **Home** page, upload your TDT files, and click 'Generate & Load Files' to see the overview.")
     else:
@@ -71,10 +181,11 @@ with tabs[0]:
         st.subheader("Full Consolidated Diagnostics Data")
         st.dataframe(st.session_state.diag_df, use_container_width=True)
 
-# --- Tab 1: Point Survey Validation (Placeholder) ---
+# --- Tab 1: Point Survey Validation ---
 with tabs[1]:
     st.header("Point Survey Validation")
-    st.markdown("Checks for missing required fields, invalid entries, or inconsistencies in the **Point Survey** sheets.")
+    st.markdown("Checks for duplicate entries (within the same TDT/Model) in key columns: `Metric`, `KKS Point Name`, `DCS Description`, `Canary Point Name`, and `Canary Description`.")
+    
     prerequisites_met = st.session_state.get('survey_df') is not None
     if not prerequisites_met:
         st.warning("Please load TDT files on the **Home** page first.")
@@ -82,14 +193,19 @@ with tabs[1]:
     if st.button("Run Point Survey Validation", key="run_point_survey_val", disabled=not prerequisites_met):
         with st.spinner('Running...'):
             try:
-                # --- Placeholder for logic ---
-                # results = validate_point_survey(st.session_state.survey_df)
-                # st.session_state.validation_states["tdt_point_survey"]["results"] = results
-                st.success("Validation logic placeholder!")
+                # --- This is the new, active logic ---
+                results = validate_point_survey(st.session_state.survey_df)
+                st.session_state.validation_states["tdt_point_survey"]["results"] = results
+                st.success("Point Survey Validation complete!")
             except Exception as e: 
                 st.error(f"An error occurred: {e}")
+                st.exception(e) # Provides a full traceback for debugging
     
-    display_placeholder_results(st.session_state.validation_states["tdt_point_survey"]["results"], "tdt_point_survey", "TDT")
+    # --- Display results using the updated function ---
+    display_duplicate_results(
+        st.session_state.validation_states["tdt_point_survey"].get("results"), 
+        "tdt_point_survey"
+    )
 
 # --- Tab 2: Calculation Validation (Placeholder) ---
 with tabs[2]:
@@ -101,9 +217,9 @@ with tabs[2]:
     
     if st.button("Run Calculation Validation", key="run_calc_val", disabled=not prerequisites_met):
         with st.spinner('Running...'):
-            st.success("Validation logic placeholder!")
-    
-    display_placeholder_results(st.session_state.validation_states["tdt_calculation"]["results"], "tdt_calculation", "TDT")
+            st.info("Validation logic for 'Calculation' is not yet implemented.")
+            
+    # (Display results logic will go here)
 
 # --- Tab 3: Attribute Validation (Placeholder) ---
 with tabs[3]:
@@ -115,9 +231,9 @@ with tabs[3]:
     
     if st.button("Run Attribute Validation", key="run_attr_val", disabled=not prerequisites_met):
         with st.spinner('Running...'):
-            st.success("Validation logic placeholder!")
+            st.info("Validation logic for 'Attribute' is not yet implemented.")
             
-    display_placeholder_results(st.session_state.validation_states["tdt_attribute"]["results"], "tdt_attribute", "TDT")
+    # (Display results logic will go here)
 
 # --- Tab 4: Diagnostics Validation (Placeholder) ---
 with tabs[4]:
@@ -129,20 +245,20 @@ with tabs[4]:
     
     if st.button("Run Diagnostics Validation", key="run_diag_val", disabled=not prerequisites_met):
         with st.spinner('Running...'):
-            st.success("Validation logic placeholder!")
+            st.info("Validation logic for 'Diagnostics' is not yet implemented.")
             
-    display_placeholder_results(st.session_state.validation_states["tdt_diagnostics"]["results"], "tdt_diagnostics", "TDT")
+    # (Display results logic will go here)
 
 # --- Tab 5: Prescriptive Validation (Placeholder) ---
 with tabs[5]:
     st.header("Prescriptive Validation")
     st.markdown("Checks for logic in the **Prescriptive** sheets (if they exist).")
-    prerequisites_met = st.session_state.get('survey_df') is not None # Or another df if you add prescriptive parsing
+    prerequisites_met = st.session_state.get('survey_df') is not None # Or another df
     if not prerequisites_met:
         st.warning("Please load TDT files on the **Home** page first.")
     
     if st.button("Run Prescriptive Validation", key="run_presc_val", disabled=not prerequisites_met):
         with st.spinner('Running...'):
-            st.success("Validation logic placeholder!")
+            st.info("Validation logic for 'Prescriptive' is not yet implemented.")
             
-    display_placeholder_results(st.session_state.validation_states["tdt_prescriptive"]["results"], "tdt_prescriptive", "TDT")
+    # (Display results logic will go here)
