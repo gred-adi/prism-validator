@@ -46,12 +46,18 @@ if 'uploaded_survey_file' not in st.session_state: st.session_state.uploaded_sur
 if 'uploaded_diag_file' not in st.session_state: st.session_state.uploaded_diag_file = None
 if 'uploaded_stats_file' not in st.session_state: st.session_state.uploaded_stats_file = None
 # States for validation results
+# Ensure the main validation_states dict exists
 if 'validation_states' not in st.session_state:
-    st.session_state.validation_states = {
-        "metric_validation": {"results": None}, "metric_mapping": {"results": None},
-        "failure_diagnostics": {"results": None}, "filter_validation": {"results": None},
-        "absolute_deviation": {"results": None}, "model_deployment_config": {"results": None}
-    }
+    st.session_state.validation_states = {}
+
+# Ensure all keys for *this page* exist
+prism_validation_keys = [
+    "metric_validation", "metric_mapping", "failure_diagnostics",
+    "filter_validation", "absolute_deviation", "model_deployment_config"
+]
+for key in prism_validation_keys:
+    if key not in st.session_state.validation_states:
+        st.session_state.validation_states[key] = {"results": None}
 
 # --- Reusable Helper Functions ---
 def highlight_diff(data, color='background-color: #FFCCCB'):
