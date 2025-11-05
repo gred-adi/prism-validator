@@ -22,7 +22,6 @@ if "tdt_calculation" not in st.session_state.validation_states:
     st.session_state.validation_states["tdt_calculation"] = {"results": None}
 if "tdt_attribute" not in st.session_state.validation_states:
     st.session_state.validation_states["tdt_attribute"] = {"results": None}
-# NEW: Add state for diagnostics validation
 if "tdt_diagnostics" not in st.session_state.validation_states:
     st.session_state.validation_states["tdt_diagnostics"] = {"results": None}
 
@@ -373,22 +372,34 @@ with tabs[4]:
         # --- 2. Failure Mode Summary (Metric Count & Weight Check) ---
         st.subheader("Failure Mode Summary")
         st.markdown("Shows metric count and total weight per failure mode. Rows in red have a `Total_Weight` that is not 100 (or 0).")
+        
+        # --- NEW TDT FILTER FOR SUMMARY ---
+        summary_tdt_options = ['All'] + sorted(summary_df['TDT'].unique().tolist())
+        summary_tdt_filter = st.selectbox(
+            "Filter Summary by TDT",
+            options=summary_tdt_options,
+            key="diag_summary_tdt_filter"
+        )
+
+        summary_to_show = summary_df.copy()
+        if summary_tdt_filter != 'All':
+            summary_to_show = summary_to_show[summary_to_show['TDT'] == summary_tdt_filter]
+        
         st.dataframe(
-            summary_df.style.apply(highlight_issue_rows, axis=1),
+            summary_to_show.style.apply(highlight_issue_rows, axis=1),
             use_container_width=True
         )
 
         # --- 3. Details Drill-Down ---
         st.subheader("Details Drill-Down")
         
-        # Create TDT filter
-        tdt_options = sorted(details_df['TDT'].unique().tolist())
-        tdt_filter = st.selectbox("Filter by TDT", options=tdt_options, key="diag_tdt_filter")
-
-        # Create Failure Mode filter based on TDT
-        if tdt_filter:
+        # --- UPDATED: Use the summary TDT filter ---
+        if summary_tdt_filter == 'All':
+            st.info("Select a TDT from the 'Filter Summary by TDT' dropdown above to see failure modes.")
+        else:
+            # Create Failure Mode filter based on the *summary TDT filter*
             fm_options = sorted(
-                details_df[details_df['TDT'] == tdt_filter]['Failure Mode'].unique().tolist()
+                details_df[details_df['TDT'] == summary_tdt_filter]['Failure Mode'].unique().tolist()
             )
             fm_filter = st.selectbox(
                 "Filter by Failure Mode", 
@@ -396,19 +407,20 @@ with tabs[4]:
                 key="diag_fm_filter"
             )
         
-            # Filter the details dataframe
-            filtered_details = details_df[
-                (details_df['TDT'] == tdt_filter) &
-                (details_df['Failure Mode'] == fm_filter)
-            ]
-            
-            # Display the relevant columns
-            st.dataframe(
-                filtered_details[['Metric', 'Direction', 'Weighting']],
-                use_container_width=True
-            )
-        else:
-            st.info("Select a TDT to see failure modes.")
+            if fm_filter: # Check if a failure mode is selected
+                # Filter the details dataframe
+                filtered_details = details_df[
+                    (details_df['TDT'] == summary_tdt_filter) &
+                    (details_df['Failure Mode'] == fm_filter)
+                ]
+                
+                # Display the relevant columns
+                st.dataframe(
+                    filtered_details[['Metric', 'Direction', 'Weighting']],
+                    use_container_width=True
+                )
+            else:
+                st.info(f"No failure modes found for TDT: '{summary_tdt_filter}'.")
 
     elif st.session_state.validation_states["tdt_diagnostics"].get("results") is None:
         st.info("Click 'Run Diagnostics Validation' to see the reports.")
