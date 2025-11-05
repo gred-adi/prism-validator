@@ -10,7 +10,7 @@ def validate_attribute(survey_df: pd.DataFrame, diag_df: pd.DataFrame) -> dict:
 
     Returns a dictionary with two reports:
     1.  'function_validation': Checks logic for 'Operational State', 'Not Modeled',
-        'Fault Detection', and 'Filter Info Incomplete'.
+        'Fault Detection', and 'Filter Info Incomplete'. Returns all rows.
     2.  'filter_audit': A simple report listing all metrics with active (complete) filters.
     """
     if survey_df is None or survey_df.empty:
@@ -50,8 +50,7 @@ def validate_attribute(survey_df: pd.DataFrame, diag_df: pd.DataFrame) -> dict:
     # Rule 3: Modeled points ('Op State' or 'Fault Detection') should be in diagnostics
     modeled_issue = (details_df['Function'].isin(['Operational State', 'Fault Detection'])) & (details_df['Diag_Count'] == 0)
 
-    # --- NEW Rule 4: Incomplete Filter Info (XOR logic) ---
-    # One is not-null AND the other is null
+    # --- Rule 4: Incomplete Filter Info (XOR logic) ---
     cond_notnull = details_df['Filter Condition'].notnull()
     val_notnull = details_df['Filter Value'].notnull()
     filter_incomplete_issue = (cond_notnull & ~val_notnull) | (~cond_notnull & val_notnull)
@@ -59,24 +58,27 @@ def validate_attribute(survey_df: pd.DataFrame, diag_df: pd.DataFrame) -> dict:
     # 5. Combine issues into a single "Issue" column
     issues_list = []
     issues_list.append(pd.Series(np.where(op_state_issue, "Op. State not constrained", pd.NA), index=details_df.index))
-    issues_list.append(pd.Series(np.where(not_modeled_issue, "'Not Modeled' in Diag.", pd.NA), index=details_df.index))
-    issues_list.append(pd.Series(np.where(modeled_issue, "'Modeled' not in Diag.", pd.NA), index=details_df.index))
+    issues_list.append(pd.Series(np.where(not_modeled_issue, "'Not Modeled' in Diagnostics", pd.NA), index=details_df.index))
+    issues_list.append(pd.Series(np.where(modeled_issue, "'Modeled' not in Diagnostics", pd.NA), index=details_df.index))
     issues_list.append(pd.Series(np.where(filter_incomplete_issue, "Filter Info Incomplete", pd.NA), index=details_df.index))
 
     issue_df = pd.concat(issues_list, axis=1)
     
     details_df['Issue'] = issue_df.apply(lambda x: ', '.join(x.dropna()), axis=1)
+    
+    # --- MODIFICATION: Set blank issues to '✅' ---
     details_df['Issue'] = details_df['Issue'].replace('', '✅')
+    function_details_df = details_df # Use all rows
 
     # 6. Create the Function Validation Summary
     function_summary = (
-        details_df.groupby(['TDT', 'Issue'])
+        function_details_df.groupby(['TDT', 'Issue'])
         .size()
         .to_frame('Count')
         .reset_index()
     )
     
-    # 7. Create the Filter Audit report (unchanged, still shows *complete* filters)
+    # 7. Create the Filter Audit report (unchanged)
     filter_df = details_df[
         details_df['Filter Condition'].notnull() & details_df['Filter Value'].notnull()
     ].copy()
@@ -92,7 +94,7 @@ def validate_attribute(survey_df: pd.DataFrame, diag_df: pd.DataFrame) -> dict:
     return {
         "function_validation": {
             "summary": function_summary,
-            "details": details_df
+            "details": function_details_df
         },
         "filter_audit": {
             "summary": filter_summary,

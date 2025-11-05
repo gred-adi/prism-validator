@@ -1,6 +1,7 @@
 import pandas as pd
 import streamlit as st
 import os
+# import re # <-- Removed this import as it's no longer needed
 
 # --- Import the new validator ---
 from validations.tdt_validations.point_survey_validation.validator import validate_point_survey
@@ -26,7 +27,31 @@ if "tdt_diagnostics" not in st.session_state.validation_states:
     st.session_state.validation_states["tdt_diagnostics"] = {"results": None}
 
 
-# --- Helper function to highlight rows with any issue ---
+# --- NEW: Helper function to highlight specific cells based on 'Issue' string ---
+def highlight_issue_cells(row, issue_to_col_map, current_issue):
+    """
+    Applies a style to cells that are flagged as duplicates based on the 'Issue' column.
+    """
+    styles = [''] * len(row)
+    
+    # Get the column(s) to highlight for this specific issue
+    cols_to_highlight = issue_to_col_map.get(current_issue)
+    
+    if cols_to_highlight:
+        # col_names can be a single string or a list of strings
+        if isinstance(cols_to_highlight, str):
+            cols_to_highlight = [cols_to_highlight]
+        
+        for col_name in cols_to_highlight:
+            try:
+                col_index = list(row.index).index(col_name)
+                styles[col_index] = 'background-color: #FFCCCB' # Light red
+            except ValueError:
+                pass # Column not in the final view, so we skip
+                    
+    return styles
+    
+# --- Helper function to highlight rows for Diagnostics ---
 def highlight_issue_rows(row):
     """
     Applies a style to the entire row if the 'Issue' column is not '✅'.
@@ -34,13 +59,79 @@ def highlight_issue_rows(row):
     style = 'background-color: #FFCCCB' if (pd.notna(row.get('Issue')) and row.get('Issue') != '✅') else ''
     return [style] * len(row)
 
-# --- Generic Helper for Simple Results (UPDATED) ---
+# --- NEW: Reusable Helper Function for Sub-Tables ---
+def display_validation_results(
+    summary_df, 
+    details_df, 
+    columns_to_show, 
+    issue_to_col_map,
+    summary_info_msg="No issues found.",
+    details_info_msg="No issues found matching the filter."
+):
+    """
+    Displays pre-filtered TDT validation results with summary, and 
+    SEPARATE sub-tables for each issue type, highlighting specific cells.
+    """
+    st.subheader("Validation Summary")
+    if summary_df.empty:
+        st.info(summary_info_msg)
+    else:
+        st.dataframe(summary_df, use_container_width=True)
+
+    # --- Display Details in Sub-Tables ---
+    st.subheader("Validation Details")
+    if details_df.empty:
+        st.info(details_info_msg)
+        return
+
+    # Get all unique, comma-separated issues
+    all_issues = set()
+    details_df['Issue'].str.split(', ').apply(all_issues.update)
+    
+    # Sort to put '✅' first, then all other issues
+    unique_issues = sorted(list(all_issues), key=lambda x: (x != '✅', x))
+
+    if not unique_issues:
+        st.info("No issues found in the filtered data.")
+        return
+
+    st.markdown(f"**Showing {len(details_df)} total entries:**")
+
+    # Define which columns to show in the final table
+    existing_cols_to_display = [col for col in columns_to_show if col in details_df.columns]
+    
+    # Define which columns the styler needs (display cols + 'Issue')
+    styler_cols = list(dict.fromkeys(existing_cols_to_display + ['Issue']))
+    existing_styler_cols = [col for col in styler_cols if col in details_df.columns]
+    
+    for issue in unique_issues:
+        st.markdown(f"#### {issue}")
+        
+        # --- FIX: Use .apply() to check for issue in the list of issues ---
+        issue_df = details_df[details_df['Issue'].apply(lambda x: issue in x.split(', '))].copy()
+        
+        # Filter to only columns the styler needs
+        issue_df_for_styler = issue_df[existing_styler_cols]
+        
+        if not issue_df_for_styler.empty:
+            # Apply the cell-specific styler
+            styler = issue_df_for_styler.style.apply(
+                highlight_issue_cells, 
+                axis=1, 
+                issue_to_col_map=issue_to_col_map,
+                current_issue=issue # Pass the current issue to the styler
+            )
+            # Hide the 'Issue' column from the final display
+            styler = styler.hide(subset=['Issue'], axis=1)
+            st.dataframe(styler, use_container_width=True)
+
+
+# --- FIX: Add display_simple_results back in for the Filter Audit report ---
 def display_simple_results(summary_df, details_df, columns_to_show, show_summary=True, summary_info_msg="No items found to summarize.", details_info_msg="No items were found in the TDTs."):
     """
     Displays pre-filtered TDT validation results with a summary
-    and a single details table. Highlights rows with issues.
+    and a single details table. This is for simple lists, not issue-based tables.
     """
-    
     if show_summary:
         st.subheader("Validation Summary")
         if summary_df.empty:
@@ -54,29 +145,8 @@ def display_simple_results(summary_df, details_df, columns_to_show, show_summary
         st.info(details_info_msg)
         return
 
-    # 1. Get the list of columns that will *actually* be displayed
     existing_cols_to_display = [col for col in columns_to_show if col in details_df.columns]
-    
-    # 2. Get the *full* list of columns needed for the styler
-    styler_cols = existing_cols_to_display + ['Issue']
-    styler_cols = list(dict.fromkeys(styler_cols))
-    
-    # 3. Filter the dataframe to *only* the columns needed for the styler
-    existing_styler_cols = [col for col in styler_cols if col in details_df.columns]
-    details_for_styler = details_df[existing_styler_cols]
-
-    if details_for_styler.empty:
-        st.info("No data to display.")
-        return
-
-    # 4. Apply the row highlighter
-    styler = details_for_styler.style.apply(highlight_issue_rows, axis=1)
-    
-    # 5. Hide the 'Issue' column (if it exists)
-    if 'Issue' in details_for_styler.columns:
-        styler = styler.hide(subset=['Issue'], axis=1)
-        
-    st.dataframe(styler, use_container_width=True)
+    st.dataframe(details_df[existing_cols_to_display], use_container_width=True)
 
 
 # --- Main Page UI ---
@@ -113,7 +183,6 @@ with tabs[0]:
 # --- Tab 1: Point Survey Validation ---
 with tabs[1]:
     st.header("Point Survey Validation")
-    # --- UPDATED: Markdown Description ---
     st.markdown("Audits all non-`PRiSM Calc` points. It checks for: 1) **Duplicates** in key columns (`Metric`, `KKS Point Name`, etc.) and 2) **Blank Fields** for required columns (`Point Type`, `KKS Point Name`, `Unit`, etc.).")
     
     prerequisites_met = st.session_state.get('survey_df') is not None
@@ -141,7 +210,6 @@ with tabs[1]:
         # --- SHARED FILTERS ---
         col1, col2 = st.columns(2)
         with col1:
-            # Use details_df for filters as it has all rows
             tdt_options = ['All'] + sorted(details_df['TDT'].unique().tolist())
             tdt_filter = st.selectbox( 
                 "Filter by TDT", 
@@ -173,16 +241,33 @@ with tabs[1]:
             summary_to_show = summary_to_show[summary_to_show['Model'] == model_filter]
             details_to_show = details_to_show[details_to_show['Model'] == model_filter]
 
-        # --- Call the simple display function ---
-        point_survey_cols_to_show = [
+        # --- Call the display function ---
+        cols_to_show = [
             'TDT', 'Model', 'Metric', 'Point Type', 'KKS Point Name', 
             'DCS Description', 'Canary Point Name', 'Canary Description', 'Unit'
         ]
         
-        display_simple_results(
-            summary_to_show, 
+        # Define map of {Issue String: Column(s) to highlight}
+        issue_map = {
+            'Duplicate Metric': 'Metric',
+            'Duplicate KKS Point Name': 'KKS Point Name',
+            'Duplicate DCS Description': 'DCS Description',
+            'Duplicate Canary Point Name': 'Canary Point Name',
+            'Duplicate Canary Description': 'Canary Description',
+            'Blank Point Type': 'Point Type',
+            'Blank KKS Point Name': 'KKS Point Name',
+            'Blank DCS Description': 'DCS Description',
+            'Blank Canary Point Name': 'Canary Point Name',
+            'Blank Canary Description': 'Canary Description',
+            'Blank Unit': 'Unit',
+            '✅': [] # No highlight for OK
+        }
+        
+        display_validation_results(
+            summary_to_show,
             details_to_show,
-            point_survey_cols_to_show,
+            cols_to_show,
+            issue_map,
             summary_info_msg="No points found to summarize for this filter.",
             details_info_msg="No points found for this filter."
         )
@@ -242,10 +327,21 @@ with tabs[2]:
             'Pseudo Code', 'Language', 'Input Point', 'PRiSM Code'
         ]
         
-        display_simple_results(
+        # Define map of {Issue String: Column(s) to highlight}
+        calc_cols_to_highlight = [
+            'Calc Point Type', 'Calculation Description', 'Pseudo Code', 
+            'Language', 'Input Point', 'PRiSM Code'
+        ]
+        issue_map = {
+            'Missing all calculation details': calc_cols_to_highlight,
+            '✅': [] # No highlight for OK
+        }
+        
+        display_validation_results(
             summary_to_show,
             details_to_show,
             calc_cols_to_show,
+            issue_map,
             summary_info_msg="No 'PRiSM Calc' points found to summarize for this TDT.",
             details_info_msg="No 'PRiSM Calc' points were found for this TDT."
         )
@@ -317,15 +413,26 @@ with tabs[3]:
         # --- Report 1: Function & Diagnostic Validation ---
         st.markdown("---")
         st.header("Function & Diagnostic Usage Validation")
-        st.markdown("Audits all metrics (grouped by TDT) for correct `Function`, `Constraint`, `Diagnostic` usage, and `Filter` completeness. Rows in red indicate a logical conflict.")
+        st.markdown("Audits all metrics (grouped by TDT) for correct `Function`, `Constraint`, `Diagnostic` usage, and `Filter` completeness. Rows are grouped by issue status.")
         
         function_cols_to_show = [
             'TDT', 'Metric', 'Function', 'Constraint', 'Diag_Count', 'Filter Condition', 'Filter Value'
         ]
-        display_simple_results(
+        
+        # Define map of {Issue String: Column(s) to highlight}
+        func_issue_map = {
+            "Op. State not constrained": ['Function', 'Constraint'],
+            "'Not Modeled' in Diagnostics": ['Function', 'Diag_Count'],
+            "'Modeled' not in Diagnostics": ['Function', 'Diag_Count'],
+            "Filter Info Incomplete": ['Filter Condition', 'Filter Value'],
+            "✅": [] # No highlight for OK
+        }
+        
+        display_validation_results(
             func_summary_to_show,
             func_details_to_show,
             function_cols_to_show,
+            func_issue_map,
             summary_info_msg="No metrics found to summarize for this TDT.",
             details_info_msg="No metrics were found for this TDT."
         )
@@ -338,6 +445,9 @@ with tabs[3]:
         filter_cols_to_show = [
             'TDT', 'Metric', 'Function', 'Filter Condition', 'Filter Value'
         ]
+        
+        # This report has no "issues" to highlight, so pass an empty map
+        # and use the simple display function
         display_simple_results(
             filt_summary_to_show,
             filt_details_to_show,

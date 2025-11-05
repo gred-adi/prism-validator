@@ -12,7 +12,7 @@ def validate_point_survey(survey_df: pd.DataFrame) -> dict:
     2.  Blanks: 'Point Type', 'KKS Point Name', 'Unit', etc.
     
     Returns:
-        A dictionary containing a summary DataFrame and a
+        A dictionary containing a summary DataFrame (with '✅' for OK) and a 
         details DataFrame (with *all* non-PRiSM Calc points).
     """
     if survey_df is None or survey_df.empty:

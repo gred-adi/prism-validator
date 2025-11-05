@@ -10,7 +10,7 @@ def validate_calculation(survey_df: pd.DataFrame) -> dict:
     
     Checks:
     - Finds all 'PRiSM Calc' points (deduplicated by TDT/Metric).
-    - Tags them as "OK" or "Missing all calculation details".
+    - Tags them as "✅" or "Missing all calculation details".
       
     Returns:
         A dictionary containing a summary DataFrame (of statuses) and a
