@@ -5,8 +5,8 @@ import os
 # --- Import the new validator ---
 from validations.tdt_validations.point_survey_validation.validator import validate_point_survey
 from validations.tdt_validations.calculation_validation.validator import validate_calculation
+from validations.tdt_validations.attribute_validation.validator import validate_attribute
 # (other imports will go here as you build them)
-# from validations.tdt_validations.attribute_validation.validator import validate_attribute
 # from validations.tdt_validations.diagnostics_validation.validator import validate_diagnostics
 # from validations.tdt_validations.prescriptive_validation.validator import validate_prescriptive
 
@@ -20,6 +20,9 @@ if "tdt_point_survey" not in st.session_state.validation_states:
     st.session_state.validation_states["tdt_point_survey"] = {"results": None}
 if "tdt_calculation" not in st.session_state.validation_states:
     st.session_state.validation_states["tdt_calculation"] = {"results": None}
+# NEW: Add state for attribute validation
+if "tdt_attribute" not in st.session_state.validation_states:
+    st.session_state.validation_states["tdt_attribute"] = {"results": None}
 
 
 # --- Helper function to highlight specific cells ---
@@ -45,7 +48,7 @@ def highlight_duplicate_cells(row):
                 pass 
     return styles
 
-# --- NEW: Helper function to highlight rows with any issue ---
+# --- Helper function to highlight rows with any issue ---
 def highlight_issue_rows(row):
     """
     Applies a style to the entire row if the 'Issue' column is not 'OK'.
@@ -120,8 +123,8 @@ def display_duplicate_results(results_dict, key_prefix):
             styler = styler.hide(subset=['Issue'], axis=1)
             st.dataframe(styler, use_container_width=True)
 
-# --- UPDATED: Generic Helper for Simple Results ---
-def display_simple_results(results_dict, key_prefix, columns_to_show):
+# --- Generic Helper for Simple Results (TDT-only filter) ---
+def display_simple_results(results_dict, key_prefix, columns_to_show, show_summary=True, summary_info_msg="No items found to summarize.", details_info_msg="No items were found in the TDTs."):
     """
     Displays TDT validation results with a summary, TDT filter,
     and a single details table. Highlights rows with issues.
@@ -133,16 +136,17 @@ def display_simple_results(results_dict, key_prefix, columns_to_show):
     summary_df = results_dict.get('summary', pd.DataFrame())
     details_df = results_dict.get('details', pd.DataFrame())
 
-    st.subheader("Validation Summary")
-    if summary_df.empty:
-        st.info("No 'PRiSM Calc' points found to summarize.")
-    else:
-        st.dataframe(summary_df, use_container_width=True)
+    if show_summary:
+        st.subheader("Validation Summary")
+        if summary_df.empty:
+            st.info(summary_info_msg)
+        else:
+            st.dataframe(summary_df, use_container_width=True)
 
     st.subheader("Validation Details")
     
     if details_df.empty:
-        st.info("No 'PRiSM Calc' points were found in the TDTs.")
+        st.info(details_info_msg)
         return
         
     tdt_options = ['All'] + sorted(details_df['TDT'].unique().tolist())
@@ -157,18 +161,15 @@ def display_simple_results(results_dict, key_prefix, columns_to_show):
         st.info("No details match your filter.")
         return
 
-    # --- THIS IS THE FIX ---
-    
     # 1. Get the list of columns that will *actually* be displayed
     existing_cols_to_display = [col for col in columns_to_show if col in details_to_show.columns]
     
     # 2. Get the *full* list of columns needed for the styler
-    # This includes the display columns + the 'Issue' column
+    # This includes the display columns + the 'Issue' column (if it exists)
     styler_cols = existing_cols_to_display + ['Issue']
     styler_cols = list(dict.fromkeys(styler_cols)) # Remove duplicates
     
     # 3. Filter the dataframe to *only* the columns needed for the styler
-    # (and that exist in the dataframe)
     existing_styler_cols = [col for col in styler_cols if col in details_to_show.columns]
     details_for_styler = details_to_show[existing_styler_cols]
 
@@ -241,7 +242,7 @@ with tabs[1]:
         "tdt_point_survey"
     )
 
-# --- Tab 2: Calculation Validation (UPDATED) ---
+# --- Tab 2: Calculation Validation ---
 with tabs[2]:
     st.header("Calculation Validation")
     st.markdown("Checks all `PRiSM Calc` metrics, grouped by TDT, and identifies any that are missing all calculation-specific fields (`Calc Point Type`, `Calculation Description`, etc.).")
@@ -260,31 +261,80 @@ with tabs[2]:
                 st.error(f"An error occurred: {e}")
                 st.exception(e)
             
-    # --- UPDATED: Column list to display (Now includes TDT) ---
     calc_cols_to_show = [
         'TDT', 'Metric', 'Point Type', 'Calc Point Type', 'Calculation Description', 
         'Pseudo Code', 'Language', 'Input Point', 'PRiSM Code'
     ]
-    
     display_simple_results(
         st.session_state.validation_states["tdt_calculation"].get("results"), 
         "tdt_calculation",
-        calc_cols_to_show
+        calc_cols_to_show,
+        summary_info_msg="No 'PRiSM Calc' points found to summarize.",
+        details_info_msg="No 'PRiSM Calc' points were found in the TDTs."
     )
 
-# --- Tab 3: Attribute Validation (Placeholder) ---
+# --- Tab 3: Attribute Validation (UPDATED) ---
 with tabs[3]:
     st.header("Attribute Validation")
-    st.markdown("Checks for logic in the **Attribute** sheets, such as filters missing values or invalid function types.")
-    prerequisites_met = st.session_state.get('survey_df') is not None
+    st.markdown("Checks logic for `Function`, `Constraint`, and `Diagnostic` usage, and provides an audit of all active `Filters`.")
+    
+    # This validation needs both dataframes
+    prerequisites_met = (st.session_state.get('survey_df') is not None) and (st.session_state.get('diag_df') is not None)
     if not prerequisites_met:
-        st.warning("Please load TDT files on the **Home** page first.")
+        st.warning("Please load TDT files on the **Home** page first (this check requires both Survey and Diagnostic data).")
     
     if st.button("Run Attribute Validation", key="run_attr_val", disabled=not prerequisites_met):
         with st.spinner('Running...'):
-            st.info("Validation logic for 'Attribute' is not yet implemented.")
+            try:
+                results = validate_attribute(st.session_state.survey_df, st.session_state.diag_df)
+                st.session_state.validation_states["tdt_attribute"]["results"] = results
+                st.success("Attribute Validation complete!")
+            except Exception as e: 
+                st.error(f"An error occurred: {e}")
+                st.exception(e)
             
-    # (Display results logic will go here)
+    # --- Display Logic for the two reports ---
+    results_data = st.session_state.validation_states["tdt_attribute"].get("results")
+    
+    if results_data:
+        # --- Report 1: Function & Diagnostic Validation ---
+        st.markdown("---")
+        st.header("Function & Diagnostic Usage Validation")
+        st.markdown("Audits all metrics (grouped by TDT) for correct `Function`, `Constraint`, and `Diagnostic` usage. Rows in red indicate a logical conflict.")
+        
+        function_results = results_data.get("function_validation")
+        function_cols_to_show = [
+            'TDT', 'Metric', 'Function', 'Constraint', 'Diag_Count'
+        ]
+        display_simple_results(
+            function_results, 
+            "tdt_attr_func",
+            function_cols_to_show,
+            summary_info_msg="No metrics found to summarize.",
+            details_info_msg="No metrics were found in the TDTs."
+        )
+
+        # --- Report 2: Filter Audit ---
+        st.markdown("---")
+        st.header("Filter Audit")
+        st.markdown("Lists all metrics (grouped by TDT) that have `Filter Condition` and `Filter Value` defined.")
+        
+        filter_results = results_data.get("filter_audit")
+        filter_cols_to_show = [
+            'TDT', 'Metric', 'Function', 'Filter Condition', 'Filter Value'
+        ]
+        display_simple_results(
+            filter_results, 
+            "tdt_attr_filter",
+            filter_cols_to_show,
+            summary_info_msg="No metrics with filters found.",
+            details_info_msg="No metrics with filters were found in the TDTs."
+        )
+    
+    elif st.session_state.validation_states["tdt_attribute"].get("results") is None:
+        # This is the default state before the button is pressed
+        st.info("Click 'Run Attribute Validation' to see the reports.")
+
 
 # --- Tab 4: Diagnostics Validation (Placeholder) ---
 with tabs[4]:
@@ -312,4 +362,4 @@ with tabs[5]:
         with st.spinner('Running...'):
             st.info("Validation logic for 'Prescriptive' is not yet implemented.")
             
-    # (Display results logic will go here)
+    # (Display results logic will go here)git 
