@@ -4,8 +4,8 @@ import os
 
 # --- Import the new validator ---
 from validations.tdt_validations.point_survey_validation.validator import validate_point_survey
+from validations.tdt_validations.calculation_validation.validator import validate_calculation
 # (other imports will go here as you build them)
-# from validations.tdt_validations.calculation_validation.validator import validate_calculation
 # from validations.tdt_validations.attribute_validation.validator import validate_attribute
 # from validations.tdt_validations.diagnostics_validation.validator import validate_diagnostics
 # from validations.tdt_validations.prescriptive_validation.validator import validate_prescriptive
@@ -18,16 +18,15 @@ if 'validation_states' not in st.session_state:
     st.session_state.validation_states = {} # Ensure main state exists
 if "tdt_point_survey" not in st.session_state.validation_states:
     st.session_state.validation_states["tdt_point_survey"] = {"results": None}
-# (other validation states)
+if "tdt_calculation" not in st.session_state.validation_states:
+    st.session_state.validation_states["tdt_calculation"] = {"results": None}
 
 
 # --- Helper function to highlight specific cells ---
 def highlight_duplicate_cells(row):
     """
     Applies a style to cells that are flagged as duplicates based on the 'Issue' column.
-    The 'Issue' column itself is not highlighted as it will be hidden.
     """
-    # Mapping from issue string (in 'Issue' col) to the column name
     issue_to_col_map = {
         'Duplicate Metric': 'Metric',
         'Duplicate KKS Point Name': 'KKS Point Name',
@@ -35,25 +34,26 @@ def highlight_duplicate_cells(row):
         'Duplicate Canary Point Name': 'Canary Point Name',
         'Duplicate Canary Description': 'Canary Description'
     }
-    
-    # The 'row' object is a pandas Series. We get the 'Issue' value from it.
     issues = str(row.get('Issue', ''))
-    styles = [''] * len(row) # Default style (no highlight)
-    
-    # Highlight the specific column that has the duplicate
+    styles = [''] * len(row)
     for issue_key, col_name in issue_to_col_map.items():
         if issue_key in issues:
             try:
-                # Find the *position* (index) of the column name in the row's index
                 col_index = list(row.index).index(col_name)
-                # Apply style to that position
                 styles[col_index] = 'background-color: #FFCCCB' # Light red
             except ValueError:
-                pass # Column not in the final view, so we skip
-                
+                pass 
     return styles
 
-# --- UPDATED: Reusable Helper Function for TDT Validations ---
+# --- NEW: Helper function to highlight rows with any issue ---
+def highlight_issue_rows(row):
+    """
+    Applies a style to the entire row if the 'Issue' column is not 'OK'.
+    """
+    style = 'background-color: #FFCCCB' if (pd.notna(row.get('Issue')) and row.get('Issue') != 'OK') else ''
+    return [style] * len(row)
+
+# --- Reusable Helper Function for Duplicate results ---
 def display_duplicate_results(results_dict, key_prefix):
     """
     Displays TDT validation results with a summary, filters, and
@@ -65,37 +65,25 @@ def display_duplicate_results(results_dict, key_prefix):
         return
 
     summary_df = results_dict['summary']
-    details_df = results_dict['details'] # This df still contains the 'Issue' column
+    details_df = results_dict['details'] 
 
     st.subheader("Validation Summary")
     st.dataframe(summary_df, use_container_width=True)
 
     st.subheader("Validation Details")
     
-    # --- Create Filters ---
     col1, col2 = st.columns(2)
     with col1:
         tdt_options = ['All'] + sorted(summary_df['TDT'].unique().tolist())
-        tdt_filter = st.selectbox(
-            "Filter by TDT",
-            options=tdt_options,
-            key=f"{key_prefix}_tdt_filter"
-        )
+        tdt_filter = st.selectbox( "Filter by TDT", options=tdt_options, key=f"{key_prefix}_tdt_filter" )
     
     with col2:
         if tdt_filter == 'All':
             model_options = ['All']
         else:
             model_options = ['All'] + sorted(summary_df[summary_df['TDT'] == tdt_filter]['Model'].unique().tolist())
-        
-        model_filter = st.selectbox(
-            "Filter by Model",
-            options=model_options,
-            key=f"{key_prefix}_model_filter",
-            disabled=(tdt_filter == 'All')
-        )
+        model_filter = st.selectbox( "Filter by Model", options=model_options, key=f"{key_prefix}_model_filter", disabled=(tdt_filter == 'All') )
 
-    # --- Filter Data based on dropdowns ---
     details_to_show = details_df.copy()
     if tdt_filter != 'All':
         details_to_show = details_to_show[details_to_show['TDT'] == tdt_filter]
@@ -106,9 +94,6 @@ def display_duplicate_results(results_dict, key_prefix):
         st.info("No duplicate details match your filter.")
         return
 
-    # --- UPDATED: Split into sub-tables by issue ---
-    
-    # Get a list of all unique issues present in the *filtered* data
     all_issues = set()
     details_to_show['Issue'].str.split(', ').apply(all_issues.update)
     unique_issues = sorted(list(all_issues))
@@ -119,38 +104,86 @@ def display_duplicate_results(results_dict, key_prefix):
 
     st.markdown(f"**Showing {len(details_to_show)} total duplicate entries across {len(unique_issues)} issue type(s):**")
 
-    # Define the columns you want to show, INCLUDING 'Issue' for the styler
     cols_to_display = [
         'TDT', 'Model', 'Metric', 'Point Type', 'KKS Point Name', 
         'DCS Description', 'Canary Point Name', 'Canary Description', 'Unit', 'Issue'
     ]
-    # Filter the list to only columns that actually exist
     existing_cols_to_display = [col for col in cols_to_display if col in details_to_show.columns]
 
-    # Loop through each unique issue and create a table for it
     for issue in unique_issues:
         st.markdown(f"#### {issue}")
-        
-        # Find all rows that contain this specific issue
         issue_df = details_to_show[details_to_show['Issue'].str.contains(issue, na=False)].copy()
-        
-        # Filter the columns for display (still includes 'Issue' at this point)
         issue_df_filtered = issue_df[existing_cols_to_display]
         
-        if issue_df_filtered.empty:
-            st.warning(f"No data for issue: {issue}") # Should not happen, but good safety check
-        else:
-            # 1. Apply the cell-specific styler
+        if not issue_df_filtered.empty:
             styler = issue_df_filtered.style.apply(highlight_duplicate_cells, axis=1)
-            
-            # 2. HIDE the 'Issue' column from the final table
             styler = styler.hide(subset=['Issue'], axis=1)
-            
-            # 3. Render the styled and hidden dataframe
-            st.dataframe(
-                styler,
-                use_container_width=True
-            )
+            st.dataframe(styler, use_container_width=True)
+
+# --- UPDATED: Generic Helper for Simple Results ---
+def display_simple_results(results_dict, key_prefix, columns_to_show):
+    """
+    Displays TDT validation results with a summary, TDT filter,
+    and a single details table. Highlights rows with issues.
+    """
+    if not results_dict:
+        st.info("Run the validation to see the results.")
+        return
+
+    summary_df = results_dict.get('summary', pd.DataFrame())
+    details_df = results_dict.get('details', pd.DataFrame())
+
+    st.subheader("Validation Summary")
+    if summary_df.empty:
+        st.info("No 'PRiSM Calc' points found to summarize.")
+    else:
+        st.dataframe(summary_df, use_container_width=True)
+
+    st.subheader("Validation Details")
+    
+    if details_df.empty:
+        st.info("No 'PRiSM Calc' points were found in the TDTs.")
+        return
+        
+    tdt_options = ['All'] + sorted(details_df['TDT'].unique().tolist())
+    tdt_filter = st.selectbox("Filter by TDT", options=tdt_options, key=f"{key_prefix}_tdt_filter")
+
+    # Filter Data
+    details_to_show = details_df.copy()
+    if tdt_filter != 'All':
+        details_to_show = details_to_show[details_to_show['TDT'] == tdt_filter]
+
+    if details_to_show.empty:
+        st.info("No details match your filter.")
+        return
+
+    # --- THIS IS THE FIX ---
+    
+    # 1. Get the list of columns that will *actually* be displayed
+    existing_cols_to_display = [col for col in columns_to_show if col in details_to_show.columns]
+    
+    # 2. Get the *full* list of columns needed for the styler
+    # This includes the display columns + the 'Issue' column
+    styler_cols = existing_cols_to_display + ['Issue']
+    styler_cols = list(dict.fromkeys(styler_cols)) # Remove duplicates
+    
+    # 3. Filter the dataframe to *only* the columns needed for the styler
+    # (and that exist in the dataframe)
+    existing_styler_cols = [col for col in styler_cols if col in details_to_show.columns]
+    details_for_styler = details_to_show[existing_styler_cols]
+
+    if details_for_styler.empty:
+        st.info("No data to display.")
+        return
+
+    # 4. Apply the row highlighter
+    styler = details_for_styler.style.apply(highlight_issue_rows, axis=1)
+    
+    # 5. Hide the 'Issue' column (if it exists)
+    if 'Issue' in details_for_styler.columns:
+        styler = styler.hide(subset=['Issue'], axis=1)
+        
+    st.dataframe(styler, use_container_width=True)
 
 
 # --- Main Page UI ---
@@ -196,33 +229,48 @@ with tabs[1]:
     if st.button("Run Point Survey Validation", key="run_point_survey_val", disabled=not prerequisites_met):
         with st.spinner('Running...'):
             try:
-                # --- This is the new, active logic ---
                 results = validate_point_survey(st.session_state.survey_df)
                 st.session_state.validation_states["tdt_point_survey"]["results"] = results
                 st.success("Point Survey Validation complete!")
             except Exception as e: 
                 st.error(f"An error occurred: {e}")
-                st.exception(e) # Provides a full traceback for debugging
+                st.exception(e) 
     
-    # --- Display results using the updated function ---
     display_duplicate_results(
         st.session_state.validation_states["tdt_point_survey"].get("results"), 
         "tdt_point_survey"
     )
 
-# --- Tab 2: Calculation Validation (Placeholder) ---
+# --- Tab 2: Calculation Validation (UPDATED) ---
 with tabs[2]:
     st.header("Calculation Validation")
-    st.markdown("Checks for logic in the **Calculation** sheets, such as missing code for 'PRiSM Calc' points.")
+    st.markdown("Checks all `PRiSM Calc` metrics, grouped by TDT, and identifies any that are missing all calculation-specific fields (`Calc Point Type`, `Calculation Description`, etc.).")
+    
     prerequisites_met = st.session_state.get('survey_df') is not None
     if not prerequisites_met:
         st.warning("Please load TDT files on the **Home** page first.")
     
     if st.button("Run Calculation Validation", key="run_calc_val", disabled=not prerequisites_met):
         with st.spinner('Running...'):
-            st.info("Validation logic for 'Calculation' is not yet implemented.")
+            try:
+                results = validate_calculation(st.session_state.survey_df)
+                st.session_state.validation_states["tdt_calculation"]["results"] = results
+                st.success("Calculation Validation complete!")
+            except Exception as e: 
+                st.error(f"An error occurred: {e}")
+                st.exception(e)
             
-    # (Display results logic will go here)
+    # --- UPDATED: Column list to display (Now includes TDT) ---
+    calc_cols_to_show = [
+        'TDT', 'Metric', 'Point Type', 'Calc Point Type', 'Calculation Description', 
+        'Pseudo Code', 'Language', 'Input Point', 'PRiSM Code'
+    ]
+    
+    display_simple_results(
+        st.session_state.validation_states["tdt_calculation"].get("results"), 
+        "tdt_calculation",
+        calc_cols_to_show
+    )
 
 # --- Tab 3: Attribute Validation (Placeholder) ---
 with tabs[3]:
