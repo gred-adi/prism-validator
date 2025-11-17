@@ -202,6 +202,20 @@ if data_source_selected and df_survey is not None:
 
         st.info(f"{len(filtered_df)} total tags loaded for this model.")
 
+        # Find tags where the point name is "PRiSM Calc"
+        prism_calc_df = filtered_df[filtered_df["Canary Point Name"] == "PRiSM Calc"]
+
+        # If any are found, display a warning with the count and list of metrics
+        if not prism_calc_df.empty:
+            count_prism_calc = len(prism_calc_df)
+            metrics_list = prism_calc_df["Metric"].tolist()
+            metrics_str = ", ".join(f"'{m}'" for m in metrics_list)
+
+            st.info(
+                f"⚠️ **{count_prism_calc} tag(s) are PRiSM Calc(s).** "
+                f"These will be excluded from the download. \n\n**Metrics:** {metrics_str}"
+            )
+
         # --- New Warning Logic ---
         # Find tags where the point name is "Not Found"
         not_found_df = filtered_df[filtered_df["Canary Point Name"] == "Not Found"]

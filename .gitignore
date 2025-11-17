@@ -11,7 +11,17 @@ __pycache__/
 # Streamlit secrets
 .streamlit/secrets.toml
 
+# Streamlit logs
+streamlit.log
+
 # IDE and OS files
 .vscode/
 .idea/
 *.DS_Store
+
+# UV files
+*.uvdata
+uv.lock
+main.py
+pyproject.toml
+.python-version
