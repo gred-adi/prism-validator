@@ -165,7 +165,7 @@ def validate_data(survey_df, tdt_df, prism_df, prism_calc_df=None):
             calc_tdt['Issue'] = np.where(all_blank_mask, "Missing all calculation details", "✅")
     if not calc_tdt.empty:
             cols_to_show = [
-                'TDT', 'Metric', 'Point Type', 'Calc Point Type', 'Calculation Description',
+                'TDT', 'Metric', 'Point Type', 'Calculation Description',
                 'Pseudo Code', 'Language', 'Input Point', 'PRiSM Code'
             ]
             # Filter to ensure columns exist
