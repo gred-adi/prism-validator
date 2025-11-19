@@ -1,10 +1,19 @@
-def get_query():
+def get_query(tdt_names=None):
     """
     Returns the SQL query for Failure Diagnostics Validation.
-    Note: The NCHAR() function is used to produce unicode arrows for direction,
-    which is important for the comparison logic.
+    Optionally filters by a list of TDT names to optimize performance.
     """
-    return """
+    # Base filtering condition
+    where_clause = "p.Name LIKE 'AP-%'"
+    
+    # Add dynamic TDT filtering if names are provided
+    if tdt_names:
+        # Escape single quotes in names just in case, though TDT names are usually safe
+        sanitized_names = [name.replace("'", "''") for name in tdt_names]
+        formatted_names = ", ".join([f"'{name}'" for name in sanitized_names])
+        where_clause += f" AND p.Name IN ({formatted_names})"
+
+    return f"""
     SELECT
         TEMPLATE_FAULT.TemplateID AS [FORM ID],
         p.Name AS [FORM NAME],
@@ -30,7 +39,7 @@ def get_query():
         INNER JOIN prismdb.dbo.Projects p ON TEMPLATE_FAULT.TemplateID = p.ProjectID
         INNER JOIN prismdb.dbo.PointTypeMetric ptm ON TEMPLATE_FAULT_DETAIL.PointTypeMetricID = ptm.PointTypeMetricID
     WHERE
-        p.Name LIKE 'AP-%'
+        {where_clause}
     ORDER BY
         p.Name,
         TEMPLATE_FAULT.Description,

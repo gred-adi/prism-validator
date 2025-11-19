@@ -360,9 +360,14 @@ with tabs[4]:
     if st.button("Run Failure Diagnostics Validation", key="run_failure_diagnostics", disabled=not prerequisites_met):
         with st.spinner('Running...'):
             try:
-                prism_df = st.session_state.db.run_query(get_failure_diag_query())
+                # 1. Parse the Excel file FIRST to get the TDT names
                 tdt_dfs = parse_failure_diag_excel(st.session_state.uploaded_diag_file)
-                # The validator now returns a dictionary
+                tdt_names = list(tdt_dfs.keys())
+                
+                # 2. Pass the names to the query generator for optimized fetching
+                prism_df = st.session_state.db.run_query(get_failure_diag_query(tdt_names))
+                
+                # 3. Run Validator
                 results = validate_failure_diag_data(tdt_dfs, prism_df)
                 st.session_state.validation_states["failure_diagnostics"]["results"] = results
             except Exception as e: st.error(f"An error occurred: {e}")
