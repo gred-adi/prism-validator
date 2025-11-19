@@ -163,11 +163,39 @@ def validate_data(survey_df, tdt_df, prism_df, prism_calc_df=None):
             
             # 6. Create the 'Issue' column based on the mask
             calc_tdt['Issue'] = np.where(all_blank_mask, "Missing all calculation details", "✅")
+    if not calc_tdt.empty:
+            cols_to_show = [
+                'TDT', 'Metric', 'Point Type', 'Calc Point Type', 'Calculation Description',
+                'Pseudo Code', 'Language', 'Input Point', 'PRiSM Code'
+            ]
+            # Filter to ensure columns exist
+            final_cols = [c for c in cols_to_show if c in calc_tdt.columns]
+            calc_tdt = calc_tdt[final_cols]
     
     # Table 2: PRISM Calculations (Passed directly from query result)
     calc_prism = pd.DataFrame()
-    if prism_calc_df is not None:
-        calc_prism = prism_calc_df.copy()
+    if prism_calc_df is not None and not prism_calc_df.empty:
+        temp_df = prism_calc_df.copy()
+
+        # 1. Filter rows based on relevant TDTs (found in the survey/summary)
+        # 'FORM NAME' corresponds to TDT in the PRISM query result
+        if 'FORM NAME' in temp_df.columns:
+             temp_df = temp_df[temp_df['FORM NAME'].isin(unique_tdts)]
+
+        # 2. Rename columns
+        rename_map = {
+            "FORM NAME": "TDT",
+            "METRIC NAME": "Metric",
+            "POINT TYPE": "Point Type",
+            "CALC_LOGIC": "Calculation Logic",
+            "CALC_VARIABLES_NAMES": "Calculation Variables"
+        }
+        temp_df = temp_df.rename(columns=rename_map)
+
+        # 3. Filter columns (only show those that were renamed)
+        # Use a list comprehension to maintain the order specified in the map
+        cols_to_keep = [new_name for old_name, new_name in rename_map.items() if new_name in temp_df.columns]
+        calc_prism = temp_df[cols_to_keep]
 
     return {
         "summary": summary_df,
