@@ -17,6 +17,8 @@ def validate_data(tdt_dfs, prism_df):
         "FORM NAME": "TDT",
         "METRIC NAME": "METRIC_NAME",
         "FAILURE MODE": "FAILURE_MODE",
+        "FAILURE DESCRIPTION": "FAILURE_DESCRIPTION",
+        "NEXT STEPS": "NEXT_STEPS",
         "DIRECTION": "DIRECTION",
         "WEIGHT": "WEIGHT"
     }, inplace=True)

@@ -11,6 +11,8 @@ def get_query():
         TEMPLATE_FAULT_DETAIL.PointTypeMetricID AS [METRIC ID],
         ptm.Description AS [METRIC NAME],
         TEMPLATE_FAULT.Description AS [FAILURE MODE],
+        TEMPLATE_FAULT.Notes AS [FAILURE DESCRIPTION],
+        TEMPLATE_FAULT.NextSteps AS [NEXT STEPS],
         -- Inlined logic from SINE_FAULT_DIAGNOSTIC view for DIRECTION
         CASE
             WHEN TEMPLATE_FAULT_DETAIL.updownvalue = 1 THEN NCHAR(8593) -- ↑
