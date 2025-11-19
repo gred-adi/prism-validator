@@ -126,7 +126,7 @@ def validate_data(model_dfs, prism_df):
         remaining_cols = [c for c in matches_df.columns if c not in existing_cols_in_order]
 
         # Combine to get the final order
-        final_order = existing_cols_in_order + remaining_cols
+        final_order = existing_cols_in_order
         matches_df = matches_df[final_order]
 
     final_mismatches_dict = {key: pd.concat(val, ignore_index=True) if val else pd.DataFrame() for key, val in mismatches_dict.items()}

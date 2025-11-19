@@ -343,9 +343,14 @@ with tabs[3]:
     if st.button("Run Filter Validation", key="run_filter_validation", disabled=not prerequisites_met):
         with st.spinner('Running...'):
             try:
-                prism_df = st.session_state.db.run_query(get_filter_query())
+                # 1. Parse Excel FIRST to get model names
                 model_dfs = parse_filter_excel(st.session_state.uploaded_survey_file)
-                # The validator now returns a dictionary
+                model_names = list(model_dfs.keys())
+                
+                # 2. Pass names to query
+                prism_df = st.session_state.db.run_query(get_filter_query(model_names))
+                
+                # 3. Validate
                 results = validate_filter_data(model_dfs, prism_df)
                 st.session_state.validation_states["filter_validation"]["results"] = results
             except Exception as e: st.error(f"An error occurred: {e}")
