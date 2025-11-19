@@ -1,9 +1,18 @@
-def get_query():
+def get_query(model_names=None):
     """
     Returns the SQL query for Metric Mapping Validation.
-    The hardcoded ProjectID filter has been removed to make it adaptive.
+    Optionally filters by a list of Model names (Project names) to optimize performance.
     """
-    return """
+    
+    # Create dynamic filter condition
+    model_filter_clause = ""
+    if model_names:
+        # Sanitize and format names for SQL IN clause
+        sanitized_names = [name.replace("'", "''") for name in model_names]
+        formatted_names = ", ".join([f"'{name}'" for name in sanitized_names])
+        model_filter_clause = f"AND x.[FORM NAME] IN ({formatted_names})"
+
+    return f"""
     WITH
     EXIST_REV_LOGIC AS (
         SELECT
@@ -72,9 +81,8 @@ def get_query():
         x.[FORM TYPE] = 'PROJECT'
         AND x.[THRESHOLD TYPE] = 'Input Signal'
         AND x.[POINT NAME] IS NOT NULL
-        -- The specific ProjectID list has been removed from the WHERE clause
+        {model_filter_clause}
     ORDER BY
         x.[FORM NAME],
         x.[METRIC NAME];
     """
-

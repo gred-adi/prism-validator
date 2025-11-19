@@ -326,9 +326,14 @@ with tabs[2]:
     if st.button("Run Metric Mapping Validation", key="run_metric_mapping", disabled=not prerequisites_met):
         with st.spinner('Running...'):
             try:
-                prism_df = st.session_state.db.run_query(get_metric_mapping_query())
+                # 1. Parse Excel FIRST to get model names
                 model_dfs = parse_metric_mapping_excel(st.session_state.uploaded_survey_file)
-                # The validator now returns a dictionary
+                model_names = list(model_dfs.keys())
+                
+                # 2. Pass names to query for optimized fetching
+                prism_df = st.session_state.db.run_query(get_metric_mapping_query(model_names))
+                
+                # 3. Run Validator
                 results = validate_metric_mapping_data(model_dfs, prism_df)
                 st.session_state.validation_states["metric_mapping"]["results"] = results
             except Exception as e: st.error(f"An error occurred: {e}")
