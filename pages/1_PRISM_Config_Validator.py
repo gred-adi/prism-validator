@@ -232,6 +232,8 @@ tabs = st.tabs(tab_list)
 # --- NEW Tab 0: Consolidation Overview ---
 with tabs[0]:
     st.header("TDT Consolidation Overview")
+    st.markdown("This tab shows the consolidated TDT, Survey, and Diagnostic data loaded from the files generated on the **Home** page. No validation is performed here.")
+    
     if st.session_state.overview_df is None:
         st.info("Select a TDT folder and click 'Generate & Load Files' in the sidebar to see the consolidation overview.")
     else:
@@ -246,6 +248,8 @@ with tabs[0]:
 
 with tabs[1]:
     st.header("Metric Validation (TDT vs PRISM Template)")
+    st.markdown("Compares the `Point Type` for each metric from the TDT **Survey** file against the PRISM **Template** configuration. It identifies mismatches (e.g., 'Analog' vs 'Digital') and metrics missing in either the TDT or PRISM.")
+
     prerequisites_met = st.session_state.db and st.session_state.uploaded_survey_file
     if not prerequisites_met: st.warning("Please connect to DB and generate the 'Consolidated Survey File'.")
     if st.button("Run Metric Validation", key="run_metric_validation", disabled=not prerequisites_met):
@@ -261,6 +265,8 @@ with tabs[1]:
 
 with tabs[2]:
     st.header("Metric Mapping Validation (TDT vs PRISM Project)")
+    st.markdown("Compares metric details from the TDT **Survey** file against the live PRISM **Project** configuration. It validates the mapping of `Point Name`, `Point Description`, `Function`, `Point Type`, and `Unit` for each metric, highlighting any discrepancies.")
+
     prerequisites_met = st.session_state.db and st.session_state.uploaded_survey_file
     if not prerequisites_met: st.warning("Please connect to DB and generate the 'Consolidated Survey File'.")
     if st.button("Run Metric Mapping Validation", key="run_metric_mapping", disabled=not prerequisites_met):
@@ -276,6 +282,8 @@ with tabs[2]:
 
 with tabs[3]:
     st.header("Filter Validation (TDT vs PRISM Project)")
+    st.markdown("Compares the `Filter` logic from the TDT **'Filter Summary'** sheet against the live PRISM **Project** configuration. It checks if the filter conditions (e.g., 'Equal To 0', 'Less Than 50') are identical between the TDT and PRISM for each metric.")
+
     prerequisites_met = st.session_state.db and st.session_state.uploaded_survey_file
     if not prerequisites_met: st.warning("Please connect to DB and generate the 'Consolidated Survey File'.")
     if st.button("Run Filter Validation", key="run_filter_validation", disabled=not prerequisites_met):
@@ -291,6 +299,8 @@ with tabs[3]:
 
 with tabs[4]:
     st.header("Failure Diagnostics Validation (TDT vs PRISM Template)")
+    st.markdown("Compares the `Direction` and `Weight` for each metric within a `Failure Mode` from the TDT **Diagnostics** file against the PRISM **Template** configuration. It identifies mismatches in diagnostic logic and weighting.")
+
     prerequisites_met = st.session_state.db and st.session_state.uploaded_diag_file
     if not prerequisites_met: st.warning("Please connect to DB and generate the 'Consolidated Failure Diagnostics File'.")
     if st.button("Run Failure Diagnostics Validation", key="run_failure_diagnostics", disabled=not prerequisites_met):
@@ -306,6 +316,8 @@ with tabs[4]:
 
 with tabs[5]:
     st.header("Absolute Deviation Validation")
+    st.markdown("Compares the `HIGH ALERT`, `HIGH WARNING`, `LOW WARNING`, and `LOW ALERT` thresholds from the uploaded **Statistics** file against the live PRISM **Project** configuration for 'Absolute Signal Deviation'.")
+
     prerequisites_met = st.session_state.db and st.session_state.uploaded_stats_file
     if not prerequisites_met: st.warning("Please connect to DB and upload the 'Consolidated Statistics File'.")
     if st.button("Run Absolute Deviation Validation", key="run_abs_dev_validation", disabled=not prerequisites_met):
@@ -320,8 +332,9 @@ with tabs[5]:
     display_results(st.session_state.validation_states["absolute_deviation"]["results"], "abs_dev", "MODEL")
 
 with tabs[6]:
-    # (Tab 6 logic is unchanged)
     st.header("Model Deployment Configuration")
+    st.markdown("Fetches and displays the live deployment configuration from PRISM for a list of specified assets. This tab is for viewing data, not for validation against a file. It checks polling intervals, threshold settings, and PA archive status.")
+
     prereqs_met = st.session_state.db
     if not prereqs_met: st.warning("Please connect to the database to fetch deployment configurations.")
     st.subheader("1. Enter Asset Descriptions")
