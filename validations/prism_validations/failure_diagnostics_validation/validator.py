@@ -6,6 +6,7 @@ def validate_data(tdt_dfs, prism_df):
     """
     Performs the comparison logic for the 'Failure Diagnostics' section.
     Compares Direction and Weight, separates mismatches by column, and returns a dict.
+    Also extracts 'Prescriptive' info (Description/Next Steps) for display.
     """
     prism_df = prism_df.copy()
     all_matches = []
@@ -22,9 +23,23 @@ def validate_data(tdt_dfs, prism_df):
         "DIRECTION": "DIRECTION",
         "WEIGHT": "WEIGHT"
     }, inplace=True)
-    prism_df['METRIC_NAME'] = prism_df['METRIC_NAME'].str.replace('AP-TVI-', '', regex=False)
-    prism_df['DIRECTION'] = prism_df['DIRECTION'].apply(lambda x: x.replace(" ", "") if isinstance(x, str) else x)
+    
+    if 'METRIC_NAME' in prism_df.columns:
+        prism_df['METRIC_NAME'] = prism_df['METRIC_NAME'].str.replace('AP-TVI-', '', regex=False)
+    if 'DIRECTION' in prism_df.columns:
+        prism_df['DIRECTION'] = prism_df['DIRECTION'].apply(lambda x: x.replace(" ", "") if isinstance(x, str) else x)
 
+    # --- NEW: Extract Prescriptive Data (No impact to validation) ---
+    # We grab unique failure mode info from the DB source
+    prescriptive_cols = ['TDT', 'FAILURE_MODE', 'FAILURE_DESCRIPTION', 'NEXT_STEPS']
+    # Ensure columns exist before selecting
+    existing_prescriptive_cols = [c for c in prescriptive_cols if c in prism_df.columns]
+    prescriptive_df = prism_df[existing_prescriptive_cols].drop_duplicates().sort_values(by=['TDT', 'FAILURE_MODE'])
+    
+    # --- FILTER: Ensure we only show Prescriptive info for TDTs in the uploaded files ---
+    valid_tdts = list(tdt_dfs.keys())
+    if 'TDT' in prescriptive_df.columns:
+        prescriptive_df = prescriptive_df[prescriptive_df['TDT'].isin(valid_tdts)]
 
     # 2. Setup for comparison
     columns_to_compare = ['DIRECTION', 'WEIGHT']
@@ -35,8 +50,28 @@ def validate_data(tdt_dfs, prism_df):
 
     # 3. Iterate through each TDT and compare
     for tdt_name, excel_df in tdt_dfs.items():
-        prism_sub_df = prism_df[prism_df["TDT"] == tdt_name].copy()
+        prism_sub_df = prism_df[prism_df["TDT"] == tdt_name].copy() if "TDT" in prism_df.columns else pd.DataFrame()
 
+        # --- Logic for Summary Table Improvements ---
+        # A. Failure Mode Count (PRISM Side)
+        # Get unique failure modes in PRISM for this TDT
+        prism_fms = prism_sub_df[['FAILURE_MODE', 'FAILURE_DESCRIPTION', 'NEXT_STEPS']].drop_duplicates() if not prism_sub_df.empty else pd.DataFrame(columns=['FAILURE_MODE', 'FAILURE_DESCRIPTION', 'NEXT_STEPS'])
+        fm_count = len(prism_fms)
+
+        # B. Prescriptive Check (Description & Next Steps)
+        prescriptive_check = "N/A"
+        if fm_count > 0:
+            # Check for nulls or empty strings in Description or Next Steps
+            # We use fillna('') to handle NaNs, then strip checks to catch empty strings
+            desc_missing = prism_fms['FAILURE_DESCRIPTION'].fillna('').astype(str).str.strip() == ''
+            steps_missing = prism_fms['NEXT_STEPS'].fillna('').astype(str).str.strip() == ''
+            
+            if desc_missing.any() or steps_missing.any():
+                prescriptive_check = "❌"
+            else:
+                prescriptive_check = "✅"
+
+        # --- Existing Validation Logic ---
         merged_df = pd.merge(
             excel_df.drop_duplicates(subset=join_keys),
             prism_sub_df.drop_duplicates(subset=join_keys),
@@ -52,14 +87,18 @@ def validate_data(tdt_dfs, prism_df):
         all_entries_dfs.append(merged_with_tdt)
 
         # Convert weight columns to numeric for proper comparison
-        merged_df['WEIGHT_TDT'] = pd.to_numeric(merged_df['WEIGHT_TDT'], errors='coerce')
-        merged_df['WEIGHT_PRISM'] = pd.to_numeric(merged_df['WEIGHT_PRISM'], errors='coerce')
+        if 'WEIGHT_TDT' in merged_df.columns:
+            merged_df['WEIGHT_TDT'] = pd.to_numeric(merged_df['WEIGHT_TDT'], errors='coerce')
+        if 'WEIGHT_PRISM' in merged_df.columns:
+            merged_df['WEIGHT_PRISM'] = pd.to_numeric(merged_df['WEIGHT_PRISM'], errors='coerce')
 
         # --- Identify Perfect Matches ---
         match_mask = (merged_df['_merge'] == 'both')
         for col in columns_to_compare:
-            col_tdt, col_prism = merged_df[f"{col}_TDT"], merged_df[f"{col}_PRISM"]
-            match_mask &= (col_tdt == col_prism) | (col_tdt.isna() & col_prism.isna())
+            col_tdt = merged_df.get(f"{col}_TDT")
+            col_prism = merged_df.get(f"{col}_PRISM")
+            if col_tdt is not None and col_prism is not None:
+                match_mask &= (col_tdt == col_prism) | (col_tdt.isna() & col_prism.isna())
         
         match_rows = merged_df[match_mask].copy()
         if not match_rows.empty:
@@ -68,15 +107,17 @@ def validate_data(tdt_dfs, prism_df):
 
         # --- Identify Mismatches by Specific Column ---
         for col in columns_to_compare:
-            col_tdt, col_prism = merged_df[f"{col}_TDT"], merged_df[f"{col}_PRISM"]
-            mismatch_condition = (col_tdt != col_prism) & ~(col_tdt.isna() & col_prism.isna())
-            col_mismatch_mask = (merged_df['_merge'] == 'both') & mismatch_condition
+            col_tdt = merged_df.get(f"{col}_TDT")
+            col_prism = merged_df.get(f"{col}_PRISM")
+            if col_tdt is not None and col_prism is not None:
+                mismatch_condition = (col_tdt != col_prism) & ~(col_tdt.isna() & col_prism.isna())
+                col_mismatch_mask = (merged_df['_merge'] == 'both') & mismatch_condition
 
-            if col_mismatch_mask.any():
-                mismatch_subset = merged_df.loc[col_mismatch_mask, join_keys + [f'{col}_TDT', f'{col}_PRISM']].copy()
-                mismatch_subset.rename(columns={f'{col}_TDT': 'TDT_Value', f'{col}_PRISM': 'PRISM_Value'}, inplace=True)
-                mismatch_subset['TDT'] = tdt_name
-                mismatches_by_column[col].append(mismatch_subset)
+                if col_mismatch_mask.any():
+                    mismatch_subset = merged_df.loc[col_mismatch_mask, join_keys + [f'{col}_TDT', f'{col}_PRISM']].copy()
+                    mismatch_subset.rename(columns={f'{col}_TDT': 'TDT_Value', f'{col}_PRISM': 'PRISM_Value'}, inplace=True)
+                    mismatch_subset['TDT'] = tdt_name
+                    mismatches_by_column[col].append(mismatch_subset)
 
         # --- Identify Records Missing from a Source ---
         missing_in_prism_rows = merged_df[merged_df['_merge'] == 'left_only'].copy()
@@ -93,6 +134,8 @@ def validate_data(tdt_dfs, prism_df):
         total_mismatch_count = len(merged_df[~match_mask])
         summary_data.append({
             "TDT": tdt_name,
+            "Failure Mode Count": fm_count,
+            "Prescriptive Check": prescriptive_check,
             "Match Count": len(match_rows),
             "Mismatch Count": total_mismatch_count,
             "Total TDT Records": len(excel_df.drop_duplicates(subset=join_keys))
@@ -100,6 +143,14 @@ def validate_data(tdt_dfs, prism_df):
 
     # 4. Create Final DataFrames and Dictionary
     summary_df = pd.DataFrame(summary_data)
+    
+    # Ensure column order if summary_df is not empty
+    if not summary_df.empty:
+        desired_order = ["TDT", "Failure Mode Count", "Prescriptive Check", "Match Count", "Mismatch Count", "Total TDT Records"]
+        # Filter cols that actually exist
+        cols = [c for c in desired_order if c in summary_df.columns]
+        summary_df = summary_df[cols]
+
     all_entries_df = pd.concat(all_entries_dfs, ignore_index=True) if all_entries_dfs else pd.DataFrame()
     
     # Format WEIGHT columns to remove trailing '.0'
@@ -158,5 +209,6 @@ def validate_data(tdt_dfs, prism_df):
         "summary": summary_df,
         "matches": matches_df,
         "mismatches": final_mismatches_dict,
-        "all_entries": all_entries_df
+        "all_entries": all_entries_df,
+        "prescriptive": prescriptive_df
     }

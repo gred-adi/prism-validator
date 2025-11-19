@@ -366,7 +366,24 @@ with tabs[4]:
                 results = validate_failure_diag_data(tdt_dfs, prism_df)
                 st.session_state.validation_states["failure_diagnostics"]["results"] = results
             except Exception as e: st.error(f"An error occurred: {e}")
-    display_results(st.session_state.validation_states["failure_diagnostics"]["results"], "failure_diag", "TDT")
+    
+    # Capture the selected filter from the display_results function
+    results = st.session_state.validation_states["failure_diagnostics"]["results"]
+    selected_filter = display_results(results, "failure_diag", "TDT")
+
+    # --- NEW: Prescriptive Section ---
+    if results and 'prescriptive' in results:
+        st.markdown("---")
+        st.subheader("Prescriptive (PRISM)")
+        st.markdown("This table displays the Failure Mode Description and Next Steps currently configured in PRISM.")
+        
+        prescriptive_df = results['prescriptive']
+        
+        # Apply the same filter as the validation results
+        if selected_filter and selected_filter != 'All':
+            prescriptive_df = prescriptive_df[prescriptive_df['TDT'] == selected_filter]
+        
+        st.dataframe(prescriptive_df, use_container_width=True)
 
 with tabs[5]:
     st.header("Absolute Deviation Validation")
