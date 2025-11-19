@@ -202,21 +202,6 @@ if data_source_selected and df_survey is not None:
 
         st.info(f"{len(filtered_df)} total tags loaded for this model.")
 
-        # --- New Warning Logic ---
-        # Find tags where the point name is "Not Found"
-        not_found_df = filtered_df[filtered_df["Canary Point Name"] == "Not Found"]
-
-        # If any are found, display a warning with the count and list of metrics
-        if not not_found_df.empty:
-            count_not_found = len(not_found_df)
-            metrics_list = not_found_df["Metric"].tolist()
-            metrics_str = ", ".join(f"'{m}'" for m in metrics_list)
-
-            st.warning(
-                f"⚠️ **{count_not_found} tag(s) have missing Canary Point Name(s).** "
-                f"These will be excluded from the download. \n\n**Metrics:** {metrics_str}"
-            )
-        
         # Find tags where the point name is "PRiSM Calc"
         prism_calc_df = filtered_df[filtered_df["Canary Point Name"] == "PRiSM Calc"]
 
@@ -231,13 +216,32 @@ if data_source_selected and df_survey is not None:
                 f"These will be excluded from the download. \n\n**Metrics:** {metrics_str}"
             )
 
+        # --- New Warning Logic ---
+        # Find tags where the point name is "Not Found"
+        not_found_df = filtered_df[filtered_df["Canary Point Name"] == "Not Found"]
+
+        # If any are found, display a warning with the count and list of metrics
+        if not not_found_df.empty:
+            count_not_found = len(not_found_df)
+            metrics_list = not_found_df["Metric"].tolist()
+            metrics_str = ", ".join(f"'{m}'" for m in metrics_list)
+
+            st.warning(
+                f"⚠️ **{count_not_found} tag(s) have missing Canary Point Name(s).** "
+                f"These will be excluded from the download. \n\n**Metrics:** {metrics_str}"
+            )
+
 # --- Step 3: Configure & Fetch ---
 if "filtered_df" in st.session_state:
     st.divider()
     st.header("Step 3 — Configure API Query & Fetch Data")
 
-    all_metrics = st.session_state.filtered_df["Metric"].tolist()
-    selected_metrics = st.multiselect("Select Metrics to Fetch", all_metrics, default=all_metrics)
+    # --- MODIFIED: Filter out 'PRiSM Calc' and 'Not Found' metrics BEFORE creating the list ---
+    # This ensures they do not appear in the multiselect and are not selected by default.
+    valid_rows_mask = ~st.session_state.filtered_df["Canary Point Name"].isin(["PRiSM Calc", "Not Found"])
+    valid_metrics = st.session_state.filtered_df.loc[valid_rows_mask, "Metric"].tolist()
+
+    selected_metrics = st.multiselect("Select Metrics to Fetch", valid_metrics, default=valid_metrics)
     st.session_state.selected_metrics = selected_metrics
 
     col1, col2 = st.columns([1, 1])
@@ -265,16 +269,17 @@ if "filtered_df" in st.session_state:
             st.warning("No metrics selected. Please select at least one metric to fetch.")
             st.stop()
 
-        # Filter the DataFrame based on selected metrics
+        # 1. Filter the DataFrame based on selected metrics in the multiselect
+        # Since selected_metrics only contains valid metrics, we don't strictly need to filter again,
+        # but filtering by selection is still required.
         active_df = st.session_state.filtered_df[
             st.session_state.filtered_df["Metric"].isin(st.session_state.selected_metrics)
         ]
+        
         st.session_state.active_df = active_df
-
+        
+        # 2. Extract tags from the active_df
         tags = active_df["Canary Point Name"].astype(str).tolist()
-
-        # --- New: Exclude "Not Found" tags from the query ---
-        tags = [tag for tag in tags if tag != "Not Found"]
 
         if not tags:
             st.error("No valid tags to query for the selected metrics.")
