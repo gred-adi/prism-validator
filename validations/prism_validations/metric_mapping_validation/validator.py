@@ -20,7 +20,8 @@ def validate_data(model_dfs, prism_df):
         "POINT DESCRIPTION": "POINT_DESCRIPTION",
         "FUNCTION": "FUNCTION",
         "POINT TYPE": "POINT_TYPE",
-        "POINT UNIT": "POINT_UNIT"
+        "POINT UNIT": "POINT_UNIT",
+        "INCLUDED IN PROFILE": "Modeled in Profile"
     }, inplace=True)
     if 'METRIC_NAME' in prism_df.columns:
         prism_df['METRIC_NAME'] = prism_df['METRIC_NAME'].str.replace('AP-TVI-', '', regex=False)
@@ -83,10 +84,21 @@ def validate_data(model_dfs, prism_df):
             col_mismatch_mask &= mismatch_is_relevant
             
             if col_mismatch_mask.any():
-                mismatch_subset = merged_df.loc[col_mismatch_mask, ['METRIC_NAME', f'{col}_TDT', f'{col}_PRISM']].copy()
+                cols_to_select = ['METRIC_NAME', f'{col}_TDT', f'{col}_PRISM']
+                # NEW: Include 'Modeled in Profile' column if identifying FUNCTION mismatches
+                if col == 'FUNCTION' and 'Modeled in Profile' in merged_df.columns:
+                    cols_to_select.append('Modeled in Profile')
+
+                mismatch_subset = merged_df.loc[col_mismatch_mask, cols_to_select].copy()
                 mismatch_subset.rename(columns={f'{col}_TDT': 'TDT_Value', f'{col}_PRISM': 'PRISM_Value'}, inplace=True)
                 mismatch_subset['MODEL'] = model_name
-                mismatch_subset = mismatch_subset[['MODEL', 'METRIC_NAME', 'TDT_Value', 'PRISM_Value']]
+                
+                # Reorder columns ensuring 'Modeled in Profile' is present if selected
+                final_subset_cols = ['MODEL', 'METRIC_NAME', 'TDT_Value', 'PRISM_Value']
+                if col == 'FUNCTION' and 'Modeled in Profile' in mismatch_subset.columns:
+                    final_subset_cols.append('Modeled in Profile')
+                
+                mismatch_subset = mismatch_subset[final_subset_cols]
                 mismatches_by_column[col].append(mismatch_subset)
         
         # --- Identify and format Records Missing from a Source ---
@@ -150,6 +162,9 @@ def validate_data(model_dfs, prism_df):
             col_order = ['MODEL', 'METRIC_NAME']    
             if mismatch_type in columns_to_compare:
                 col_order.extend(['TDT_Value', 'PRISM_Value'])
+                # NEW: Add 'Modeled in Profile' to the column order for FUNCTION mismatches
+                if mismatch_type == 'FUNCTION':
+                    col_order.append('Modeled in Profile')
             else:
                 tdt_cols = sorted([c for c in df.columns if '_TDT' in c])
                 prism_cols = sorted([c for c in df.columns if '_PRISM' in c])
