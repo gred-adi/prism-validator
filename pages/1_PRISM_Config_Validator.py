@@ -216,7 +216,16 @@ with st.sidebar:
 
 # --- Main Page UI ---
 st.title("PRISM Configuration Validator")
-st.markdown("Select a validation type from the tabs below.")
+st.markdown("""
+This tool validates the alignment between your offline **TDT (Template Design Tool)** files and the live **PRISM Database** configuration. 
+It helps identify discrepancies in metrics, mappings, filters, and diagnostics before or after deployment.
+
+**How to use:**
+1.  **Connect to Database:** Use the sidebar to enter your PRISM database credentials and click "Connect".
+2.  **Load Data:** Ensure your TDT files are processed on the **Home** page. Optionally, upload a specific "Consolidated Statistics File" in the sidebar if running Absolute Deviation checks.
+3.  **Select Validation:** Choose a tab below corresponding to the type of check you wish to perform (e.g., *Metric Validation* or *Failure Diagnostics*).
+4.  **Run & Review:** Click the **Run Validation** button within the tab and review the Summary and Mismatches tables.
+""")
 
 tab_list = [
     "Consolidation Overview", # NEW TAB

@@ -16,6 +16,18 @@ import re
 
 st.set_page_config(page_title="Canary Historian Downloader", layout="wide")
 st.title("Canary Historian Data Downloader")
+st.markdown("""
+This tool facilitates the extraction of historical time-series data from the **Canary Historian** based on the metric definitions found in your TDT files.
+It is designed to help you quickly gather training or analysis data for specific models.
+
+**How to use:**
+1.  **Prerequisites:** Ensure TDT files are loaded via the **Home** page.
+2.  **Filter Metrics (Step 2):** Select the specific TDT and Model you wish to query. This will load the relevant tags.
+3.  **Configure Query (Step 3):** * Select the specific metrics you want to download.
+    * Define the **Start/End Date** and **Aggregate** settings (e.g., 1-minute snapshots).
+    * Enter your **API Token**.
+4.  **Fetch & Download:** Click "Fetch Data" to retrieve the data from the API, preview the statistics, and download the result as a CSV file.
+""")
 
 
 # --- TDT Consolidation Functions ---
