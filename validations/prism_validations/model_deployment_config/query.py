@@ -132,8 +132,6 @@ DetailsData AS (
         LEFT JOIN prismdb.dbo.FaultSignatureDev FAULT_DETAIL ON FAULT.FaultDiagnosticID = FAULT_DETAIL.FaultDiagnosticID AND PROJECT_POINTS.PointTypeMetricID = FAULT_DETAIL.PointTypeMetricID
         LEFT JOIN prismdb.dbo.ProfilePoints PROJECT_DEPLOYED_PROFILE ON PROJECTS.DeployedProfileID = PROJECT_DEPLOYED_PROFILE.ProfileID AND PROJECT_POINTS.ProjectPointID = PROJECT_DEPLOYED_PROFILE.ProjectPointID
         LEFT JOIN prismdb.dbo.PointFilters PROJECT_FILTER ON PROJECT_POINTS.ProjectPointID = PROJECT_FILTER.PROJECTPOINTID
-    --WHERE
-    --    PROJECTS.ProjectID IN ('833') -- Sample
     GROUP BY
         ASSETS.Description,
         TEMPLATES.ProjectID,
@@ -220,26 +218,28 @@ FROM ConsolidatedProject CP
 ),
 ModelDeploymentConfig AS (
 SELECT DISTINCT
+    ASSETS.Description AS [ASSET],
+    PROJECTS.ParentTemplateID AS [TEMPLATE ID],
+    TEMPLATES.Name AS [TEMPLATE NAME],
 	PROJECTS.ProjectID AS [PROJECT ID],
-	PROJECTS.Name AS [MODEL],
+	PROJECTS.Name AS [PROJECT NAME],
 	PROJECTS.PollingInterval AS [INTERVAL TIME (SEC)],
 	CASE
 		WHEN PROJECT_POINT_DETAIL_THRES.AlarmThresholdDenominationID = 1 THEN 'Percent of Time'
 		WHEN PROJECT_POINT_DETAIL_THRES.AlarmThresholdDenominationID = 2 THEN 'Percent of Count'
 		ELSE CAST(PROJECT_POINT_DETAIL_THRES.AlarmThresholdDenominationID AS VARCHAR)
 	 END AS [WINDOW TYPE],
-	'Y' AS [THRESHOLD ACTIVE], -- This is fixed by the WHERE clause
-	PROJECT_POINT_DETAIL_THRES.ThresholdPercent AS [THRESHOLD PERCENT],
-	PROJECT_POINT_DETAIL_THRES.ThresholdTimeWindowSeconds AS [THRESHOLD TIME WINDOW SECONDS],
 	CASE 
-	    WHEN PROJECT_POINT_DETAIL_THRES.ThresholdCountMinimum IS NOT NULL AND PROJECT_POINT_DETAIL_THRES.ThresholdCountWindow IS NOT NULL 
+	    WHEN PROJECT_POINT_DETAIL_THRES.AlarmThresholdDenominationID = 1
+            THEN CONCAT(PROJECT_POINT_DETAIL_THRES.ThresholdPercent*PROJECT_POINT_DETAIL_THRES.ThresholdTimeWindowSeconds,'/',PROJECT_POINT_DETAIL_THRES.ThresholdTimeWindowSeconds)
+        WHEN PROJECT_POINT_DETAIL_THRES.AlarmThresholdDenominationID = 2
 		    THEN CONCAT(PROJECT_POINT_DETAIL_THRES.ThresholdCountMinimum,'/',PROJECT_POINT_DETAIL_THRES.ThresholdCountWindow) 
 	    ELSE NULL 
-    END AS [THRESHOLD WINDOW],
-	'Overall Model Residual' AS [THRESHOLD TYPE] -- This is fixed by the WHERE clause
+    END AS [THRESHOLD WINDOW]
 FROM
     prismdb.dbo.Projects PROJECTS
     LEFT JOIN prismdb.dbo.Assets ASSETS ON PROJECTS.AssetID = ASSETS.AssetID
+    LEFT JOIN prismdb.dbo.Projects TEMPLATES ON PROJECTS.ParentTemplateID = TEMPLATES.ProjectID
     LEFT JOIN prismdb.dbo.ProjectPoints PROJECT_POINTS ON PROJECTS.ProjectID = PROJECT_POINTS.ProjectID
     LEFT JOIN prismdb.dbo.ProjectPoints PROJECT_POINT_DETAILS ON PROJECT_POINTS.ProjectID = PROJECT_POINT_DETAILS.ProjectID
         AND PROJECT_POINTS.OrderIndex = PROJECT_POINT_DETAILS.OrderIndex
@@ -262,4 +262,8 @@ FROM
 	INNER JOIN ModelDeploymentConfig MDC ON MDC.[PROJECT ID] = V.[PROJECT_ID]
 WHERE
     V.ASSET IN ({formatted_assets}) -- Corresponds to V.[ASSET]
+ORDER BY
+    MDC.[ASSET],
+    MDC.[TEMPLATE NAME],
+    MDC.[PROJECT NAME]
     """
