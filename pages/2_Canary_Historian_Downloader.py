@@ -109,16 +109,56 @@ def convert_df_to_excel_bytes(survey_df):
 # Replace with your actual API details or use Streamlit secrets
 API_URL = "https://cch.aboitizpower.com:55236/api/v2/getTagData"
 API_TOKEN = st.secrets.get("api", {}).get("token", "")
-AGGREGATE_NAMES = [
-    "Average", "Count", "CountInStateNonZero", "CountInStateZero", "Delta", "DeltaBounds",
-    "DeltaTotalCount", "DurationBad", "DurationGood", "DurationInStateNonZero", "DurationInStateZero",
-    "End", "EndBound", "Instant", "Interpolative", "Maximum", "Maximum2", "MaximumActualTime",
-    "MaximumActualTime2", "Minimum", "Minimum2", "MinimumActualTime", "MinimumActualTime2",
-    "NumberOfTransitions", "PercentBad", "PercentGood", "Range", "Range2",
-    "StandardDeviationPopulation", "StandardDeviationSample", "Start", "StartBound", "TimeAverage",
-    "TimeAverage2", "Total", "Total2", "TotalPer24Hours", "TotalPerHour", "TotalPerMinute",
-    "VariancePopulation", "VarianceSample", "WorstQuality", "WorstQuality2"
-]
+
+# --- MODIFIED: Aggregate Definitions Dictionary ---
+AGGREGATE_DEFINITIONS = {
+    "Average": "Retrieve the average value of the data over the interval.",
+    "Count": "Retrieve the number of raw values over the interval.",
+    "CountInStateNonZero": "Retrieve the number of times a Boolean or numeric was in a non-zero state using Simple Bounding Values.",
+    "CountInStateZero": "Retrieve the number of times a Boolean or numeric was in a zero state using Simple Bounding Values.",
+    "Delta": "Retrieve the difference between the Start and End value in the interval.",
+    "DeltaBounds": "Retrieve the difference between the StartBound and EndBound value in the interval.",
+    "DeltaTotalCount": "Retrieve the total delta of the values for an accumulation tag that resets periodically.",
+    "DurationBad": "Retrieve the total duration of time (milliseconds) in the interval during which the data is Bad.",
+    "DurationGood": "Retrieve the total duration of time (milliseconds) in the interval during which the data is Good.",
+    "DurationInStateNonZero": "Retrieve the time (milliseconds) a Boolean or numeric was in a non-zero state using Simple Bounding Values.",
+    "DurationInStateZero": "Retrieve the time (milliseconds) a Boolean or numeric was in a zero state using Simple Bounding Values.",
+    "End": "Retrieve the last value in the interval.",
+    "EndBound": "Retrieve the value at the end of the interval using Simple Bounding Values.",
+    "Instant": "Retrieve the value at the exact beginning of the interval.",
+    "Interpolative": "At the beginning of each interval, retrieve the calculated value from the data points on either side of the requested timestamp.",
+    "Maximum": "Retrieve the maximum raw value in the interval with the timestamp of the start of the interval.",
+    "Maximum2": "Retrieve the maximum value in the interval including the Simple Bounding Values.",
+    "MaximumActualTime": "Retrieve the maximum value in the interval and the timestamp of the maximum value.",
+    "MaximumActualTime2": "Retrieve the maximum value with the actual timestamp including the Simple Bounding Values.",
+    "Minimum": "Retrieve the minimum raw value in the interval with the timestamp of the start of the interval.",
+    "Minimum2": "Retrieve the minimum value in the interval including the Simple Bounding Values.",
+    "MinimumActualTime": "Retrieve the minimum value in the interval and the timestamp of the minimum value.",
+    "MinimumActualTime2": "Retrieve the minimum value with the actual timestamp including the Simple Bounding Values.",
+    "NumberOfTransitions": "Retrieve the number of changes between zero and non-zero that a Boolean or numeric value experienced in the interval.",
+    "PercentBad": "Retrieve the percentage of data (0 to 100) in the interval which has Bad StatusCode.",
+    "PercentGood": "Retrieve the percentage of data (0 to 100) in the interval which has Good StatusCode",
+    "Range": "Retrieve the difference between the minimum and maximum value over the interval.",
+    "Range2": "Retrieve the difference between the Minimum2 and Maximum2 value over the interval.",
+    "StandardDeviationPopulation": "Retrieve the standard deviation for the interval for a complete population (n) which includes Simple Bounding Values.",
+    "StandardDeviationSample": "Retrieve the standard deviation for the interval for a sample of the population (n-1).",
+    "Start": "Retrieve the first value in the interval.",
+    "StartBound": "Retrieve the value at the beginning of the interval using Simple Bounding Values.",
+    "TimeAverage": "Retrieve the time weighted average data over the interval using Interpolated Bounding Values.",
+    "TimeAverage2": "Retrieve the time weighted average data over the interval using Simple Bounding Values.",
+    "Total": "Retrieve the total (time integral) of the data over the interval using Interpolated Bounding Values.",
+    "Total2": "Retrieve the total (time integral in seconds) of the data over the interval using Simple Bounding Values.",
+    "TotalPer24Hours": "Retrieve the total (time integral in 24 hours) of the data over the interval using Simple Bounding Values.",
+    "TotalPerHour": "Retrieve the total (time integral in hours) of the data over the interval using Simple Bounding Values.",
+    "TotalPerMinute": "Retrieve the total (time integral in minutes) of the data over the interval using Simple Bounding Values.",
+    "VariancePopulation": "Retrieve the variance for the interval as calculated by the StandardDeviationPopulation which includes Simple Bounding Values.",
+    "VarianceSample": "Retrieve the variance for the interval as calculated by the StandardDeviationSample.",
+    "WorstQuality": "Retrieve the worst StatusCode of data in the interval.",
+    "WorstQuality2": "Retrieve the worst StatusCode of data in the interval including the Simple Bounding Values."
+}
+
+AGGREGATE_NAMES = list(AGGREGATE_DEFINITIONS.keys())
+
 # A reasonable limit for the number of data points in a single API call
 MAX_POINTS_PER_CHUNK = 10_000
 
@@ -236,8 +276,7 @@ if "filtered_df" in st.session_state:
     st.divider()
     st.header("Step 3 — Configure API Query & Fetch Data")
 
-    # --- MODIFIED: Filter out 'PRiSM Calc' and 'Not Found' metrics BEFORE creating the list ---
-    # This ensures they do not appear in the multiselect and are not selected by default.
+    # Filter out 'PRiSM Calc' and 'Not Found' metrics BEFORE creating the list
     valid_rows_mask = ~st.session_state.filtered_df["Canary Point Name"].isin(["PRiSM Calc", "Not Found"])
     valid_metrics = st.session_state.filtered_df.loc[valid_rows_mask, "Metric"].tolist()
 
@@ -258,6 +297,11 @@ if "filtered_df" in st.session_state:
 
     with col2:
         agg_name = st.selectbox("Aggregate Name", AGGREGATE_NAMES, index=AGGREGATE_NAMES.index("EndBound"))
+        
+        # --- MODIFIED: Display Definition ---
+        if agg_name in AGGREGATE_DEFINITIONS:
+            st.info(f"ℹ️ **{agg_name}**: {AGGREGATE_DEFINITIONS[agg_name]}")
+            
         agg_interval = st.text_input("Aggregate Interval (HH:MM:SS)", value="0:01:00")
         include_quality = st.checkbox("Include quality in response (includeQuality)", value=False)
         token_input = st.text_input("API Token", value=API_TOKEN, type="password")
@@ -270,8 +314,6 @@ if "filtered_df" in st.session_state:
             st.stop()
 
         # 1. Filter the DataFrame based on selected metrics in the multiselect
-        # Since selected_metrics only contains valid metrics, we don't strictly need to filter again,
-        # but filtering by selection is still required.
         active_df = st.session_state.filtered_df[
             st.session_state.filtered_df["Metric"].isin(st.session_state.selected_metrics)
         ]
