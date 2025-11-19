@@ -20,7 +20,8 @@ def validate_data(model_dfs, prism_df):
         "POINT DESCRIPTION": "POINT_DESCRIPTION",
         "FUNCTION": "FUNCTION",
         "POINT TYPE": "POINT_TYPE",
-        "POINT UNIT": "POINT_UNIT"
+        "POINT UNIT": "POINT_UNIT",
+        "INCLUDED IN PROFILE": "MODELED"
     }, inplace=True)
     if 'METRIC_NAME' in prism_df.columns:
         prism_df['METRIC_NAME'] = prism_df['METRIC_NAME'].str.replace('AP-TVI-', '', regex=False)
