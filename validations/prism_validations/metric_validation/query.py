@@ -1,8 +1,19 @@
-def get_query():
+def get_query(tdt_names=None):
     """
     Returns the SQL query for validatng point types (Analog/Digital).
+    Optionally filters by a list of TDT names (Template names) to optimize performance.
     """
-    return """
+    # Base filtering condition
+    where_clause = "P.ProjectTypeID = 2 AND P.Name LIKE 'AP-%' AND PP.PointTypeID = 1"
+
+    # Add dynamic TDT filtering if names are provided
+    if tdt_names:
+        # Sanitize and format names for SQL IN clause
+        sanitized_names = [name.replace("'", "''") for name in tdt_names]
+        formatted_names = ", ".join([f"'{name}'" for name in sanitized_names])
+        where_clause += f" AND P.Name IN ({formatted_names})"
+
+    return f"""
     SELECT
         P.Name AS [FORM NAME],
         M.Description AS [METRIC NAME],
@@ -17,16 +28,25 @@ def get_query():
         JOIN prismdb.dbo.PointTypeMetric M ON PP.PointTypeMetricID = M.PointTypeMetricID
         LEFT JOIN prismdb.dbo.PointCalc PC ON PP.ProjectPointID = PC.ProjectPointID
     WHERE
-        P.ProjectTypeID = 2  -- Templates
-        AND P.Name LIKE 'AP-%'
-        AND PP.PointTypeID = 1 -- Input Signal
+        {where_clause}
     """
 
-def get_calc_query():
+def get_calc_query(tdt_names=None):
     """
     Returns the SQL query for fetching PRISM Calculations details.
+    Optionally filters by a list of TDT names to optimize performance.
     """
-    return """
+    # Base filtering condition
+    where_clause = "FORM.PROJECTTYPEID = 2 AND FORM_POINTS_DETAIL.PointTypeID = 1 AND FORM.Name LIKE 'AP-%'"
+
+    # Add dynamic TDT filtering if names are provided
+    if tdt_names:
+        # Sanitize and format names for SQL IN clause
+        sanitized_names = [name.replace("'", "''") for name in tdt_names]
+        formatted_names = ", ".join([f"'{name}'" for name in sanitized_names])
+        where_clause += f" AND FORM.Name IN ({formatted_names})"
+
+    return f"""
 -- Calculations (PRISM)
 WITH
 Templates_Base AS (
@@ -87,9 +107,7 @@ Templates_Base AS (
 	    LEFT JOIN prismdb.dbo.FaultDiagnostic FAULT ON (FORM.PROJECTTYPEID = 2 AND FORM.ProjectID = FAULT.TemplateID)
 	    LEFT JOIN prismdb.dbo.FaultSignatureDev FAULT_DETAIL ON FAULT.FaultDiagnosticID = FAULT_DETAIL.FaultDiagnosticID AND FORM_POINTS.PointTypeMetricID = FAULT_DETAIL.PointTypeMetricID
 	WHERE
-	    FORM.PROJECTTYPEID = 2 -- This corresponds to [FORM TYPE] = 'TEMPLATE'
-	    AND FORM_POINTS_DETAIL.PointTypeID = 1 -- This corresponds to [THRESHOLD TYPE] = 'Input Signal'
-	    AND FORM.Name LIKE 'AP-%'
+	    {where_clause}
 	GROUP BY
 		FORM.ProjectID,
 	    FORM.Name,

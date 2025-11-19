@@ -267,18 +267,25 @@ with tabs[1]:
     if st.button("Run Metric Validation", key="run_metric_validation", disabled=not prerequisites_met):
         with st.spinner('Running...'):
             try:
-                # Fetch Basic Metric Data
-                prism_df = st.session_state.db.run_query(get_metric_query())
+                # 1. Parse TDT File First
+                tdt_df = parse_metric_excel(st.session_state.uploaded_survey_file)
                 
-                # Fetch PRISM Calculation Data (New Query)
-                prism_calc_df = st.session_state.db.run_query(get_calc_query())
-                
-                # Parse TDT
-                tdt_dfs = parse_metric_excel(st.session_state.uploaded_survey_file)
+                # Extract TDT names for filtering
+                tdt_names = []
+                if not tdt_df.empty:
+                    if 'TDT' in tdt_df.columns:
+                        tdt_names = tdt_df['TDT'].dropna().unique().tolist()
+                    elif 'Model' in tdt_df.columns:
+                        tdt_names = tdt_df['Model'].dropna().unique().tolist()
 
+                # 2. Fetch Basic Metric Data (With optimized filtering)
+                prism_df = st.session_state.db.run_query(get_metric_query(tdt_names))
                 
-                # Run Validator
-                results = validate_metric_data(st.session_state.survey_df, tdt_dfs, prism_df, prism_calc_df)
+                # 3. Fetch PRISM Calculation Data (With optimized filtering)
+                prism_calc_df = st.session_state.db.run_query(get_calc_query(tdt_names))
+                
+                # 4. Run Validator
+                results = validate_metric_data(st.session_state.survey_df, tdt_df, prism_df, prism_calc_df)
                 
                 st.session_state.validation_states["metric_validation"]["results"] = results
                 st.success("Validation complete!")
