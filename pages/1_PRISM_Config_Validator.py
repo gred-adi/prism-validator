@@ -4,7 +4,7 @@ from db_utils import PrismDB
 import os
 
 # --- Import validation-specific modules ---
-from validations.prism_validations.metric_validation.query import get_query as get_metric_query
+from validations.prism_validations.metric_validation.query import get_query as get_metric_query, get_calc_query
 from validations.prism_validations.metric_validation.parser import parse_excel as parse_metric_excel
 from validations.prism_validations.metric_validation.validator import validate_data as validate_metric_data
 
@@ -90,7 +90,7 @@ def display_results(results, key_prefix, filter_column_name):
     """
     if not results or results.get('summary', pd.DataFrame()).empty:
         st.info("Run the validation to see the results.")
-        return
+        return None
 
     st.subheader("Validation Summary")
     st.dataframe(results['summary'], use_container_width=True)
@@ -99,7 +99,7 @@ def display_results(results, key_prefix, filter_column_name):
     # Ensure the filter column exists before proceeding
     if filter_column_name not in results['summary'].columns:
         st.error(f"Cannot generate filter; expected column '{filter_column_name}' not in summary.")
-        return
+        return None
 
     # --- Create Filter Dropdown ---
     filter_options = ['All'] + results['summary'][filter_column_name].tolist()
@@ -169,6 +169,8 @@ def display_results(results, key_prefix, filter_column_name):
         total_mismatches_shown = len(mismatches_to_show)
 
     st.metric("Total Mismatches Shown", total_mismatches_shown)
+    
+    return tdt_filter
 
 # --- Sidebar UI ---
 with st.sidebar:
@@ -215,7 +217,7 @@ with st.sidebar:
     )
 
 # --- Main Page UI ---
-st.title("PRISM Configuration Validator")
+st.title("PRISM Config Validator")
 st.markdown("""
 This tool validates the alignment between your offline **TDT (Template Design Tool)** files and the live **PRISM Database** configuration. 
 It helps identify discrepancies in metrics, mappings, filters, and diagnostics before or after deployment.
@@ -261,16 +263,59 @@ with tabs[1]:
 
     prerequisites_met = st.session_state.db and st.session_state.uploaded_survey_file
     if not prerequisites_met: st.warning("Please connect to DB and generate the 'Consolidated Survey File'.")
+    
     if st.button("Run Metric Validation", key="run_metric_validation", disabled=not prerequisites_met):
         with st.spinner('Running...'):
             try:
+                # Fetch Basic Metric Data
                 prism_df = st.session_state.db.run_query(get_metric_query())
+                
+                # Fetch PRISM Calculation Data (New Query)
+                prism_calc_df = st.session_state.db.run_query(get_calc_query())
+                
+                # Parse TDT
                 tdt_dfs = parse_metric_excel(st.session_state.uploaded_survey_file)
-                # The validator now returns a dictionary
-                results = validate_metric_data(tdt_dfs, prism_df)
+
+                
+                # Run Validator
+                results = validate_metric_data(st.session_state.survey_df, tdt_dfs, prism_df, prism_calc_df)
+                
                 st.session_state.validation_states["metric_validation"]["results"] = results
+                st.success("Validation complete!")
             except Exception as e: st.error(f"An error occurred: {e}")
-    display_results(st.session_state.validation_states["metric_validation"]["results"], "metric_val", "TDT")
+            
+    # Display General Results
+    results = st.session_state.validation_states["metric_validation"]["results"]
+    selected_filter = display_results(results, "metric_val", "TDT")
+
+    # --- NEW SECTION: Calculation Validation Tables ---
+    if results:
+        st.markdown("---")
+        st.subheader("Calculation Validation Details")
+        
+        # TDT Calculations
+        st.markdown("#### Calculations (TDT)")
+        calc_tdt = results.get('calculations_tdt', pd.DataFrame())
+        
+        if not calc_tdt.empty:
+            # Apply filter if selected
+            if selected_filter and selected_filter != 'All' and 'TDT' in calc_tdt.columns:
+                calc_tdt = calc_tdt[calc_tdt['TDT'] == selected_filter]
+            st.dataframe(calc_tdt, use_container_width=True)
+        else:
+            st.info("No 'PRiSM Calc' points found in the TDT.")
+
+        # PRISM Calculations
+        st.markdown("#### Calculations (PRISM)")
+        calc_prism = results.get('calculations_prism', pd.DataFrame())
+        
+        if not calc_prism.empty:
+            # Apply filter if selected (Note: Validator ensures TDT column exists)
+            if selected_filter and selected_filter != 'All' and 'TDT' in calc_prism.columns:
+                calc_prism = calc_prism[calc_prism['TDT'] == selected_filter]
+            st.dataframe(calc_prism, use_container_width=True)
+        else:
+            st.info("No calculations found in PRISM for these templates.")
 
 with tabs[2]:
     st.header("Metric Mapping Validation (TDT vs PRISM Project)")
