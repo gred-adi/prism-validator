@@ -4,7 +4,7 @@ from db_utils import PrismDB
 import os
 
 # --- Import validation-specific modules ---
-from validations.prism_validations.metric_validation.query import get_query as get_metric_query
+from validations.prism_validations.metric_validation.query import get_query as get_metric_query, get_calc_query
 from validations.prism_validations.metric_validation.parser import parse_excel as parse_metric_excel
 from validations.prism_validations.metric_validation.validator import validate_data as validate_metric_data
 
@@ -261,16 +261,51 @@ with tabs[1]:
 
     prerequisites_met = st.session_state.db and st.session_state.uploaded_survey_file
     if not prerequisites_met: st.warning("Please connect to DB and generate the 'Consolidated Survey File'.")
+    
     if st.button("Run Metric Validation", key="run_metric_validation", disabled=not prerequisites_met):
         with st.spinner('Running...'):
             try:
+                # Fetch Basic Metric Data
                 prism_df = st.session_state.db.run_query(get_metric_query())
+                
+                # Fetch PRISM Calculation Data (New Query)
+                prism_calc_df = st.session_state.db.run_query(get_calc_query())
+                
+                # Parse TDT
                 tdt_dfs = parse_metric_excel(st.session_state.uploaded_survey_file)
-                # The validator now returns a dictionary
-                results = validate_metric_data(tdt_dfs, prism_df)
+
+                
+                # Run Validator
+                results = validate_metric_data(st.session_state.survey_df, tdt_dfs, prism_df, prism_calc_df)
+                
                 st.session_state.validation_states["metric_validation"]["results"] = results
+                st.success("Validation complete!")
             except Exception as e: st.error(f"An error occurred: {e}")
-    display_results(st.session_state.validation_states["metric_validation"]["results"], "metric_val", "TDT")
+            
+    # Display General Results
+    results = st.session_state.validation_states["metric_validation"]["results"]
+    display_results(results, "metric_val", "TDT")
+
+    # --- NEW SECTION: Calculation Validation Tables ---
+    if results:
+        st.markdown("---")
+        st.subheader("Calculation Validation Details")
+        
+        # Table 1: TDT Calculations
+        st.markdown("#### Table 1: Calculations (TDT)")
+        calc_tdt = results.get('calculations_tdt', pd.DataFrame())
+        if not calc_tdt.empty:
+            st.dataframe(calc_tdt, use_container_width=True)
+        else:
+            st.info("No 'PRiSM Calc' points found in the TDT.")
+
+        # Table 2: PRISM Calculations
+        st.markdown("#### Table 2: Calculations (PRISM)")
+        calc_prism = results.get('calculations_prism', pd.DataFrame())
+        if not calc_prism.empty:
+            st.dataframe(calc_prism, use_container_width=True)
+        else:
+            st.info("No calculations found in PRISM for these templates.")
 
 with tabs[2]:
     st.header("Metric Mapping Validation (TDT vs PRISM Project)")

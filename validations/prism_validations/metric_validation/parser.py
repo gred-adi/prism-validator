@@ -5,24 +5,40 @@ import streamlit as st
 def parse_excel(uploaded_file):
     """
     Processes the uploaded Excel file for the 'Metric Validation' section.
-    Specifically looks for the 'Consolidated Point Survey' sheet.
+    Returns a single DataFrame with all necessary columns for Metric and Calculation validation.
     """
-    xls = pd.ExcelFile(uploaded_file)
+    try:
+        xls = pd.ExcelFile(uploaded_file)
+        if "Consolidated Point Survey" not in xls.sheet_names:
+            # Return empty DF if sheet is missing, allowing validator to handle gracefully or UI to warn
+            return pd.DataFrame()
 
-    if "Consolidated Point Survey" not in xls.sheet_names:
-        raise ValueError("❌ 'Consolidated Point Survey' sheet not found in Excel file.")
+        df = pd.read_excel(xls, "Consolidated Point Survey", header=0)
 
-    df = pd.read_excel(xls, "Consolidated Point Survey", header=0)
+        # 1. Basic Cleaning
+        if 'Metric' in df.columns:
+            df['Metric'] = df['Metric'].astype(str).str.replace("  ", " ").str.strip()
+        
+        # 2. Define columns to keep
+        # Standard Metric Validation cols
+        base_cols = ['TDT', 'Model', 'Metric', 'Function', 'Point Type']
+        # Calculation Validation cols
+        calc_cols = [
+            'Calc Point Type', 'Calculation Description', 
+            'Pseudo Code', 'Language', 'Input Point', 'PRiSM Code'
+        ]
 
-    df['Metric'] = df['Metric'].str.replace("  ", " ").str.strip()
-    df = df[['TDT', 'Metric', 'Function', 'Point Type']].drop_duplicates()
+        # 3. Select existing columns only
+        existing_cols = [c for c in base_cols + calc_cols if c in df.columns]
+        df = df[existing_cols]
 
-    grouped_data = df.groupby("TDT")
-    tdt_subtables = {}
-    for tdt, group in grouped_data:
-        subtable = group.drop(columns=['TDT']).reset_index(drop=True)
-        # Standardize column names for easier comparison later
-        subtable.columns = ['METRIC_NAME', 'FUNCTION_TDT', 'POINT_TYPE_TDT']
-        tdt_subtables[tdt] = subtable
+        # 4. Drop duplicates
+        # We drop duplicates based on TDT and Metric to ensure uniqueness for the main validation,
+        # but we include the calc columns in the drop check to preserve distinct calc logic if it exists.
+        df = df.drop_duplicates()
 
-    return tdt_subtables
+        return df
+
+    except Exception as e:
+        st.error(f"Error parsing Excel: {e}")
+        return pd.DataFrame()
