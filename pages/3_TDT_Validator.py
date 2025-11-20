@@ -1,6 +1,11 @@
 import pandas as pd
 import streamlit as st
 import os
+from datetime import datetime
+import io
+import zipfile
+from report_generator import generate_pdf_report, display_report_generation_tab
+from style_utils import highlight_issue_cells, highlight_issue_rows
 # import re # <-- Removed this import as it's no longer needed
 
 # --- Import the new validator ---
@@ -27,37 +32,6 @@ if "tdt_diagnostics" not in st.session_state.validation_states:
     st.session_state.validation_states["tdt_diagnostics"] = {"results": None}
 
 
-# --- NEW: Helper function to highlight specific cells based on 'Issue' string ---
-def highlight_issue_cells(row, issue_to_col_map, current_issue):
-    """
-    Applies a style to cells that are flagged as duplicates based on the 'Issue' column.
-    """
-    styles = [''] * len(row)
-    
-    # Get the column(s) to highlight for this specific issue
-    cols_to_highlight = issue_to_col_map.get(current_issue)
-    
-    if cols_to_highlight:
-        # col_names can be a single string or a list of strings
-        if isinstance(cols_to_highlight, str):
-            cols_to_highlight = [cols_to_highlight]
-        
-        for col_name in cols_to_highlight:
-            try:
-                col_index = list(row.index).index(col_name)
-                styles[col_index] = 'background-color: #FFCCCB' # Light red
-            except ValueError:
-                pass # Column not in the final view, so we skip
-                    
-    return styles
-    
-# --- Helper function to highlight rows for Diagnostics ---
-def highlight_issue_rows(row):
-    """
-    Applies a style to the entire row if the 'Issue' column is not '✅'.
-    """
-    style = 'background-color: #FFCCCB' if (pd.notna(row.get('Issue')) and row.get('Issue') != '✅') else ''
-    return [style] * len(row)
 
 # --- NEW: Reusable Helper Function for Sub-Tables ---
 def display_validation_results(
@@ -167,7 +141,8 @@ tab_list = [
     "Calculation Validation",
     "Attribute Validation",
     "Diagnostics Validation",
-    "Prescriptive Validation"
+    "Prescriptive Validation",
+    "Report Generation"
 ]
 tabs = st.tabs(tab_list)
 
@@ -570,5 +545,31 @@ with tabs[5]:
     if st.button("Run Prescriptive Validation", key="run_presc_val", disabled=not prerequisites_met):
         with st.spinner('Running...'):
             st.info("Validation logic for 'Prescriptive' is not yet implemented.")
-            
+
     # (Display results logic will go here)
+
+with tabs[6]:
+    # --- Define Report Generation Configuration ---
+    validation_filter_cols = {
+        "tdt_point_survey": "TDT",
+        "tdt_calculation": "TDT",
+        "tdt_attribute": "TDT",
+        "tdt_diagnostics": "TDT"
+    }
+    submodule_options = {
+        "Point Survey Validation": "tdt_point_survey",
+        "Calculation Validation": "tdt_calculation",
+        "Attribute Validation": "tdt_attribute",
+        "Diagnostics Validation": "tdt_diagnostics",
+    }
+
+    # --- Render the reusable tab UI ---
+    display_report_generation_tab(
+        st,
+        st.session_state,
+        "TDT",
+        validation_filter_cols,
+        submodule_options,
+        highlight_issue_rows,  # Use the appropriate styling function
+        axis=1
+    )

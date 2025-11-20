@@ -3,3 +3,5 @@ pandas
 pyodbc
 openpyxl
 matplotlib
+weasyprint
+jinja2
