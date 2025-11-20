@@ -6,7 +6,7 @@ from datetime import datetime
 import io
 import zipfile
 
-def generate_pdf_report(report_data, tdt_model_name, selected_submodules, report_type):
+def generate_pdf_report(report_data, tdt_model_name, selected_submodules, report_type, page_size="A3", orientation="landscape"):
     """
     Generates a PDF report from a dictionary of pre-rendered HTML tables.
     Includes Table of Contents and Page Numbers.
@@ -14,29 +14,30 @@ def generate_pdf_report(report_data, tdt_model_name, selected_submodules, report
     env = Environment(loader=FileSystemLoader('.'))
     
     # HTML Template with enhanced CSS for PDF structure
+    # Updated: Dynamic page size and improved table wrapping
     template = env.from_string("""
     <html>
     <head>
         <style>
             /* --- Page Layout and Numbering --- */
             @page {
-                size: letter landscape;
-                margin: 0.75in;
+                size: {{ page_size }} {{ orientation }};
+                margin: 0.5in; /* Reduced margin for more space */
                 @bottom-right {
                     content: "Page " counter(page) " of " counter(pages);
-                    font-size: 10pt;
+                    font-size: 9pt;
                     font-family: sans-serif;
                     color: #555;
                 }
             }
 
             /* --- General Styling --- */
-            body { font-family: "Helvetica", "Arial", sans-serif; font-size: 10pt; color: #333; }
-            h1 { color: #2c3e50; font-size: 24pt; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 20px; }
-            h2 { color: #2980b9; font-size: 18pt; margin-top: 30px; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
-            h3 { color: #16a085; font-size: 14pt; margin-top: 20px; margin-bottom: 10px; }
-            h4 { color: #7f8c8d; font-size: 12pt; margin-top: 15px; margin-bottom: 5px; font-weight: bold; }
-            p { margin-bottom: 10px; line-height: 1.5; }
+            body { font-family: "Helvetica", "Arial", sans-serif; font-size: 9pt; color: #333; }
+            h1 { color: #2c3e50; font-size: 20pt; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 20px; }
+            h2 { color: #2980b9; font-size: 16pt; margin-top: 25px; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px; page-break-after: avoid; }
+            h3 { color: #16a085; font-size: 13pt; margin-top: 15px; margin-bottom: 8px; page-break-after: avoid; }
+            h4 { color: #7f8c8d; font-size: 11pt; margin-top: 10px; margin-bottom: 5px; font-weight: bold; page-break-after: avoid; }
+            p { margin-bottom: 10px; line-height: 1.4; }
 
             /* --- Page Breaks --- */
             .title-page { text-align: center; page-break-after: always; display: flex; flex-direction: column; justify-content: center; height: 80vh; }
@@ -45,7 +46,7 @@ def generate_pdf_report(report_data, tdt_model_name, selected_submodules, report
 
             /* --- Table of Contents --- */
             .toc ul { list-style-type: none; padding-left: 0; }
-            .toc li { margin-bottom: 8px; border-bottom: 1px dotted #ccc; }
+            .toc li { margin-bottom: 6px; border-bottom: 1px dotted #ccc; }
             .toc a { text-decoration: none; color: #333; display: block; padding: 5px 0; width: 100%; }
             .toc a::after { content: target-counter(attr(href), page); float: right; }
 
@@ -53,17 +54,22 @@ def generate_pdf_report(report_data, tdt_model_name, selected_submodules, report
             table {
                 border-collapse: collapse;
                 width: 100%;
-                margin-bottom: 20px;
-                font-size: 9pt;
+                margin-bottom: 15px;
+                font-size: 8pt; /* Reduced font size for better fit */
                 page-break-inside: auto;
+                table-layout: fixed; /* Helps with strict column sizing */
             }
             tr { page-break-inside: avoid; page-break-after: auto; }
             th, td {
                 border: 1px solid #bdc3c7;
-                padding: 6px 8px;
+                padding: 4px 6px; /* Compact padding */
                 text-align: left;
                 vertical-align: top;
+                /* Aggressive wrapping for long data strings (e.g. KKS) */
                 word-wrap: break-word;
+                overflow-wrap: break-word;
+                word-break: break-word; 
+                white-space: normal;
             }
             thead { display: table-header-group; }
             th { background-color: #ecf0f1; color: #2c3e50; font-weight: bold; }
@@ -115,7 +121,9 @@ def generate_pdf_report(report_data, tdt_model_name, selected_submodules, report
         tdt_model_name=tdt_model_name,
         generation_date=generation_date,
         selected_submodules=selected_submodules,
-        report_data=report_data
+        report_data=report_data,
+        page_size=page_size,
+        orientation=orientation
     )
 
     return HTML(string=html_out, base_url='.').write_pdf()
@@ -123,19 +131,10 @@ def generate_pdf_report(report_data, tdt_model_name, selected_submodules, report
 def display_report_generation_tab(st, session_state, report_type, validation_filter_cols, submodule_options, highlight_function, axis=None):
     """
     Renders the report generation tab UI.
-    
-    Implements:
-    1. TDT-Level Consolidation: Loops through selected TDTs and aggregates model data.
-    2. Comprehensive Content: Iterates through all results tables (Summary, Matches, Mismatches).
     """
     st.header("Report Generation")
     st.markdown(f"""
     Generate comprehensive PDF reports for selected {report_type} configurations.
-    
-    **Features:**
-    - **Per-TDT Reports:** Generates one PDF file per TDT, consolidating data for all associated models.
-    - **Full Details:** Includes Summary, Matches, Mismatches, and All Entries tables.
-    - **Navigable PDF:** Includes a clickable Table of Contents and page numbers.
     """)
 
     overview_df = session_state.get('overview_df')
@@ -150,7 +149,7 @@ def display_report_generation_tab(st, session_state, report_type, validation_fil
         return
 
     # --- Selection UI ---
-    col1, col2 = st.columns([1, 2])
+    col1, col2, col3 = st.columns([1, 1.5, 1]) # Added column for PDF settings
     
     with col1:
         st.subheader("Select TDTs")
@@ -160,30 +159,47 @@ def display_report_generation_tab(st, session_state, report_type, validation_fil
             selected_tdts = available_tdts
             st.info(f"Selected {len(available_tdts)} TDTs")
         else:
-            for tdt in available_tdts:
-                if st.checkbox(tdt, key=f"cb_{report_type}_{tdt}"):
-                    selected_tdts.append(tdt)
+            with st.container(height=300): # Scrollable container
+                for tdt in available_tdts:
+                    if st.checkbox(tdt, key=f"cb_{report_type}_{tdt}"):
+                        selected_tdts.append(tdt)
 
     with col2:
         st.subheader("Select Sections")
         selected_submodules = {}
-        for name, key in submodule_options.items():
-            results = session_state.validation_states[key].get("results")
-            # Check if results exist and are not empty/None
-            has_results = results is not None and (
-                (isinstance(results, dict) and any(v is not None for v in results.values())) or 
-                (isinstance(results, pd.DataFrame) and not results.empty)
-            )
-            
-            is_enabled = st.toggle(
-                name,
-                value=has_results,
-                disabled=not has_results,
-                key=f"toggle_{report_type}_{key}"
-            )
-            if is_enabled:
-                selected_submodules[name] = key
+        with st.container(height=300):
+            for name, key in submodule_options.items():
+                results = session_state.validation_states[key].get("results")
+                has_results = results is not None and (
+                    (isinstance(results, dict) and any(v is not None for v in results.values())) or 
+                    (isinstance(results, pd.DataFrame) and not results.empty)
+                )
+                
+                is_enabled = st.toggle(
+                    name,
+                    value=has_results,
+                    disabled=not has_results,
+                    key=f"toggle_{report_type}_{key}"
+                )
+                if is_enabled:
+                    selected_submodules[name] = key
 
+    with col3:
+        st.subheader("PDF Settings")
+        # New Settings for Page Layout
+        page_size = st.selectbox(
+            "Page Size", 
+            ["A3", "A4", "Letter", "Legal"], 
+            index=0, # Default to A3 for width
+            key=f"{report_type}_page_size"
+        )
+        orientation = st.selectbox(
+            "Orientation",
+            ["Landscape", "Portrait"],
+            index=0,
+            key=f"{report_type}_orientation"
+        )
+        
     st.markdown("---")
 
     if st.button(f"Generate {report_type} Reports", disabled=not selected_tdts or not selected_submodules):
@@ -210,11 +226,7 @@ def display_report_generation_tab(st, session_state, report_type, validation_fil
                 if not results or not filter_col:
                     continue
 
-                # Determine items to filter by (Consolidation Logic)
-                # If the validator groups by TDT, we filter by TDT name.
-                # If it groups by Model (e.g. Metric Mapping), we filter by ALL models in this TDT.
                 items_to_filter = [tdt_name] if filter_col == 'TDT' else models_in_tdt
-
                 filtered_results = {}
                 
                 # Iterate through ALL tables in results (Summary, Mismatches, etc.)
@@ -226,7 +238,6 @@ def display_report_generation_tab(st, session_state, report_type, validation_fil
                             if not filtered_df.empty:
                                 filtered_results[res_key] = filtered_df
                         else:
-                            # Fallback: If filter col is missing (rare), include if it's generic
                             filtered_results[res_key] = data
 
                     # Handle Dictionary of DataFrames (e.g., 'mismatches')
@@ -246,7 +257,6 @@ def display_report_generation_tab(st, session_state, report_type, validation_fil
                 if not filtered_results:
                     html_block += "<p>No data found for this TDT/Model configuration.</p>"
                 else:
-                    # Order specific keys first if present for better readability
                     priority_keys = ['summary', 'matches', 'mismatches', 'all_entries']
                     keys_ordered = [k for k in priority_keys if k in filtered_results] + \
                                    [k for k in filtered_results if k not in priority_keys]
@@ -268,12 +278,14 @@ def display_report_generation_tab(st, session_state, report_type, validation_fil
 
                 rendered_sections[submodule_name] = html_block
 
-            # Generate PDF for this TDT
+            # Generate PDF for this TDT with selected page size
             pdf_bytes = generate_pdf_report(
                 report_data=rendered_sections,
                 tdt_model_name=tdt_name,
                 selected_submodules=list(selected_submodules.keys()),
-                report_type=report_type
+                report_type=report_type,
+                page_size=page_size,
+                orientation=orientation.lower()
             )
             
             pdfs_to_zip.append({
