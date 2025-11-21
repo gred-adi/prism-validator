@@ -3,5 +3,5 @@ pandas
 pyodbc
 openpyxl
 matplotlib
-xhtml2pdf
+playwright
 jinja2

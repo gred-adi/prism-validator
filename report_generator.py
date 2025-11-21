@@ -1,142 +1,145 @@
 import pandas as pd
-from xhtml2pdf import pisa
-from jinja2 import Environment, FileSystemLoader
+from playwright.sync_api import sync_playwright
+from jinja2 import Environment
 import base64
 from datetime import datetime
 import io
 import zipfile
+import streamlit as st
+import asyncio
+import sys
 
-def generate_pdf_report(report_data, tdt_model_name, selected_submodules, report_type, page_size="A3", orientation="landscape"):
+def generate_pdf_report(browser, report_data, tdt_model_name, selected_submodules, report_type, page_size="A3", orientation="landscape"):
     """
-    Generates a PDF report from a dictionary of pre-rendered HTML tables.
-    Includes Table of Contents and Page Numbers.
+    Generates a PDF report using an existing Playwright browser instance.
     """
-    env = Environment(loader=FileSystemLoader('.'))
-    
-    # HTML Template with enhanced CSS for PDF structure
-    # Updated: Dynamic page size and improved table wrapping
-    template = env.from_string("""
-    <html>
-    <head>
-        <style>
-            /* --- Page Layout and Numbering --- */
-            @page {
-                size: {{ page_size }} {{ orientation }};
-                margin: 0.5in; /* Reduced margin for more space */
-                @bottom-right {
-                    content: "Page " counter(page) " of " counter(pages);
-                    font-size: 9pt;
-                    font-family: sans-serif;
-                    color: #555;
+    try:
+        # Initialize Jinja2 environment without a specific loader to avoid path issues
+        env = Environment()
+        
+        # HTML Template
+        template = env.from_string("""
+        <html>
+        <head>
+            <style>
+                /* --- General Styling --- */
+                body { font-family: "Helvetica", "Arial", sans-serif; font-size: 9pt; color: #333; margin: 0; }
+                h1 { color: #2c3e50; font-size: 20pt; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 20px; }
+                h2 { color: #2980b9; font-size: 16pt; margin-top: 25px; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px; break-after: avoid; page-break-after: avoid; }
+                h3 { color: #16a085; font-size: 13pt; margin-top: 15px; margin-bottom: 8px; break-after: avoid; page-break-after: avoid; }
+                h4 { color: #7f8c8d; font-size: 11pt; margin-top: 10px; margin-bottom: 5px; font-weight: bold; break-after: avoid; page-break-after: avoid; }
+                p { margin-bottom: 10px; line-height: 1.4; }
+
+                /* --- Page Breaks --- */
+                .title-page { text-align: center; page-break-after: always; break-after: page; display: flex; flex-direction: column; justify-content: center; height: 80vh; }
+                .toc-page { page-break-after: always; break-after: page; }
+                .content-page { page-break-before: always; break-before: page; }
+
+                /* --- Table of Contents --- */
+                .toc ul { list-style-type: none; padding-left: 0; }
+                .toc li { margin-bottom: 6px; border-bottom: 1px dotted #ccc; }
+                .toc a { text-decoration: none; color: #333; display: block; padding: 5px 0; width: 100%; }
+
+                /* --- Table Styling --- */
+                table {
+                    border-collapse: collapse;
+                    width: 100%;
+                    margin-bottom: 15px;
+                    font-size: 8pt;
+                    page-break-inside: auto;
+                    table-layout: fixed;
                 }
-            }
-
-            /* --- General Styling --- */
-            body { font-family: "Helvetica", "Arial", sans-serif; font-size: 9pt; color: #333; }
-            h1 { color: #2c3e50; font-size: 20pt; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 20px; }
-            h2 { color: #2980b9; font-size: 16pt; margin-top: 25px; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px; page-break-after: avoid; }
-            h3 { color: #16a085; font-size: 13pt; margin-top: 15px; margin-bottom: 8px; page-break-after: avoid; }
-            h4 { color: #7f8c8d; font-size: 11pt; margin-top: 10px; margin-bottom: 5px; font-weight: bold; page-break-after: avoid; }
-            p { margin-bottom: 10px; line-height: 1.4; }
-
-            /* --- Page Breaks --- */
-            .title-page { text-align: center; page-break-after: always; display: flex; flex-direction: column; justify-content: center; height: 80vh; }
-            .toc-page { page-break-after: always; }
-            .content-page { page-break-before: always; }
-
-            /* --- Table of Contents --- */
-            .toc ul { list-style-type: none; padding-left: 0; }
-            .toc li { margin-bottom: 6px; border-bottom: 1px dotted #ccc; }
-            .toc a { text-decoration: none; color: #333; display: block; padding: 5px 0; width: 100%; }
-            .toc a::after { content: target-counter(attr(href), page); float: right; }
-
-            /* --- Table Styling --- */
-            table {
-                border-collapse: collapse;
-                width: 100%;
-                margin-bottom: 15px;
-                font-size: 8pt; /* Reduced font size for better fit */
-                page-break-inside: auto;
-                table-layout: fixed; /* Helps with strict column sizing */
-            }
-            tr { page-break-inside: avoid; page-break-after: auto; }
-            th, td {
-                border: 1px solid #bdc3c7;
-                padding: 4px 6px; /* Compact padding */
-                text-align: left;
-                vertical-align: top;
-                /* Aggressive wrapping for long data strings (e.g. KKS) */
-                word-wrap: break-word;
-                overflow-wrap: break-word;
-                word-break: break-word; 
-                white-space: normal;
-            }
-            thead { display: table-header-group; }
-            th { background-color: #ecf0f1; color: #2c3e50; font-weight: bold; }
-            
-            /* Highlight styling handled by Pandas Styler, but ensuring compatibility */
-            td { background-clip: padding-box; }
-
-        </style>
-    </head>
-    <body>
-        <!-- 1. Title Page -->
-        <div class="title-page">
-            <h1 style="border: none; font-size: 32pt; margin-bottom: 10px;">{{ report_type }} Validation Report</h1>
-            <h2 style="border: none; font-size: 24pt; color: #555;">{{ tdt_model_name }}</h2>
-            <p style="margin-top: 50px; font-size: 12pt; color: #777;">Generated on: {{ generation_date }}</p>
-        </div>
-
-        <!-- 2. Table of Contents -->
-        <div class="toc-page">
-            <h1>Table of Contents</h1>
-            <div class="toc">
-                <ul>
-                    {% for submodule in selected_submodules %}
-                        <li><a href="#{{ submodule | replace(' ', '-') }}">{{ submodule }}</a></li>
-                    {% endfor %}
-                </ul>
+                tr { page-break-inside: avoid; break-inside: avoid; }
+                th, td {
+                    border: 1px solid #bdc3c7;
+                    padding: 4px 6px;
+                    text-align: left;
+                    vertical-align: top;
+                    word-wrap: break-word;
+                    overflow-wrap: break-word;
+                    word-break: break-word; 
+                    white-space: normal;
+                }
+                thead { display: table-header-group; }
+                th { background-color: #ecf0f1; color: #2c3e50; font-weight: bold; }
+                td { background-clip: padding-box; }
+            </style>
+        </head>
+        <body>
+            <!-- 1. Title Page -->
+            <div class="title-page">
+                <h1 style="border: none; font-size: 32pt; margin-bottom: 10px;">{{ report_type }} Validation Report</h1>
+                <h2 style="border: none; font-size: 24pt; color: #555;">{{ tdt_model_name }}</h2>
+                <p style="margin-top: 50px; font-size: 12pt; color: #777;">Generated on: {{ generation_date }}</p>
             </div>
-        </div>
 
-        <!-- 3. Content Pages -->
-        {% for submodule in selected_submodules %}
-            <div class="content-page" id="{{ submodule | replace(' ', '-') }}">
-                {% if report_data[submodule] %}
-                    {{ report_data[submodule] | safe }}
-                {% else %}
-                    <h2>{{ submodule }}</h2>
-                    <p>No data found for this section.</p>
-                {% endif %}
+            <!-- 2. Table of Contents -->
+            <div class="toc-page">
+                <h1>Table of Contents</h1>
+                <div class="toc">
+                    <ul>
+                        {% for submodule in selected_submodules %}
+                            <li><a href="#{{ submodule | replace(' ', '-') }}">{{ submodule }}</a></li>
+                        {% endfor %}
+                    </ul>
+                </div>
             </div>
-        {% endfor %}
-    </body>
-    </html>
-    """)
 
-    generation_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            <!-- 3. Content Pages -->
+            {% for submodule in selected_submodules %}
+                <div class="content-page" id="{{ submodule | replace(' ', '-') }}">
+                    {% if report_data[submodule] %}
+                        {{ report_data[submodule] | safe }}
+                    {% else %}
+                        <h2>{{ submodule }}</h2>
+                        <p>No data found for this section.</p>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </body>
+        </html>
+        """)
 
-    html_out = template.render(
-        report_type=report_type,
-        tdt_model_name=tdt_model_name,
-        generation_date=generation_date,
-        selected_submodules=selected_submodules,
-        report_data=report_data,
-        page_size=page_size,
-        orientation=orientation
-    )
+        generation_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    pdf_buffer = io.BytesIO()
-    pisa_status = pisa.CreatePDF(
-        io.StringIO(html_out),
-        dest=pdf_buffer
-    )
+        html_out = template.render(
+            report_type=report_type,
+            tdt_model_name=tdt_model_name,
+            generation_date=generation_date,
+            selected_submodules=selected_submodules,
+            report_data=report_data
+        )
 
-    if pisa_status.err:
-        raise Exception(f"Error generating PDF: {pisa_status.err}")
+        # Open a new page in the EXISTING browser instance
+        page = browser.new_page()
+        page.set_content(html_out)
+        
+        # Define Footer
+        footer_html = """
+            <div style="font-size: 10px; width: 100%; text-align: right; padding-right: 0.5in; padding-bottom: 0.2in; color: #555; font-family: sans-serif;">
+                Page <span class="pageNumber"></span> of <span class="totalPages"></span>
+            </div>
+        """
 
-    return pdf_buffer.getvalue()
+        # Generate PDF
+        pdf_bytes = page.pdf(
+            format=page_size,
+            landscape=(orientation.lower() == "landscape"),
+            margin={'top': '0.5in', 'bottom': '0.5in', 'left': '0.5in', 'right': '0.5in'},
+            print_background=True,
+            display_header_footer=True,
+            header_template='<div></div>', 
+            footer_template=footer_html
+        )
+        
+        page.close() # Close just this page, keep browser open
+        return pdf_bytes
 
+    except Exception as e:
+        st.error(f"❌ Error generating PDF for {tdt_model_name}: {str(e)}")
+        if "Executable doesn't exist" in str(e):
+             st.warning("⚠️ **Action Required:** It looks like the browser engine is not installed. Please stop the app and run `playwright install chromium` in your terminal.")
+        return None
 
 def display_report_generation_tab(st, session_state, report_type, validation_filter_cols, submodule_options, highlight_function, axis=None):
     """
@@ -159,7 +162,7 @@ def display_report_generation_tab(st, session_state, report_type, validation_fil
         return
 
     # --- Selection UI ---
-    col1, col2, col3 = st.columns([1, 1.5, 1]) # Added column for PDF settings
+    col1, col2, col3 = st.columns([1, 1.5, 1])
     
     with col1:
         st.subheader("Select TDTs")
@@ -169,7 +172,7 @@ def display_report_generation_tab(st, session_state, report_type, validation_fil
             selected_tdts = available_tdts
             st.info(f"Selected {len(available_tdts)} TDTs")
         else:
-            with st.container(height=300): # Scrollable container
+            with st.container(height=300):
                 for tdt in available_tdts:
                     if st.checkbox(tdt, key=f"cb_{report_type}_{tdt}"):
                         selected_tdts.append(tdt)
@@ -196,11 +199,10 @@ def display_report_generation_tab(st, session_state, report_type, validation_fil
 
     with col3:
         st.subheader("PDF Settings")
-        # New Settings for Page Layout
         page_size = st.selectbox(
             "Page Size", 
             ["A3", "A4", "Letter", "Legal"], 
-            index=0, # Default to A3 for width
+            index=0,
             key=f"{report_type}_page_size"
         )
         orientation = st.selectbox(
@@ -215,102 +217,115 @@ def display_report_generation_tab(st, session_state, report_type, validation_fil
     if st.button(f"Generate {report_type} Reports", disabled=not selected_tdts or not selected_submodules):
         progress_bar = st.progress(0, text="Initializing...")
         pdfs_to_zip = []
-
         total_tdts = len(selected_tdts)
         
-        # --- Loop through TDTs (TDT-Level Consolidation) ---
-        for i, tdt_name in enumerate(selected_tdts):
-            try:
-                progress_text = f"Processing {tdt_name}... ({i+1}/{total_tdts})"
-                progress_bar.progress((i + 1) / total_tdts, text=progress_text)
+        # --- FIX: Enforce ProactorEventLoop for Windows ---
+        # This fixes 'NotImplementedError' in asyncio when launching subprocesses (Playwright)
+        if sys.platform == "win32":
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-                # Get all models associated with this TDT for filtering
-                models_in_tdt = overview_df[overview_df['TDT'] == tdt_name]['Model'].unique()
+        # --- PLAYWRIGHT LIFECYCLE START ---
+        try:
+            with sync_playwright() as p:
+                # Launch the browser ONCE for the entire batch
+                browser = p.chromium.launch(headless=True)
                 
-                rendered_sections = {}
+                for i, tdt_name in enumerate(selected_tdts):
+                    progress_text = f"Processing {tdt_name}... ({i+1}/{total_tdts})"
+                    progress_bar.progress((i + 1) / total_tdts, text=progress_text)
 
-                # --- Loop through Submodules (Comprehensive Content) ---
-                for submodule_name, submodule_key in selected_submodules.items():
-                    results = session_state.validation_states[submodule_key].get("results", {})
-                    filter_col = validation_filter_cols.get(submodule_key)
+                    # Filter Data Logic
+                    models_in_tdt = overview_df[overview_df['TDT'] == tdt_name]['Model'].unique()
+                    rendered_sections = {}
 
-                    if not results or not filter_col:
-                        continue
+                    # --- Loop through Submodules ---
+                    for submodule_name, submodule_key in selected_submodules.items():
+                        results = session_state.validation_states[submodule_key].get("results", {})
+                        filter_col = validation_filter_cols.get(submodule_key)
+                        
+                        if not results or not filter_col:
+                            continue
 
-                    items_to_filter = [tdt_name] if filter_col == 'TDT' else models_in_tdt
-                    filtered_results = {}
+                        items_to_filter = [tdt_name] if filter_col == 'TDT' else models_in_tdt
+                        filtered_results = {}
+                        
+                        # Data Filtering Logic
+                        for res_key, data in results.items():
+                            if isinstance(data, pd.DataFrame):
+                                if filter_col in data.columns:
+                                    filtered_df = data[data[filter_col].isin(items_to_filter)].copy()
+                                    if not filtered_df.empty:
+                                        filtered_results[res_key] = filtered_df
+                                else:
+                                    filtered_results[res_key] = data
+                            elif isinstance(data, dict):
+                                nested_filtered = {}
+                                for sub_key, sub_df in data.items():
+                                    if isinstance(sub_df, pd.DataFrame) and filter_col in sub_df.columns:
+                                        f_sub_df = sub_df[sub_df[filter_col].isin(items_to_filter)].copy()
+                                        if not f_sub_df.empty:
+                                            nested_filtered[sub_key] = f_sub_df
+                                if nested_filtered:
+                                    filtered_results[res_key] = nested_filtered
 
-                    # Iterate through ALL tables in results (Summary, Mismatches, etc.)
-                    for res_key, data in results.items():
-                        # Handle DataFrame (e.g., 'summary', 'all_entries')
-                        if isinstance(data, pd.DataFrame):
-                            if filter_col in data.columns:
-                                filtered_df = data[data[filter_col].isin(items_to_filter)].copy()
-                                if not filtered_df.empty:
-                                    filtered_results[res_key] = filtered_df
-                            else:
-                                filtered_results[res_key] = data
+                        # HTML Generation
+                        html_block = f"<h2>{submodule_name}</h2>"
+                        if not filtered_results:
+                            html_block += "<p>No data found for this TDT/Model configuration.</p>"
+                        else:
+                            priority_keys = ['summary', 'matches', 'mismatches', 'all_entries']
+                            keys_ordered = [k for k in priority_keys if k in filtered_results] + \
+                                        [k for k in filtered_results if k not in priority_keys]
 
-                        # Handle Dictionary of DataFrames (e.g., 'mismatches')
-                        elif isinstance(data, dict):
-                            nested_filtered = {}
-                            for sub_key, sub_df in data.items():
-                                if isinstance(sub_df, pd.DataFrame) and filter_col in sub_df.columns:
-                                    f_sub_df = sub_df[sub_df[filter_col].isin(items_to_filter)].copy()
-                                    if not f_sub_df.empty:
-                                        nested_filtered[sub_key] = f_sub_df
-                            if nested_filtered:
-                                filtered_results[res_key] = nested_filtered
+                            for table_name in keys_ordered:
+                                table_data = filtered_results[table_name]
+                                title = table_name.replace('_', ' ').title()
+                                
+                                if isinstance(table_data, pd.DataFrame):
+                                    html_block += f"<h3>{title}</h3>"
+                                    html_block += table_data.style.apply(highlight_function, axis=axis).to_html()
+                                elif isinstance(table_data, dict):
+                                    html_block += f"<h3>{title}</h3>"
+                                    for sub_title, sub_df in table_data.items():
+                                        sub_title_clean = sub_title.replace('_', ' ').title()
+                                        html_block += f"<h4>{sub_title_clean}</h4>"
+                                        html_block += sub_df.style.apply(highlight_function, axis=axis).to_html()
 
-                    # Generate HTML for this section
-                    html_block = f"<h2>{submodule_name}</h2>"
+                        rendered_sections[submodule_name] = html_block
 
-                    if not filtered_results:
-                        html_block += "<p>No data found for this TDT/Model configuration.</p>"
-                    else:
-                        priority_keys = ['summary', 'matches', 'mismatches', 'all_entries']
-                        keys_ordered = [k for k in priority_keys if k in filtered_results] + \
-                                       [k for k in filtered_results if k not in priority_keys]
+                    # --- GENERATE PDF ---
+                    # Pass the EXISTING browser instance
+                    pdf_bytes = generate_pdf_report(
+                        browser=browser,
+                        report_data=rendered_sections,
+                        tdt_model_name=tdt_name,
+                        selected_submodules=list(selected_submodules.keys()),
+                        report_type=report_type,
+                        page_size=page_size,
+                        orientation=orientation.lower()
+                    )
+                    
+                    if pdf_bytes:
+                        pdfs_to_zip.append({
+                            "name": f"{tdt_name}_{report_type}_Report_{datetime.now().strftime('%Y%m%d')}.pdf",
+                            "data": pdf_bytes
+                        })
+                
+                # Browser automatically closes when exiting the 'with' block
+                browser.close() 
 
-                        for table_name in keys_ordered:
-                            table_data = filtered_results[table_name]
-                            title = table_name.replace('_', ' ').title()
-
-                            if isinstance(table_data, pd.DataFrame):
-                                html_block += f"<h3>{title}</h3>"
-                                html_block += table_data.style.apply(highlight_function, axis=axis).to_html()
-
-                            elif isinstance(table_data, dict):
-                                html_block += f"<h3>{title}</h3>"
-                                for sub_title, sub_df in table_data.items():
-                                    sub_title_clean = sub_title.replace('_', ' ').title()
-                                    html_block += f"<h4>{sub_title_clean}</h4>"
-                                    html_block += sub_df.style.apply(highlight_function, axis=axis).to_html()
-
-                    rendered_sections[submodule_name] = html_block
-
-                # Generate PDF for this TDT with selected page size
-                pdf_bytes = generate_pdf_report(
-                    report_data=rendered_sections,
-                    tdt_model_name=tdt_name,
-                    selected_submodules=list(selected_submodules.keys()),
-                    report_type=report_type,
-                    page_size=page_size,
-                    orientation=orientation.lower()
-                )
-
-                pdfs_to_zip.append({
-                    "name": f"{tdt_name}_{report_type}_Report_{datetime.now().strftime('%Y%m%d')}.pdf",
-                    "data": pdf_bytes
-                })
-            except Exception as e:
-                st.error(f"Failed to generate report for {tdt_name}: {e}")
+        except Exception as e:
+            st.error(f"Critical Playwright Error: {e}")
+            if "Executable doesn't exist" in str(e):
+                st.warning("⚠️ **Browser not found.** Please run `playwright install` in your terminal.")
 
         progress_bar.empty()
+        # --- PLAYWRIGHT LIFECYCLE END ---
 
         # Download Logic
         if not pdfs_to_zip:
-            st.warning("No reports generated.")
+            if not st.session_state.get('error_shown', False):
+                st.warning("No reports generated.")
         elif len(pdfs_to_zip) == 1:
             st.download_button(
                 label="📥 Download PDF Report",
