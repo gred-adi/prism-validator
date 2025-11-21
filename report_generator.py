@@ -1,5 +1,5 @@
 import pandas as pd
-from weasyprint import HTML, CSS
+from xhtml2pdf import pisa
 from jinja2 import Environment, FileSystemLoader
 import base64
 from datetime import datetime
@@ -126,7 +126,17 @@ def generate_pdf_report(report_data, tdt_model_name, selected_submodules, report
         orientation=orientation
     )
 
-    return HTML(string=html_out, base_url='.').write_pdf()
+    pdf_buffer = io.BytesIO()
+    pisa_status = pisa.CreatePDF(
+        io.StringIO(html_out),
+        dest=pdf_buffer
+    )
+
+    if pisa_status.err:
+        raise Exception(f"Error generating PDF: {pisa_status.err}")
+
+    return pdf_buffer.getvalue()
+
 
 def display_report_generation_tab(st, session_state, report_type, validation_filter_cols, submodule_options, highlight_function, axis=None):
     """
@@ -210,88 +220,91 @@ def display_report_generation_tab(st, session_state, report_type, validation_fil
         
         # --- Loop through TDTs (TDT-Level Consolidation) ---
         for i, tdt_name in enumerate(selected_tdts):
-            progress_text = f"Processing {tdt_name}... ({i+1}/{total_tdts})"
-            progress_bar.progress((i + 1) / total_tdts, text=progress_text)
+            try:
+                progress_text = f"Processing {tdt_name}... ({i+1}/{total_tdts})"
+                progress_bar.progress((i + 1) / total_tdts, text=progress_text)
 
-            # Get all models associated with this TDT for filtering
-            models_in_tdt = overview_df[overview_df['TDT'] == tdt_name]['Model'].unique()
-            
-            rendered_sections = {}
-
-            # --- Loop through Submodules (Comprehensive Content) ---
-            for submodule_name, submodule_key in selected_submodules.items():
-                results = session_state.validation_states[submodule_key].get("results", {})
-                filter_col = validation_filter_cols.get(submodule_key)
+                # Get all models associated with this TDT for filtering
+                models_in_tdt = overview_df[overview_df['TDT'] == tdt_name]['Model'].unique()
                 
-                if not results or not filter_col:
-                    continue
+                rendered_sections = {}
 
-                items_to_filter = [tdt_name] if filter_col == 'TDT' else models_in_tdt
-                filtered_results = {}
-                
-                # Iterate through ALL tables in results (Summary, Mismatches, etc.)
-                for res_key, data in results.items():
-                    # Handle DataFrame (e.g., 'summary', 'all_entries')
-                    if isinstance(data, pd.DataFrame):
-                        if filter_col in data.columns:
-                            filtered_df = data[data[filter_col].isin(items_to_filter)].copy()
-                            if not filtered_df.empty:
-                                filtered_results[res_key] = filtered_df
-                        else:
-                            filtered_results[res_key] = data
+                # --- Loop through Submodules (Comprehensive Content) ---
+                for submodule_name, submodule_key in selected_submodules.items():
+                    results = session_state.validation_states[submodule_key].get("results", {})
+                    filter_col = validation_filter_cols.get(submodule_key)
 
-                    # Handle Dictionary of DataFrames (e.g., 'mismatches')
-                    elif isinstance(data, dict):
-                        nested_filtered = {}
-                        for sub_key, sub_df in data.items():
-                            if isinstance(sub_df, pd.DataFrame) and filter_col in sub_df.columns:
-                                f_sub_df = sub_df[sub_df[filter_col].isin(items_to_filter)].copy()
-                                if not f_sub_df.empty:
-                                    nested_filtered[sub_key] = f_sub_df
-                        if nested_filtered:
-                            filtered_results[res_key] = nested_filtered
+                    if not results or not filter_col:
+                        continue
 
-                # Generate HTML for this section
-                html_block = f"<h2>{submodule_name}</h2>"
-                
-                if not filtered_results:
-                    html_block += "<p>No data found for this TDT/Model configuration.</p>"
-                else:
-                    priority_keys = ['summary', 'matches', 'mismatches', 'all_entries']
-                    keys_ordered = [k for k in priority_keys if k in filtered_results] + \
-                                   [k for k in filtered_results if k not in priority_keys]
+                    items_to_filter = [tdt_name] if filter_col == 'TDT' else models_in_tdt
+                    filtered_results = {}
 
-                    for table_name in keys_ordered:
-                        table_data = filtered_results[table_name]
-                        title = table_name.replace('_', ' ').title()
-                        
-                        if isinstance(table_data, pd.DataFrame):
-                            html_block += f"<h3>{title}</h3>"
-                            html_block += table_data.style.apply(highlight_function, axis=axis).to_html()
-                        
-                        elif isinstance(table_data, dict):
-                            html_block += f"<h3>{title}</h3>"
-                            for sub_title, sub_df in table_data.items():
-                                sub_title_clean = sub_title.replace('_', ' ').title()
-                                html_block += f"<h4>{sub_title_clean}</h4>"
-                                html_block += sub_df.style.apply(highlight_function, axis=axis).to_html()
+                    # Iterate through ALL tables in results (Summary, Mismatches, etc.)
+                    for res_key, data in results.items():
+                        # Handle DataFrame (e.g., 'summary', 'all_entries')
+                        if isinstance(data, pd.DataFrame):
+                            if filter_col in data.columns:
+                                filtered_df = data[data[filter_col].isin(items_to_filter)].copy()
+                                if not filtered_df.empty:
+                                    filtered_results[res_key] = filtered_df
+                            else:
+                                filtered_results[res_key] = data
 
-                rendered_sections[submodule_name] = html_block
+                        # Handle Dictionary of DataFrames (e.g., 'mismatches')
+                        elif isinstance(data, dict):
+                            nested_filtered = {}
+                            for sub_key, sub_df in data.items():
+                                if isinstance(sub_df, pd.DataFrame) and filter_col in sub_df.columns:
+                                    f_sub_df = sub_df[sub_df[filter_col].isin(items_to_filter)].copy()
+                                    if not f_sub_df.empty:
+                                        nested_filtered[sub_key] = f_sub_df
+                            if nested_filtered:
+                                filtered_results[res_key] = nested_filtered
 
-            # Generate PDF for this TDT with selected page size
-            pdf_bytes = generate_pdf_report(
-                report_data=rendered_sections,
-                tdt_model_name=tdt_name,
-                selected_submodules=list(selected_submodules.keys()),
-                report_type=report_type,
-                page_size=page_size,
-                orientation=orientation.lower()
-            )
-            
-            pdfs_to_zip.append({
-                "name": f"{tdt_name}_{report_type}_Report_{datetime.now().strftime('%Y%m%d')}.pdf",
-                "data": pdf_bytes
-            })
+                    # Generate HTML for this section
+                    html_block = f"<h2>{submodule_name}</h2>"
+
+                    if not filtered_results:
+                        html_block += "<p>No data found for this TDT/Model configuration.</p>"
+                    else:
+                        priority_keys = ['summary', 'matches', 'mismatches', 'all_entries']
+                        keys_ordered = [k for k in priority_keys if k in filtered_results] + \
+                                       [k for k in filtered_results if k not in priority_keys]
+
+                        for table_name in keys_ordered:
+                            table_data = filtered_results[table_name]
+                            title = table_name.replace('_', ' ').title()
+
+                            if isinstance(table_data, pd.DataFrame):
+                                html_block += f"<h3>{title}</h3>"
+                                html_block += table_data.style.apply(highlight_function, axis=axis).to_html()
+
+                            elif isinstance(table_data, dict):
+                                html_block += f"<h3>{title}</h3>"
+                                for sub_title, sub_df in table_data.items():
+                                    sub_title_clean = sub_title.replace('_', ' ').title()
+                                    html_block += f"<h4>{sub_title_clean}</h4>"
+                                    html_block += sub_df.style.apply(highlight_function, axis=axis).to_html()
+
+                    rendered_sections[submodule_name] = html_block
+
+                # Generate PDF for this TDT with selected page size
+                pdf_bytes = generate_pdf_report(
+                    report_data=rendered_sections,
+                    tdt_model_name=tdt_name,
+                    selected_submodules=list(selected_submodules.keys()),
+                    report_type=report_type,
+                    page_size=page_size,
+                    orientation=orientation.lower()
+                )
+
+                pdfs_to_zip.append({
+                    "name": f"{tdt_name}_{report_type}_Report_{datetime.now().strftime('%Y%m%d')}.pdf",
+                    "data": pdf_bytes
+                })
+            except Exception as e:
+                st.error(f"Failed to generate report for {tdt_name}: {e}")
 
         progress_bar.empty()
 
