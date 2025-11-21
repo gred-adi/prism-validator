@@ -94,11 +94,8 @@ def validate_data(model_dfs, prism_df):
         for col in columns_to_compare:
             col_order.extend([f'{col}_TDT', f'{col}_PRISM'])
 
-        # Get remaining columns that are not in the specified order
-        remaining_cols = [c for c in all_entries_df.columns if c not in col_order]
-
         # Combine the ordered columns with the remaining ones
-        final_order = col_order + remaining_cols
+        final_order = col_order
         all_entries_df = all_entries_df[final_order]
 
     matches_df = pd.concat(all_matches, ignore_index=True) if all_matches else pd.DataFrame()
@@ -110,10 +107,9 @@ def validate_data(model_dfs, prism_df):
 
         # Get existing columns in the ideal order and then the rest
         existing_cols_in_order = [c for c in col_order if c in matches_df.columns]
-        remaining_cols = [c for c in matches_df.columns if c not in existing_cols_in_order]
 
         # Combine to get the final order
-        final_order = existing_cols_in_order + remaining_cols
+        final_order = existing_cols_in_order
         matches_df = matches_df[final_order]
 
     final_mismatches_dict = {}

@@ -9,6 +9,41 @@ import streamlit as st
 import asyncio
 import sys
 
+# --- Configuration: Column Mappings for TDT Reports ---
+# This ensures the PDF report matches the specific columns shown in the Web App.
+TDT_VALIDATION_COLUMNS = {
+    "tdt_point_survey": {
+        "details": [
+            'TDT', 'Model', 'Metric', 'Point Type', 'KKS Point Name', 
+            'DCS Description', 'Canary Point Name', 'Canary Description', 'Unit'
+        ]
+    },
+    "tdt_calculation": {
+        "details": [
+            'TDT', 'Metric', 'Point Type', 'Calc Point Type', 'Calculation Description', 
+            'Pseudo Code', 'Language', 'Input Point', 'PRiSM Code'
+        ]
+    },
+    "tdt_attribute": {
+        "function_validation": {
+            "details": [
+                'TDT', 'Metric', 'Function', 'Constraint', 'Diag_Count', 
+                'Filter Condition', 'Filter Value'
+            ]
+        },
+        "filter_audit": {
+            "details": [
+                'TDT', 'Metric', 'Function', 'Filter Condition', 'Filter Value'
+            ]
+        }
+    },
+    "tdt_diagnostics": {
+        "details": [
+            'TDT', 'Failure Mode', 'Metric', 'Direction', 'Weighting'
+        ]
+    }
+}
+
 def generate_pdf_report(browser, report_data, tdt_model_name, selected_submodules, report_type, page_size="A3", orientation="landscape"):
     """
     Generates a PDF report using an existing Playwright browser instance.
@@ -295,14 +330,74 @@ def display_report_generation_tab(st, session_state, report_type, validation_fil
                                 title = table_name.replace('_', ' ').title()
                                 
                                 if isinstance(table_data, pd.DataFrame):
+                                    # --- COLUMNS FILTERING & STYLING LOGIC ---
+                                    final_df = table_data
+                                    hide_issue = False
+                                    
+                                    # 1. Check if there is a specific column mapping for this table
+                                    cols_to_keep = None
+                                    if submodule_key in TDT_VALIDATION_COLUMNS:
+                                        mapping = TDT_VALIDATION_COLUMNS[submodule_key]
+                                        if isinstance(mapping, dict) and table_name in mapping:
+                                            cols_to_keep = mapping[table_name]
+                                    
+                                    # 2. Filter Columns if mapping exists
+                                    if cols_to_keep:
+                                        # Determine actual columns to keep (intersection with existing)
+                                        cols_actual = [c for c in cols_to_keep if c in table_data.columns]
+                                        
+                                        # Ensure 'Issue' is kept for styling, but flag it for hiding
+                                        if 'Issue' in table_data.columns:
+                                            if 'Issue' not in cols_actual:
+                                                cols_actual.append('Issue')
+                                                hide_issue = True
+                                        
+                                        final_df = table_data[cols_actual]
+                                    
+                                    # 3. Apply Style
+                                    styler = final_df.style.apply(highlight_function, axis=axis)
+                                    
+                                    # 4. Hide 'Issue' column if it was strictly for logic
+                                    if hide_issue:
+                                        styler.hide(['Issue'], axis="columns")
+
                                     html_block += f"<h3>{title}</h3>"
-                                    html_block += table_data.style.apply(highlight_function, axis=axis).to_html()
+                                    html_block += styler.to_html()
+
                                 elif isinstance(table_data, dict):
                                     html_block += f"<h3>{title}</h3>"
                                     for sub_title, sub_df in table_data.items():
+                                        # --- COLUMNS FILTERING & STYLING LOGIC (Nested) ---
+                                        final_df = sub_df
+                                        hide_issue = False
+                                        
+                                        # 1. Check mapping for nested dict
+                                        cols_to_keep = None
+                                        if submodule_key in TDT_VALIDATION_COLUMNS:
+                                            mapping = TDT_VALIDATION_COLUMNS[submodule_key]
+                                            # Navigate: submodule -> table_name (e.g. function_validation) -> sub_title (e.g. details)
+                                            if isinstance(mapping, dict) and table_name in mapping:
+                                                nested_mapping = mapping[table_name]
+                                                if isinstance(nested_mapping, dict) and sub_title in nested_mapping:
+                                                    cols_to_keep = nested_mapping[sub_title]
+                                        
+                                        # 2. Filter Columns
+                                        if cols_to_keep:
+                                            cols_actual = [c for c in cols_to_keep if c in sub_df.columns]
+                                            if 'Issue' in sub_df.columns:
+                                                if 'Issue' not in cols_actual:
+                                                    cols_actual.append('Issue')
+                                                    hide_issue = True
+                                            final_df = sub_df[cols_actual]
+
+                                        # 3. Apply Style & Hide
+                                        styler = final_df.style.apply(highlight_function, axis=axis)
+                                        if hide_issue:
+                                            styler.hide(['Issue'], axis="columns")
+
                                         sub_title_clean = sub_title.replace('_', ' ').title()
                                         html_block += f"<h4>{sub_title_clean}</h4>"
-                                        html_block += sub_df.style.apply(highlight_function, axis=axis).to_html()
+                                        html_block += styler.to_html()
 
                         rendered_sections[submodule_name] = html_block
 
