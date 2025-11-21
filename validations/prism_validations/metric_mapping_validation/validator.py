@@ -28,7 +28,22 @@ def validate_data(model_dfs, prism_df):
     if 'POINT_TYPE' in prism_df.columns:
         prism_df['POINT_TYPE'] = prism_df['POINT_TYPE'].str.title().str.replace('Prism Calc', 'PRiSM Calc', regex=False)
     if 'FUNCTION' in prism_df.columns:
-        prism_df['FUNCTION'] = prism_df['FUNCTION'].str.title().str.replace('Non-Modeled', 'Not Modeled', regex=False)
+        # Standardize casing first
+        prism_df['FUNCTION'] = prism_df['FUNCTION'].str.title()
+
+        if 'Modeled in Profile' in prism_df.columns:
+            # Identify 'Non-Modeled' entries (which results from .title())
+            mask_non_modeled = prism_df['FUNCTION'] == 'Non-Modeled'
+            mask_in_profile = prism_df['Modeled in Profile'] == 'YES'
+
+            # If YES then 'Non-Modeled' to 'Not in Diagnostics'
+            prism_df.loc[mask_non_modeled & mask_in_profile, 'FUNCTION'] = 'Not in Diagnostics'
+            
+            # If NO then 'Non-Modeled' to 'Not Modeled'
+            prism_df.loc[mask_non_modeled & ~mask_in_profile, 'FUNCTION'] = 'Not Modeled'
+        else:
+            # Fallback behavior if 'Modeled in Profile' is missing
+            prism_df['FUNCTION'] = prism_df['FUNCTION'].str.replace('Non-Modeled', 'Not Modeled', regex=False)
 
     # 2. Setup for comparison
     columns_to_compare = ['POINT_NAME', 'POINT_DESCRIPTION', 'FUNCTION', 'POINT_TYPE', 'POINT_UNIT']
