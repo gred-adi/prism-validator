@@ -47,7 +47,7 @@ def generate_pdf_report(browser, report_data, tdt_model_name, selected_submodule
                     margin-bottom: 15px;
                     font-size: 8pt;
                     page-break-inside: auto;
-                    table-layout: fixed;
+                    table-layout: fixed; /* Ensures column widths are respected */
                 }
                 tr { page-break-inside: avoid; break-inside: avoid; }
                 th, td {
@@ -63,6 +63,19 @@ def generate_pdf_report(browser, report_data, tdt_model_name, selected_submodule
                 thead { display: table-header-group; }
                 th { background-color: #ecf0f1; color: #2c3e50; font-weight: bold; }
                 td { background-clip: padding-box; }
+
+                /* --- Compact Index Column Styling --- */
+                /* Targets the first header and first cell of every row */
+                table tr th:first-child,
+                table tr td:first-child {
+                    width: 35px;          /* Fixed compact width for index */
+                    min-width: 35px;
+                    max-width: 35px;
+                    text-align: center;   /* Center the index number */
+                    color: #666;          /* Slightly muted color */
+                    background-color: #f9f9f9; /* Light background for index */
+                    font-size: 7.5pt;
+                }
             </style>
         </head>
         <body>

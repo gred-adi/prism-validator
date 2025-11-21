@@ -116,7 +116,7 @@ def validate_data(survey_df, tdt_df, prism_df, prism_calc_df=None):
     if not all_entries_df.empty:
         cols = ['TDT', 'METRIC_NAME', 'POINT_TYPE_TDT', 'POINT_TYPE_PRISM']
         # Keep only available columns + others
-        final_cols = [c for c in cols if c in all_entries_df.columns] + [c for c in all_entries_df.columns if c not in cols]
+        final_cols = [c for c in cols if c in all_entries_df.columns]
         all_entries_df = all_entries_df[final_cols]
 
     mismatches_df = pd.concat(all_mismatches, ignore_index=True) if all_mismatches else pd.DataFrame()
