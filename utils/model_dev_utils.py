@@ -421,7 +421,7 @@ def generate_data_cleaning_visualizations(raw_df: pd.DataFrame,
     ax_timeline.fill_between(
         timeline_df['DATETIME'], 0, 1,
         where=t_num_mask,
-        color='gray', alpha=0.3, label='Removed (Numeric)', step='mid', edgecolor='none', linewidth=0
+        color='gray', alpha=0.3, label='Numeric Removed', step='mid', edgecolor='none', linewidth=0
     )
     
     # Fill 2: Removed by Date (Purple) - Prioritize if overlapping
@@ -429,7 +429,7 @@ def generate_data_cleaning_visualizations(raw_df: pd.DataFrame,
     ax_timeline.fill_between(
         timeline_df['DATETIME'], 0, 1,
         where=t_date_mask,
-        color='purple', alpha=0.3, label='Removed (Datetime)', step='mid', edgecolor='none', linewidth=0
+        color='purple', alpha=0.3, label='Date Removed', step='mid', edgecolor='none', linewidth=0
     )
 
     ax_timeline.get_yaxis().set_visible(False)

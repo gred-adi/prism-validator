@@ -9,6 +9,7 @@ from pathlib import Path
 from datetime import datetime, time as dt_time
 
 from utils.app_ui import render_sidebar
+from db_utils import PrismDB
 # removed get_model_info import as we implement custom inputs in Step 3
 from utils.model_dev_utils import (
     data_cleaning_read_prism_csv, 
@@ -21,6 +22,7 @@ st.set_page_config(page_title="Data Cleansing", page_icon="1️⃣", layout="wid
 
 # --- Initialize Session State ---
 if 'cleansing_step' not in st.session_state: st.session_state.cleansing_step = 1
+if 'db' not in st.session_state: st.session_state.db = None
 
 # Data Processing States
 if 'filters_applied' not in st.session_state: st.session_state.filters_applied = False
@@ -35,7 +37,6 @@ if 'project_points_df' not in st.session_state: st.session_state.project_points_
 if 'raw_df' not in st.session_state: st.session_state.raw_df = None
 if 'raw_df_header' not in st.session_state: st.session_state.raw_df_header = None
 if 'cleaned_df' not in st.session_state: st.session_state.cleaned_df = None
-# Removed use_cache_decision state as it is no longer needed
 
 # Model Metadata States
 if 'site_name' not in st.session_state: st.session_state.site_name = ""
@@ -45,6 +46,33 @@ if 'sprint_name' not in st.session_state: st.session_state.sprint_name = ""
 if 'inclusive_dates' not in st.session_state: st.session_state.inclusive_dates = ""
 
 render_sidebar()
+
+# --- Sidebar: Database Connection ---
+with st.sidebar:
+    if st.session_state.db is None:
+        st.divider()
+        st.subheader("Database Connection")
+        st.info("Connect to PRISM DB to fetch point lists.")
+        db_host = st.text_input("Host", value=st.secrets.get("db", {}).get("host", ""))
+        db_name = st.text_input("Database", value=st.secrets.get("db", {}).get("database", ""))
+        db_user = st.text_input("User", value=st.secrets.get("db", {}).get("user", ""))
+        db_pass = st.text_input("Password", type="password", value=st.secrets.get("db", {}).get("password", ""))
+        
+        if st.button("Connect"):
+            with st.spinner("Connecting..."):
+                try:
+                    st.session_state.db = PrismDB(db_host, db_name, db_user, db_pass)
+                    st.session_state.db.test_connection()
+                    st.success("Connected!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Connection failed: {e}")
+    else:
+        st.divider()
+        st.success("✅ Database Connected")
+        if st.button("Disconnect"):
+            st.session_state.db = None
+            st.rerun()
 
 # --- Helper Functions for State Management ---
 
@@ -152,7 +180,33 @@ def load_filters_from_json(json_data):
     except Exception as e:
         st.error(f"Failed to load filters: {e}")
 
-def read_process_cache_files(raw_file, point_list_dataset_file):
+def get_point_list_query(model_name):
+    """Constructs the SQL query to fetch point list for a specific model."""
+    return f"""
+    SELECT
+        PROJECTS.Name AS [Project Name],
+        METRICS.Description AS [Metric],
+        CASE 
+            WHEN RTS.RealTimeServiceTypeID = 5 THEN 'Historian'
+            WHEN RTS.RealTimeServiceTypeID = 314 THEN 'Calculation'
+            ELSE NULL
+        END AS [Point Type],
+        POINTS.Name AS [Name]
+    FROM
+        prismdb.dbo.ProjectPoints POINTS
+        LEFT JOIN prismdb.dbo.PointTypeMetric METRICS ON POINTS.PointTypeMetricID = METRICS.PointTypeMetricID
+        LEFT JOIN prismdb.dbo.RealTimeService RTS ON POINTS.RealTimeServiceID = RTS.RealTimeServiceID
+        LEFT JOIN prismdb.dbo.Projects PROJECTS ON POINTS.ProjectID = PROJECTS.ProjectID 
+    WHERE
+        POINTS.PointTypeID = 1
+        AND RTS.RealTimeServiceTypeID IN (5, 314)
+        AND PROJECTS.Name = '{model_name}'
+    """
+
+def read_process_cache_files(raw_file, point_list_df):
+    """
+    Processes the raw file and the fetched point list dataframe.
+    """
     # Extract info silently without UI blocking
     auto_site_name, auto_model_name, auto_inclusive_dates = cleaned_dataset_name_split(raw_file.name)
     
@@ -167,7 +221,9 @@ def read_process_cache_files(raw_file, point_list_dataset_file):
     try:
         my_bar.progress(20, text="Reading CSV files...")
         raw_file_df = pd.read_csv(raw_file)
-        project_points_df = pd.read_csv(point_list_dataset_file)
+        
+        # Point list is already a DF now
+        project_points_df = point_list_df
 
         my_bar.progress(50, text="Formatting and mapping data points...")
         # Using the optimized version from previous step implicitly if utils updated
@@ -203,41 +259,76 @@ st.progress(current_step / len(steps), text=f"Step {current_step}: {steps[curren
 # ==========================================
 if current_step == 1:
     st.header("Step 1: Data Ingestion")
-    st.markdown("Upload your Raw Dataset and Point List to map the metrics and prepare for cleansing.")
+    st.markdown("Upload your Raw Dataset. The Point List will be fetched automatically from the database based on the model name in your file.")
 
     raw_file = st.file_uploader("Upload RAW dataset (.csv)", type=["csv"], accept_multiple_files=False)
-    point_list_dataset_file = st.file_uploader("Upload POINT LIST dataset (project_points.csv)", type=["csv"], accept_multiple_files=False)
+    
+    # Placeholder for Point List Status
+    point_list_container = st.container()
 
     # --- Simplified Cache / Process Logic ---
-    if raw_file is not None and point_list_dataset_file is not None:
+    if raw_file is not None:
         
-        # 1. Check if we need to process (New file OR Force Reload)
-        # We use a unique key combination to detect if it's the same file
-        current_file_key = f"{raw_file.name}_{raw_file.size}"
+        # 1. Determine Model Name from File
+        try:
+            _, auto_model_name, _ = cleaned_dataset_name_split(raw_file.name)
+        except Exception:
+            auto_model_name = "Unknown"
+            
+        point_list_df = None
         
-        # If state is empty OR filenames don't match, we process automatically
-        if st.session_state.raw_df is None or st.session_state.model != raw_file.name:
-            
-            # Clear filters only if it's a genuinely new file load (not just a rerun)
-            # Logic: If raw_df is None, it's a fresh start.
-            if st.session_state.raw_df is None:
-                if 'filters' in st.session_state:
-                    clear_all_numeric_filters()
-                    clear_all_date_filters()
-            
-            read_process_cache_files(raw_file, point_list_dataset_file)
-            st.rerun()
-            
-        else:
-            # Data is already loaded and matches current file
-            st.success(f"✅ Loaded **{raw_file.name}** from cache.")
-            
-            # Optional: Force Reload Button
-            if st.button("↻ Force Re-process File"):
-                # Clear state and rerun to trigger the logic above
-                st.session_state.raw_df = None
-                st.session_state.model = None
+        # 2. Fetch Point List logic
+        with point_list_container:
+            if st.session_state.db is None:
+                st.warning("⚠️ Database not connected. Please connect in the sidebar to fetch the Point List.")
+            else:
+                if auto_model_name != "Unknown":
+                    # Fetch only if we haven't fetched for this specific model/file combination yet
+                    # OR if we want to refresh
+                    
+                    # Logic: Try to fetch
+                    with st.spinner(f"Fetching Point List for model: {auto_model_name}..."):
+                        try:
+                            query = get_point_list_query(auto_model_name)
+                            point_list_df = st.session_state.db.run_query(query)
+                            
+                            if not point_list_df.empty:
+                                st.success(f"✅ Point List fetched! Found {len(point_list_df)} metrics for `{auto_model_name}`.")
+                                with st.expander("View Fetched Point List"):
+                                    st.dataframe(point_list_df)
+                            else:
+                                st.error(f"❌ No metrics found for model `{auto_model_name}`. Please check if the model name in the file matches the PRISM Project Name.")
+                                st.stop()
+                        except Exception as e:
+                            st.error(f"Error fetching point list: {e}")
+                            st.stop()
+                else:
+                    st.error("Could not parse Model Name from filename. Please ensure file follows format: `CLEANED-{ModelName}-{Dates}-RAW.csv`")
+                    st.stop()
+
+        # 3. Process Files (Only if point list was successfully fetched)
+        if point_list_df is not None:
+            # Check if we need to process (New file OR Force Reload)
+            if st.session_state.raw_df is None or st.session_state.model != raw_file.name:
+                
+                # Clear filters only if it's a genuinely new file load (not just a rerun)
+                if st.session_state.raw_df is None:
+                    if 'filters' in st.session_state:
+                        clear_all_numeric_filters()
+                        clear_all_date_filters()
+                
+                read_process_cache_files(raw_file, point_list_df)
                 st.rerun()
+                
+            else:
+                # Data is already loaded and matches current file
+                st.success(f"✅ Loaded **{raw_file.name}** from cache.")
+                
+                # Optional: Force Reload Button
+                if st.button("↻ Force Re-process File"):
+                    st.session_state.raw_df = None
+                    st.session_state.model = None
+                    st.rerun()
 
     # --- Preview & Navigation ---
     if st.session_state.raw_df is not None:
@@ -507,7 +598,7 @@ elif current_step == 3:
             with col_actions:
                 st.markdown("**Settings**")
                 st.session_state.generate_report = st.checkbox("Include PDF Report in output", value=st.session_state.generate_report)
-                st.session_state.show_visuals = st.checkbox("Show Interactive Visuals", value=st.session_state.show_visuals)
+                st.session_state.show_visuals = st.checkbox("Show Visuals", value=st.session_state.show_visuals)
                 
                 enable_gen = st.session_state.generate_report or st.session_state.show_visuals
                 # Store button state in a variable to use outside the column layout
@@ -519,7 +610,7 @@ elif current_step == 3:
                     st.session_state.selected_metrics_for_report = st.multiselect(
                         "Select metrics to include in report/charts:", 
                         numeric_cols, 
-                        default=numeric_cols[:3],
+                        default=numeric_cols,
                         key="metric_multiselect"
                     )
 
@@ -532,7 +623,6 @@ elif current_step == 3:
              
              if st.session_state.generate_report and not st.session_state.show_visuals:
                  generate_simple_report(raw_df, st.session_state.filters, st.session_state.datetime_filters, report_file_path)
-                 st.success("Simple Report Generated.")
              
              if st.session_state.show_visuals:
                  # This will now render in the main area, full width
@@ -546,6 +636,9 @@ elif current_step == 3:
                      report_file_path
                  )
                  st.success("Visualizations Generated.")
+
+             if st.session_state.generate_report:
+                 st.success(f"PDF Report generated successfully: `{report_file_path}`")
 
     st.markdown("---")
     st.button("⬅️ Back to Filters", on_click=prev_step)
