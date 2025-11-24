@@ -10,6 +10,29 @@ from datetime import datetime, time as dt_time
 
 st.set_page_config(page_title="Data Cleansing", page_icon="1️⃣", layout="wide")
 
+# --- Initialize Session State ---
+# Data Processing States
+if 'filters_applied' not in st.session_state: st.session_state.filters_applied = False
+if 'generate_report' not in st.session_state: st.session_state.generate_report = False
+if 'show_visuals' not in st.session_state: st.session_state.show_visuals = False
+if 'filters' not in st.session_state: st.session_state.filters = []
+if 'datetime_filters' not in st.session_state: st.session_state.datetime_filters = []
+
+# Cached Data States
+if 'model' not in st.session_state: st.session_state.model = None
+if 'project_points_df' not in st.session_state: st.session_state.project_points_df = None
+if 'raw_df' not in st.session_state: st.session_state.raw_df = None
+if 'raw_df_header' not in st.session_state: st.session_state.raw_df_header = None
+if 'cleaned_df' not in st.session_state: st.session_state.cleaned_df = None
+if 'use_cache_decision' not in st.session_state: st.session_state.use_cache_decision = None
+
+# Model Metadata States
+if 'site_name' not in st.session_state: st.session_state.site_name = ""
+if 'system_name' not in st.session_state: st.session_state.system_name = ""
+if 'model_name' not in st.session_state: st.session_state.model_name = ""
+if 'sprint_name' not in st.session_state: st.session_state.sprint_name = ""
+if 'inclusive_dates' not in st.session_state: st.session_state.inclusive_dates = ""
+
 # --- Helper Functions for State Management ---
 
 def add_filter(column, operator, value):
@@ -117,12 +140,7 @@ st.header("Data Cleansing")
 site_name, system_name, model_name, sprint_name, inclusive_dates = None, None, None, None, None
 project_points_df, raw_df, raw_df_header = None, None, None
 
-# Initialize Session State
-if 'filters_applied' not in st.session_state: st.session_state.filters_applied = False
-if 'generate_report' not in st.session_state: st.session_state.generate_report = False
-if 'show_visuals' not in st.session_state: st.session_state.show_visuals = False
-if 'filters' not in st.session_state: st.session_state.filters = []
-if 'datetime_filters' not in st.session_state: st.session_state.datetime_filters = []
+# Note: Filter initialization removed from here as it is now handled at the top of the script
 
 raw_file = st.file_uploader("Upload your RAW dataset file", type=["csv"], accept_multiple_files=False)
 point_list_dataset_file = st.file_uploader("Upload your POINT LIST dataset file (project_points.csv)", type=["csv"], accept_multiple_files=False)
