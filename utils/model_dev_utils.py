@@ -14,6 +14,8 @@ from scipy.stats import pearsonr
 from io import BytesIO
 from playwright.sync_api import sync_playwright
 from jinja2 import Environment
+import sys
+import asyncio
 
 def cleaned_dataset_name_split(
         filename:str
@@ -279,6 +281,10 @@ def generate_simple_report(raw_df: pd.DataFrame, numeric_filters: list, datetime
 
     html_content = _generate_html_report(stats_payload, numeric_filters, datetime_filters, [])
     
+    # --- FIX: Enforce ProactorEventLoop for Windows (Critical for Playwright) ---
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
@@ -411,24 +417,26 @@ def generate_data_cleaning_visualizations(raw_df: pd.DataFrame,
     fig_timeline, ax_timeline = plt.subplots(figsize=(12, 3))
     
     # Fill 1: Removed by Numeric (Gray)
+    # MODIFIED: Added linewidth=0
     ax_timeline.fill_between(
         timeline_df['DATETIME'], 0, 1,
         where=t_num_mask,
-        color='gray', alpha=0.3, label='Removed (Numeric)', step='mid'
+        color='gray', alpha=0.3, label='Removed (Numeric)', step='mid', edgecolor='none', linewidth=0
     )
     
     # Fill 2: Removed by Date (Purple) - Prioritize if overlapping
+    # MODIFIED: Added linewidth=0
     ax_timeline.fill_between(
         timeline_df['DATETIME'], 0, 1,
         where=t_date_mask,
-        color='purple', alpha=0.3, label='Removed (Datetime)', step='mid'
+        color='purple', alpha=0.3, label='Removed (Datetime)', step='mid', edgecolor='none', linewidth=0
     )
 
     ax_timeline.get_yaxis().set_visible(False)
     ax_timeline.set_ylim(0, 1)
     ax_timeline.set_xlabel('DATETIME')
     ax_timeline.legend(loc='upper right')
-    ax_timeline.grid(axis='x', linestyle='--', alpha=0.5)
+    #ax_timeline.grid(axis='x', linestyle='--', alpha=0.5)
     ax_timeline.set_title("Data Removal Timeline")
     
     st.pyplot(fig_timeline)
@@ -495,9 +503,10 @@ def generate_data_cleaning_visualizations(raw_df: pd.DataFrame,
         else:
             ymin, ymax = 0, 1
 
-        ax_metric.fill_between(plot_raw_df['DATETIME'], ymin, ymax, where=cond_date, color='purple', alpha=0.3, label='Datetime Filter')
-        ax_metric.fill_between(plot_raw_df['DATETIME'], ymin, ymax, where=cond_other, color='gray', alpha=0.3, label='Other Numeric Filter')
-        ax_metric.fill_between(plot_raw_df['DATETIME'], ymin, ymax, where=cond_spec, color='blue', alpha=0.3, label=f'{metric} Filter')
+        # MODIFIED: Added linewidth=0 to all fill_between calls
+        ax_metric.fill_between(plot_raw_df['DATETIME'], ymin, ymax, where=cond_date, color='purple', alpha=0.3, label='Datetime Filter', linewidth=0)
+        ax_metric.fill_between(plot_raw_df['DATETIME'], ymin, ymax, where=cond_other, color='gray', alpha=0.3, label='Other Numeric Filter', linewidth=0)
+        ax_metric.fill_between(plot_raw_df['DATETIME'], ymin, ymax, where=cond_spec, color='blue', alpha=0.3, label=f'{metric} Filter', linewidth=0)
         
         ax_metric.set_title(f"{metric} - Raw Data & Filters")
         ax_metric.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=4)
@@ -540,6 +549,11 @@ def generate_data_cleaning_visualizations(raw_df: pd.DataFrame,
 
     if generate_report:
         html_content = _generate_html_report(stats_payload, numeric_filters, datetime_filters, plot_images)
+        
+        # --- FIX: Enforce ProactorEventLoop for Windows (Critical for Playwright) ---
+        if sys.platform == "win32":
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
         try:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)

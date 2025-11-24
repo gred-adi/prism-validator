@@ -498,6 +498,7 @@ elif current_step == 3:
     if st.session_state.filters_applied:
         st.divider()
         
+        # Settings Container
         with st.container(border=True):
             st.subheader("📊 Reporting & Visualization")
             
@@ -508,30 +509,9 @@ elif current_step == 3:
                 st.session_state.generate_report = st.checkbox("Include PDF Report in output", value=st.session_state.generate_report)
                 st.session_state.show_visuals = st.checkbox("Show Interactive Visuals", value=st.session_state.show_visuals)
                 
-                # Only show button if one of the options is selected
                 enable_gen = st.session_state.generate_report or st.session_state.show_visuals
-                if st.button("Generate Visuals & Report", disabled=not enable_gen, type="primary", use_container_width=True):
-                     # Re-construct path for report
-                     base_path = Path.cwd()
-                     dataset_path = base_path / st.session_state.site_name / st.session_state.system_name / st.session_state.sprint_name / st.session_state.model_name / "dataset"
-                     report_file_path = dataset_path / f"CLEANED-{st.session_state.model_name}-{st.session_state.inclusive_dates}-DATA-CLEANING-REPORT.pdf"
-                     
-                     if st.session_state.generate_report and not st.session_state.show_visuals:
-                         generate_simple_report(raw_df, st.session_state.filters, st.session_state.datetime_filters, report_file_path)
-                         st.success("Simple Report Generated.")
-                     
-                     if st.session_state.show_visuals:
-                         generate_data_cleaning_visualizations(
-                             raw_df, 
-                             st.session_state.cleaned_df, 
-                             st.session_state.filters, 
-                             st.session_state.datetime_filters, 
-                             # Using selected metrics from the multiselect in the next column
-                             st.session_state.get('selected_metrics_for_report', raw_df.select_dtypes(include='number').columns.tolist()[:3]), 
-                             st.session_state.generate_report, 
-                             report_file_path
-                         )
-                         st.success("Visualizations Generated.")
+                # Store button state in a variable to use outside the column layout
+                gen_button_clicked = st.button("Generate Visuals & Report", disabled=not enable_gen, type="primary", use_container_width=True)
 
             with col_metrics:
                 if st.session_state.show_visuals or st.session_state.generate_report:
@@ -542,6 +522,30 @@ elif current_step == 3:
                         default=numeric_cols[:3],
                         key="metric_multiselect"
                     )
+
+        # Execution Logic (Outside the columns to ensure full width)
+        if gen_button_clicked:
+             # Re-construct path for report
+             base_path = Path.cwd()
+             dataset_path = base_path / st.session_state.site_name / st.session_state.system_name / st.session_state.sprint_name / st.session_state.model_name / "dataset"
+             report_file_path = dataset_path / f"CLEANED-{st.session_state.model_name}-{st.session_state.inclusive_dates}-DATA-CLEANING-REPORT.pdf"
+             
+             if st.session_state.generate_report and not st.session_state.show_visuals:
+                 generate_simple_report(raw_df, st.session_state.filters, st.session_state.datetime_filters, report_file_path)
+                 st.success("Simple Report Generated.")
+             
+             if st.session_state.show_visuals:
+                 # This will now render in the main area, full width
+                 generate_data_cleaning_visualizations(
+                     raw_df, 
+                     st.session_state.cleaned_df, 
+                     st.session_state.filters, 
+                     st.session_state.datetime_filters, 
+                     st.session_state.get('selected_metrics_for_report', raw_df.select_dtypes(include='number').columns.tolist()[:3]), 
+                     st.session_state.generate_report, 
+                     report_file_path
+                 )
+                 st.success("Visualizations Generated.")
 
     st.markdown("---")
     st.button("⬅️ Back to Filters", on_click=prev_step)
