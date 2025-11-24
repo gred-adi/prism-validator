@@ -1,724 +1,373 @@
+import os
+import ast
+import shutil
+import warnings
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-import seaborn as sns
-import streamlit as st
-import numpy as np
-import base64
-from datetime import datetime
-
-from typing import Tuple, Union, Dict, Any
 from pathlib import Path
-from scipy.stats import pearsonr
-# Removed FPDF import
-from io import BytesIO
-from playwright.sync_api import sync_playwright
-from jinja2 import Environment
+from typing import Dict, Any, List
+import logging
+import click
 
-def cleaned_dataset_name_split(
-        filename:str
-        ) -> Tuple [str, str, str]:
-    """
-    Given a filename, returns the site_name, model_name,
-    and inclusive dates.
+from utils.qa_reporting import (
+    generate_qa_report,
+    generate_sprint_summary_report
+)
+from utils.qa_ks_comparison import compare_data_distributions
+from utils.qa_plotting import (
+    generate_report_plots,
+    generate_summary_fprp_plots,
+)
+from utils.qa_reporting import generate_summary_fprp
 
-    filename format is expected to be:
-        CLEANED-[model_name]-[inclusive_dates]-RAW.csv
-        Example: CLEANED-AP-TVI-U1-BFP_A_MOTOR-20240601-20250801-RAW.csv
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s -%(message)s",
+    handlers=[
+        logging.FileHandler("report_generator.log", encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
 
-    Args:
-        filename (str): The name of the cleaned dataset file.
+warnings.filterwarnings("ignore")
 
-    Returns:
-        Tuple[str, str, str]: A tuple containing:
-        site_name, model_name, inclusive_dates
-    """
-    # Remove the 'CLEANED-' prefix and suffix
-    base_name = filename.removeprefix("CLEANED-")
-    if base_name.endswith("-WITH-OUTLIER.csv"):
-        base_name = base_name.removesuffix("-WITH-OUTLIER.csv")
-    elif base_name.endswith("-WITHOUT-OUTLIER.csv"):
-        base_name = base_name.removesuffix("-WITHOUT-OUTLIER.csv")
-    elif base_name.endswith("-RAW.csv"):
-        base_name = base_name.removesuffix("-RAW.csv")
-    # Split the remaining string by the second to the last "-"
-    parts = base_name.rsplit("-", 2)
-    model_name = parts[0]
-    inclusive_dates = parts[1] + "-" + parts[2]
-    # Get the value between the first and second "-" in model_name (TVI in the example)
-    site_name = model_name.split("-")[1]
-    return site_name, model_name, inclusive_dates
-
-def data_cleaning_read_prism_csv(df: pd.DataFrame, project_points: pd.DataFrame):
-    """
-    Takes a PRISM DataFrame and returns a DataFrame with mapped metric names and the original PRISM header.
-    Optimized for performance.
-    """
-    # Extract header rows (metadata)
-    df_header = df.iloc[:4, :].copy()
-    
-    # Extract data rows (skip the first 4 rows of metadata)
-    df_data = df.iloc[4:, :].copy()
-    
-    # Rename the first column (Time)
-    # Assuming 'Point Name' is the first column in the raw export
-    first_col_name = df_data.columns[0]
-    df_data.rename(columns={first_col_name: 'DATETIME'}, inplace=True)
-    
-    # Optimized Datetime Conversion
-    # Using errors='coerce' is safer and usually faster than letting pandas infer mixed formats
-    df_data['DATETIME'] = pd.to_datetime(df_data['DATETIME'], errors='coerce')
-    
-    # Reset index after slicing
-    df_data.reset_index(drop=True, inplace=True)
-
-    # Optimized Numeric Conversion
-    # Instead of apply(pd.to_numeric) on the whole DF (which is very slow), iterate columns
-    cols_to_convert = [c for c in df_data.columns if c != 'DATETIME']
-    for col in cols_to_convert:
-        df_data[col] = pd.to_numeric(df_data[col], errors='coerce')
-
-    # Optimized Column Mapping
-    # Create a dictionary for O(1) lookup instead of O(N) filtering inside the loop
-    # Handle NaN values in mapping by converting to string 'nan' to match existing logic
-    name_to_metric = pd.Series(
-        project_points['Metric'].values, 
-        index=project_points['Name']
-    ).to_dict()
-
-    new_columns = []
-    for column in df_data.columns:
-        if column == 'DATETIME':
-            new_columns.append(column)
-        else:
-            # Fast lookup
-            mapping_val = name_to_metric.get(column)
-            # Check if mapping exists and is not nan (pandas might map to nan/float)
-            if mapping_val is not None and str(mapping_val) != 'nan':
-                new_columns.append(str(mapping_val))
-            else:
-                new_columns.append(column)
-
-    df_data.columns = new_columns
-    
-    return df_data, df_header
-
-def _generate_html_report(stats_payload, numeric_filters, datetime_filters, plot_images):
-    """Generates HTML content for the report using Jinja2."""
-    
-    env = Environment()
-    template_str = """
-    <html>
-    <head>
-        <style>
-            body { font-family: "Helvetica", "Arial", sans-serif; color: #333; margin: 40px; }
-            h1 { color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; }
-            h2 { color: #2980b9; margin-top: 30px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
-            .stats-box { background-color: #f9f9f9; border: 1px solid #ddd; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
-            .stats-row { display: flex; justify-content: space-between; margin-bottom: 10px; }
-            .stat-item { text-align: center; flex: 1; }
-            .stat-label { font-size: 0.9em; color: #777; }
-            .stat-value { font-size: 1.2em; font-weight: bold; color: #333; }
-            .filter-list { background-color: #fff; border: 1px solid #eee; padding: 10px; margin-top: 10px; }
-            .img-container { text-align: center; margin-top: 20px; page-break-inside: avoid; }
-            img { max-width: 100%; height: auto; border: 1px solid #ccc; }
-            .footer { font-size: 0.8em; color: #999; text-align: center; margin-top: 50px; }
-        </style>
-    </head>
-    <body>
-        <h1>Data Cleaning Report</h1>
-        <p>Generated on: {{ generation_date }}</p>
-
-        <div class="stats-box">
-            <h2>Impact Statistics</h2>
-            <div class="stats-row">
-                <div class="stat-item">
-                    <div class="stat-label">Total Rows</div>
-                    <div class="stat-value">{{ total_rows }}</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">Remaining Rows</div>
-                    <div class="stat-value">{{ remaining_rows }}</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">Overall Retention</div>
-                    <div class="stat-value">{{ retention_pct }}%</div>
-                </div>
-            </div>
-            <div class="stats-row">
-                <div class="stat-item">
-                    <div class="stat-label">Numeric Removed</div>
-                    <div class="stat-value">{{ numeric_removed }} ({{ numeric_pct }}%)</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">Date Removed</div>
-                    <div class="stat-value">{{ date_removed }} ({{ date_pct }}%)</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">Total Removed</div>
-                    <div class="stat-value">{{ total_removed }} ({{ removed_pct }}%)</div>
-                </div>
-            </div>
-        </div>
-
-        <h2>Active Filters</h2>
-        <div class="filter-list">
-            <strong>Numeric Filters:</strong>
-            <ul>
-            {% for f in numeric_filters %}
-                <li>{{ f }}</li>
-            {% else %}
-                <li>None</li>
-            {% endfor %}
-            </ul>
-            
-            <strong>Date Filters:</strong>
-            <ul>
-            {% for f in datetime_filters %}
-                <li>{{ f }}</li>
-            {% else %}
-                <li>None</li>
-            {% endfor %}
-            </ul>
-        </div>
-
-        <h2>Visualizations</h2>
-        
-        {% for title, img_data in plot_images %}
-        <div class="img-container">
-            <h3>{{ title }}</h3>
-            <img src="data:image/png;base64,{{ img_data }}" />
-        </div>
-        {% endfor %}
-
-        <div class="footer">
-            PRISM Validator Tool
-        </div>
-    </body>
-    </html>
-    """
-    
-    template = env.from_string(template_str)
-    
-    # Format filters for display
-    fmt_numeric = [f"{col} {op} {val}" for col, op, val in numeric_filters]
-    fmt_date = []
-    for op, val in datetime_filters:
-        if op == "between (includes edge values)" or op == "between":
-            val_str = f"{val[0]} to {val[1]}" if isinstance(val, tuple) or isinstance(val, list) else str(val)
-            fmt_date.append(f"Remove between {val_str}")
-        else:
-            fmt_date.append(f"{op} {val}")
-
-    html = template.render(
-        generation_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        total_rows=f"{stats_payload['total_rows']:,}",
-        remaining_rows=f"{stats_payload['remaining_rows']:,}",
-        retention_pct=f"{stats_payload['retention_pct']:.2f}",
-        numeric_removed=f"{stats_payload['numeric_removed']:,}",
-        numeric_pct=f"{stats_payload['numeric_pct']:.2f}",
-        date_removed=f"{stats_payload['date_removed']:,}",
-        date_pct=f"{stats_payload['date_pct']:.2f}",
-        total_removed=f"{stats_payload['total_removed']:,}",
-        removed_pct=f"{stats_payload['removed_pct']:.2f}",
-        numeric_filters=fmt_numeric,
-        datetime_filters=fmt_date,
-        plot_images=plot_images
-    )
-    return html
-
-def generate_simple_report(raw_df: pd.DataFrame, numeric_filters: list, datetime_filters: list, pdf_file_path: Path):
-    """Generates a simple PDF report using Playwright (consistent with other reports)."""
-    # Reuse the full generation logic but with empty metrics list to skip charts
-    # But we need to calculate stats first.
-    
-    # --- Calculate Stats (Replicated Logic for Consistency) ---
-    total_rows = len(raw_df)
-    
-    # 1. Numeric Mask
-    numeric_mask = pd.Series(True, index=raw_df.index)
-    for col, op, val in numeric_filters:
-        if col in raw_df.columns:
-            if op == "<": numeric_mask &= ~(raw_df[col] < val)
-            elif op == "<=": numeric_mask &= ~(raw_df[col] <= val)
-            elif op == "==": numeric_mask &= ~(raw_df[col] == val)
-            elif op == ">=": numeric_mask &= ~(raw_df[col] >= val)
-            elif op == ">": numeric_mask &= ~(raw_df[col] > val)
-    numeric_removed_count = (~numeric_mask).sum()
-
-    # 2. Date Mask
-    date_mask = pd.Series(True, index=raw_df.index)
-    if 'DATETIME' in raw_df.columns:
-        for op, val in datetime_filters:
-            if op == "< (remove before)":
-                date_mask &= ~(raw_df['DATETIME'] < pd.to_datetime(val))
-            elif op == "> (remove after)":
-                date_mask &= ~(raw_df['DATETIME'] > pd.to_datetime(val))
-            elif op in ["between", "between (includes edge values)"]:
-                # Handle list or tuple
-                start = pd.to_datetime(val[0])
-                end = pd.to_datetime(val[1])
-                date_mask &= ~((raw_df['DATETIME'] >= start) & (raw_df['DATETIME'] <= end))
-    date_removed_count = (~date_mask).sum()
-
-    final_mask = numeric_mask & date_mask
-    remaining_count = final_mask.sum()
-    total_removed = total_rows - remaining_count
-
-    stats_payload = {
-        "total_rows": total_rows,
-        "remaining_rows": remaining_count,
-        "numeric_removed": numeric_removed_count,
-        "date_removed": date_removed_count,
-        "total_removed": total_removed,
-        "retention_pct": (remaining_count / total_rows * 100) if total_rows > 0 else 0,
-        "numeric_pct": (numeric_removed_count / total_rows * 100) if total_rows > 0 else 0,
-        "date_pct": (date_removed_count / total_rows * 100) if total_rows > 0 else 0,
-        "removed_pct": (total_removed / total_rows * 100) if total_rows > 0 else 0
-    }
-
-    html_content = _generate_html_report(stats_payload, numeric_filters, datetime_filters, [])
-    
+def extract_numeric(value):
     try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.set_content(html_content)
-            page.pdf(path=str(pdf_file_path), format="A4", margin={'top': '1cm', 'bottom': '1cm', 'left': '1cm', 'right': '1cm'})
-            browser.close()
-    except Exception as e:
-        st.error(f"Failed to generate PDF: {e}")
+        return float(str(value).split(', ')[1])
+    except (IndexError, ValueError):
+        return float('nan')
+
+def build_partial_config_table(base_folder: str, site: str, asset: str,
+                               sub_ts_length: int, n_ts_above_thresh: int,
+                               time_interval: int, warning: float, alert: float) -> pd.DataFrame:
+    rows = []
+    base_path = Path(base_folder)
+    sprint_dirs = [d for d in base_path.iterdir() if d.is_dir() and 'sprint' in d.name.lower()]
+
+    for sprint_dir in sprint_dirs:
+        sprint_name = sprint_dir.name
+        for model_dir in sprint_dir.iterdir():
+            if not model_dir.is_dir():
+                continue
+            model_name = model_dir.name
+            dataset_path = model_dir / "dataset"
+
+            if not dataset_path.is_dir():
+                logging.warning(f"Skipping {model_name} in {sprint_name}: no dataset folder found")
+                continue
+
+            raw_files = [f.name for f in dataset_path.iterdir()
+                         if f.is_file() and 'RAW' in f.name.upper()
+                         and f.name.lower().endswith('.csv')]
+            raw_fname = raw_files[0] if raw_files else ""
+
+            holdout_files = [f.name for f in dataset_path.iterdir()
+                             if f.is_file() and 'HOLDOUT' in f.name.upper()
+                             and f.name.lower().endswith('.csv')]
+            holdout_fname = holdout_files[0] if holdout_files else ""
+
+            if not raw_fname or not holdout_fname:
+                logging.warning(f"Skipping model {model_name} in sprint {sprint_name}: missing raw or holdout data file")
+                continue
+
+            rows.append({
+                "site": site,
+                "asset": asset,
+                "sprint_name": sprint_name,
+                "model_name": model_name,
+                "raw_data_fname": raw_fname,
+                "holdout_data_fname": holdout_fname,
+                "sub_ts_length_in_minutes": sub_ts_length,
+                "n_ts_above_threshold": n_ts_above_thresh,
+                "time_interval": time_interval,
+                "warning_threshold": warning,
+                "alert_threshold": alert
+            })
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        logging.warning(f"No valid models found in {base_folder}. Returning an empty DataFrame.")
+    return df
 
 
-def generate_data_cleaning_visualizations(raw_df: pd.DataFrame,
-                                          cleaned_df: pd.DataFrame,
-                                          numeric_filters: list,
-                                          datetime_filters: list,
-                                          selected_metrics: list,
-                                          generate_report: bool,
-                                          pdf_file_path: Path = None):
+def merge_constraints(partial_df: pd.DataFrame, constraints_csv: str) -> pd.DataFrame:
     """
-    Generates and displays all data cleaning visualizations.
-    Uses Playwright for PDF generation.
+    Read a one-constraint-per-row lookup CSV, aggregate into list columns,
+    and merge into the partial config table.
     """
-    plot_images = [] # List to store (title, base64_string) for PDF
 
-    # FIX: Define total_rows explicitly from len(raw_df)
-    total_rows = len(raw_df)
-    if total_rows == 0:
-        st.info("No data to visualize.")
-        return
+    constraints = pd.read_csv(constraints_csv)
 
-    # --- OPTIMIZATION: Downsampling ---
-    MAX_PLOT_POINTS = 15000
-    use_downsampling = total_rows > MAX_PLOT_POINTS
-    
-    if use_downsampling:
-        step = total_rows // MAX_PLOT_POINTS
-        plot_raw_df = raw_df.iloc[::step].copy()
-        plot_cleaned_df = cleaned_df.iloc[::step].copy()
-        st.toast(f"⚡ Data downsampled for visualization (displaying ~{len(plot_raw_df)} points)", icon="ℹ️")
-    else:
-        plot_raw_df = raw_df
-        plot_cleaned_df = cleaned_df
-
-    # --- STATISTICS (Use FULL Data to match Preview Impact) ---
-    # 1. Numeric Mask
-    numeric_mask = pd.Series(True, index=raw_df.index)
-    for col, op, val in numeric_filters:
-        if col in raw_df.columns:
-            if op == "<": numeric_mask &= ~(raw_df[col] < val)
-            elif op == "<=": numeric_mask &= ~(raw_df[col] <= val)
-            elif op == "==": numeric_mask &= ~(raw_df[col] == val)
-            elif op == ">=": numeric_mask &= ~(raw_df[col] >= val)
-            elif op == ">": numeric_mask &= ~(raw_df[col] > val)
-    numeric_removed_count = (~numeric_mask).sum()
-
-    # 2. Date Mask
-    date_mask = pd.Series(True, index=raw_df.index)
-    if 'DATETIME' in raw_df.columns:
-        for op, val in datetime_filters:
-            if op == "< (remove before)":
-                date_mask &= ~(raw_df['DATETIME'] < pd.to_datetime(val))
-            elif op == "> (remove after)":
-                date_mask &= ~(raw_df['DATETIME'] > pd.to_datetime(val))
-            elif op in ["between", "between (includes edge values)"]:
-                start = pd.to_datetime(val[0])
-                end = pd.to_datetime(val[1])
-                date_mask &= ~((raw_df['DATETIME'] >= start) & (raw_df['DATETIME'] <= end))
-    date_removed_count = (~date_mask).sum()
-
-    final_mask = numeric_mask & date_mask
-    remaining_count = final_mask.sum()
-    total_removed = total_rows - remaining_count
-
-    # Calculate percentages (formatted to 2 decimals)
-    # FIX: total_rows variable is now properly defined in scope
-    retention_pct = (remaining_count / total_rows * 100) if total_rows > 0 else 0
-    numeric_pct = (numeric_removed_count / total_rows * 100) if total_rows > 0 else 0
-    date_pct = (date_removed_count / total_rows * 100) if total_rows > 0 else 0
-    removed_pct = (total_removed / total_rows * 100) if total_rows > 0 else 0
-
-    stats_payload = {
-        "total_rows": total_rows,
-        "remaining_rows": remaining_count,
-        "numeric_removed": numeric_removed_count,
-        "date_removed": date_removed_count,
-        "total_removed": total_removed,
-        "retention_pct": retention_pct,
-        "numeric_pct": numeric_pct,
-        "date_pct": date_pct,
-        "removed_pct": removed_pct
-    }
-
-    # --- Display Stats (Aligned with Preview Impact) ---
-    st.markdown("### Filter Impact Statistics")
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Total Rows", f"{total_rows:,}")
-    m2.metric("Remaining", f"{remaining_rows:,}", delta=f"-{removed_pct:.2f}% removed", delta_color="inverse")
-    m3.metric("Numeric Removed", f"{numeric_removed_count:,}", delta=f"-{numeric_pct:.2f}% removed", delta_color="inverse")
-    m4.metric("Date Removed", f"{date_removed_count:,}", delta=f"-{date_pct:.2f}% removed", delta_color="inverse")
-
-    # --- Generate Timeline Graph (using fill_between) ---
-    st.markdown("### Filter Timeline")
-    
-    # We need boolean arrays for fill_between. 
-    # If downsampling, re-calculate masks on the small DF for plotting.
-    if use_downsampling:
-        timeline_df = plot_raw_df
-        t_date_mask = pd.Series(False, index=timeline_df.index)
-        if 'DATETIME' in timeline_df.columns:
-            for op, val in datetime_filters:
-                if op == "< (remove before)": t_date_mask |= (timeline_df['DATETIME'] < pd.to_datetime(val))
-                elif op == "> (remove after)": t_date_mask |= (timeline_df['DATETIME'] > pd.to_datetime(val))
-                elif op in ["between", "between (includes edge values)"]:
-                    t_date_mask |= ((timeline_df['DATETIME'] >= pd.to_datetime(val[0])) & (timeline_df['DATETIME'] <= pd.to_datetime(val[1])))
-        
-        t_num_mask = pd.Series(False, index=timeline_df.index)
-        for col, op, val in numeric_filters:
-            if col in timeline_df.columns:
-                if op == "<": t_num_mask |= (timeline_df[col] < val)
-                elif op == "<=": t_num_mask |= (timeline_df[col] <= val)
-                elif op == "==": t_num_mask |= (timeline_df[col] == val)
-                elif op == ">=": t_num_mask |= (timeline_df[col] >= val)
-                elif op == ">": t_num_mask |= (timeline_df[col] > val)
-    else:
-        timeline_df = raw_df
-        # Invert original KEEP masks to get REMOVE masks
-        t_date_mask = ~date_mask 
-        t_num_mask = ~numeric_mask
-
-    fig_timeline, ax_timeline = plt.subplots(figsize=(12, 3))
-    
-    # Fill 1: Removed by Numeric (Gray)
-    ax_timeline.fill_between(
-        timeline_df['DATETIME'], 0, 1,
-        where=t_num_mask,
-        color='gray', alpha=0.7, label='Removed (Numeric)', step='mid'
-    )
-    
-    # Fill 2: Removed by Date (Purple) - Prioritize if overlapping
-    ax_timeline.fill_between(
-        timeline_df['DATETIME'], 0, 1,
-        where=t_date_mask,
-        color='purple', alpha=0.7, label='Removed (Datetime)', step='mid'
+    agg = (
+        constraints
+        .groupby("model_name", as_index=False)
+        .agg({
+            "constraint_cols":    list,
+            "operators":          list,
+            "constraint_limits":  list
+        })
     )
 
-    ax_timeline.get_yaxis().set_visible(False)
-    ax_timeline.set_ylim(0, 1)
-    ax_timeline.set_xlabel('DATETIME')
-    ax_timeline.legend(loc='upper right')
-    ax_timeline.grid(axis='x', linestyle='--', alpha=0.5)
-    ax_timeline.set_title("Data Removal Timeline")
-    
-    st.pyplot(fig_timeline)
+    full_df = partial_df.merge(
+        agg,
+        on="model_name",
+        how="left"
+    )
 
-    if generate_report:
-        buf = BytesIO()
-        fig_timeline.savefig(buf, format="png", bbox_inches='tight', dpi=100)
-        buf.seek(0)
-        plot_images.append(("Filter Timeline", base64.b64encode(buf.read()).decode('utf-8')))
-        buf.close()
+    for col in ["constraint_cols", "operators", "constraint_limits"]:
+        full_df[col] = full_df[col].apply(lambda x: x if isinstance(x, list) else [])
 
-    plt.close(fig_timeline)
+    missing = full_df[full_df["constraint_cols"].apply(lambda x: not x)]["model_name"].tolist()
+    if missing:
+        logging.warning(f"These models have no constraints: {', '.join(missing)}")
 
-    # --- Metric Plots ---
-    st.markdown("### Filtered Metric Plots")
+    return full_df
 
-    for metric in selected_metrics:
-        st.subheader(f"Plot for: {metric}")
 
-        # Calculate metric-specific masks for highlighting
-        # Using plot_raw_df (downsampled or full)
-        m_spec_mask = pd.Series(False, index=plot_raw_df.index)
-        m_other_mask = pd.Series(False, index=plot_raw_df.index)
-        m_date_mask = pd.Series(False, index=plot_raw_df.index)
-        
-        metric_filters_list = []
+class ReportGenerator:
+    """Drive the QA pipeline entirely from one flat CSV table."""
 
-        # 1. Date Mask for Plotting
-        if 'DATETIME' in plot_raw_df.columns:
-            for op, val in datetime_filters:
-                if op == "< (remove before)": m_date_mask |= (plot_raw_df['DATETIME'] < pd.to_datetime(val))
-                elif op == "> (remove after)": m_date_mask |= (plot_raw_df['DATETIME'] > pd.to_datetime(val))
-                elif op in ["between", "between (includes edge values)"]: m_date_mask |= ((plot_raw_df['DATETIME'] >= pd.to_datetime(val[0])) & (plot_raw_df['DATETIME'] <= pd.to_datetime(val[1])))
+    def __init__(self, table_path: str, local_path: str, regenerate: bool = False):
+        self.df = pd.read_csv(
+            table_path,
+            converters={
+                "constraint_cols": ast.literal_eval,
+                "operators": ast.literal_eval,
+                "constraint_limits": ast.literal_eval
+            }
+        )
+        # Added by Hans, removes null columns
+        required_cols = ["sprint_name", "model_name", "raw_data_fname", "holdout_data_fname"]
+        self.df = self.df.dropna(subset=required_cols)
+        self.local_path = local_path
+        self.regenerate = regenerate
 
-        # 2. Numeric Masks for Plotting
-        for col, op, val in numeric_filters:
-            if col not in plot_raw_df.columns: continue
-            
-            if op == "<": mask = (plot_raw_df[col] < val)
-            elif op == "<=": mask = (plot_raw_df[col] <= val)
-            elif op == "==": mask = (plot_raw_df[col] == val)
-            elif op == ">=": mask = (plot_raw_df[col] >= val)
-            elif op == ">": mask = (plot_raw_df[col] > val)
-            else: continue
+        if not (self.df[["time_interval", "sub_ts_length_in_minutes", "warning_threshold", "alert_threshold"]].nunique() == 1).all():
+            raise ValueError("Inconsistent global settings across rows in table")
 
-            if col == metric:
-                m_spec_mask |= mask
-                metric_filters_list.append((op, val))
-            else:
-                m_other_mask |= mask
+        first = self.df.iloc[0]
+        ti = first["time_interval"]
+        self.time_interval = ti
+        self.sub_ts_length = first["sub_ts_length_in_minutes"] / ti
+        self.n_ts_above_thresh = first["n_ts_above_threshold"] / ti
+        self.warning_threshold = first["warning_threshold"]
+        self.alert_threshold = first["alert_threshold"]
+        self.number_of_sprints = int(first.get("number_of_sprints", 0))
 
-        # Conditions for coloring
-        cond_date = m_date_mask
-        cond_spec = m_spec_mask & ~m_date_mask
-        cond_other = m_other_mask & ~m_date_mask & ~m_spec_mask
+        self.summary_base = str(Path(self.local_path) / "Summary_Reports")
+        Path(self.summary_base).mkdir(parents=True, exist_ok=True)
+        self.missing_models: List[str] = []
 
-        # Graph 2 (Raw with Highlights)
-        fig_metric, ax_metric = plt.subplots(figsize=(12, 5))
-        sns.lineplot(data=plot_raw_df, x='DATETIME', y=metric, ax=ax_metric, label='Raw Data', color="green", linewidth=0.5)
-        
-        # Get limits
-        if not plot_raw_df.empty:
-            ymin, ymax = plot_raw_df[metric].min(), plot_raw_df[metric].max()
-        else:
-            ymin, ymax = 0, 1
+    def process_sprints(self) -> None:
+        """Process each model in the configuration table and generate sprint summaries."""
+        for _, row in self.df.iterrows():
+            if any(pd.isna(row.get(col)) for col in ["sprint_name", "model_name", "raw_data_fname", "holdout_data_fname"]):
+                logging.warning(f"Skipping incomplete row: {row}")
+                continue
+            model = row.get("model_name", "<unknown>")
+            try:
+                self._process_model(row)
+            except FileNotFoundError as e:
+                logging.error(f"{model} directory cannot be found: {e}. Moving to next model.")
+                self.missing_models.append(model)
+                continue
 
-        ax_metric.fill_between(plot_raw_df['DATETIME'], ymin, ymax, where=cond_date, color='purple', alpha=0.3, label='Datetime Filter')
-        ax_metric.fill_between(plot_raw_df['DATETIME'], ymin, ymax, where=cond_other, color='gray', alpha=0.3, label='Other Numeric Filter')
-        ax_metric.fill_between(plot_raw_df['DATETIME'], ymin, ymax, where=cond_spec, color='blue', alpha=0.3, label=f'{metric} Filter')
-        
-        ax_metric.set_title(f"{metric} - Raw Data & Filters")
-        ax_metric.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=4)
-        
-        # Graph 3 (Cleaned)
-        fig_cleaned, ax_cleaned = plt.subplots(figsize=(12, 5))
-        sns.lineplot(data=plot_cleaned_df, x='DATETIME', y=metric, ax=ax_cleaned, label='Cleaned Data', color="green", linewidth=0.5)
-        
-        # Add threshold lines
-        x_pos = plot_cleaned_df['DATETIME'].min() if not plot_cleaned_df.empty else None
-        if x_pos:
-            for op, val in metric_filters_list:
-                ax_cleaned.axhline(y=val, color='red', linestyle='--', linewidth=1)
-                ax_cleaned.text(x=x_pos, y=val, s=f" {op} {val}", color='red', verticalalignment='bottom')
+        for sprint, _ in self.df.groupby("sprint_name"):
+            sprint_path = Path(self.local_path) / sprint
+            if not sprint_path.is_dir():
+                logging.warning(f"{sprint} directory not found, skipping summaries.")
+                continue
+            self._generate_sprint_summaries(str(sprint_path))
 
-        ax_cleaned.set_ylim(ymin, ymax)
-        ax_cleaned.set_title(f"{metric} - Cleaned Result")
+        self._gather_all_reports()
 
-        c1, c2 = st.columns(2)
-        with c1: st.pyplot(fig_metric)
-        with c2: st.pyplot(fig_cleaned)
+        if self.missing_models:
+            logging.info("The following models were skipped because their folders were missing:")
+            for m in self.missing_models:
+                logging.info(f" - {m}")
 
-        if generate_report:
-            # Save Raw Plot
-            buf1 = BytesIO()
-            fig_metric.savefig(buf1, format="png", bbox_inches='tight', dpi=100)
-            buf1.seek(0)
-            plot_images.append((f"{metric} (Raw)", base64.b64encode(buf1.read()).decode('utf-8')))
-            buf1.close()
+    def _process_model(self, row: pd.Series) -> None:
+        sprint = row["sprint_name"]
+        model = row["model_name"]
+        raw = row["raw_data_fname"]
+        hold = row["holdout_data_fname"]
+        cols = row["constraint_cols"]
+        limits = row["constraint_limits"]
+        ops = row["operators"]
 
-            # Save Cleaned Plot
-            buf2 = BytesIO()
-            fig_cleaned.savefig(buf2, format="png", bbox_inches='tight', dpi=100)
-            buf2.seek(0)
-            plot_images.append((f"{metric} (Cleaned)", base64.b64encode(buf2.read()).decode('utf-8')))
-            buf2.close()
+        base_dir = Path(self.local_path) / sprint / model
+        if not base_dir.is_dir():
+            raise FileNotFoundError(f"Model folder not found: {base_dir}")
 
-        plt.close(fig_metric)
-        plt.close(fig_cleaned)
+        logging.info(f"> Generating report for model: {model}")
+        paths = self._get_file_paths(sprint, model, raw, hold)
+        for key in ("fpr_path", "ks_path", "report_path"):
+            Path(paths[key]).mkdir(parents=True, exist_ok=True)
 
-    if generate_report:
-        html_content = _generate_html_report(stats_payload, numeric_filters, datetime_filters, plot_images)
-        try:
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
-                page = browser.new_page()
-                page.set_content(html_content)
-                page.pdf(path=str(pdf_file_path), format="A4", margin={'top': '1cm', 'bottom': '1cm', 'left': '1cm', 'right': '1cm'})
-                browser.close()
-        except Exception as e:
-            st.error(f"Failed to save PDF: {e}")
+        if self.regenerate or not any(f.endswith(".jpg") for f in os.listdir(paths["fpr_path"])):
+            self._generate_fpr_plots(model, paths, cols, limits, ops)
+        if self.regenerate or not any(f.endswith(".jpg") for f in os.listdir(paths["ks_path"])):
+            self._generate_ks_plots(paths)
+        if self.regenerate or not any(f.endswith(".pdf") for f in os.listdir(paths["report_path"])):
+            self._generate_model_report(model, paths)
 
-def split_holdout(
-    raw_df: pd.DataFrame,
-    cleaned_df: pd.DataFrame,
-    split_mark: Union[float, str, pd.Timestamp],
-    date_col: str = "Point Name",
-    verbose: bool = False, # Set to True to print stats for logging
-    remove_header_rows: int = 4,
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Timestamp, Dict[str, Dict[str, Any]]]:
-    """
-    Split cleaned_df into train/validation and holdout sets by a date or percentage split.
-    Optionally removes header rows and prepends them to split outputs.
-    Also returns split statistics for each set.
-    """
+    def _get_file_paths(
+        self,
+        sprint: str,
+        model: str,
+        raw_fname: str,
+        hold_fname: str
+    ) -> Dict[str, str]:
+        """
+        Generate file paths for a given sprint and model, validating the existence of critical files.
+        """
+        base_dir = Path(self.local_path) / sprint / model
+        dataset_path = base_dir / "dataset"
+        data_splitting_path = base_dir / "data_splitting"
+        perf_dir = base_dir / "performance_assessment_report"
+        fpr_dir = perf_dir / "FPR"
+        ks_dir = perf_dir / "KS"
 
-    df_header = None
-    if remove_header_rows > 0:
-        df_header = cleaned_df.iloc[:remove_header_rows].reset_index(drop=True)
-        raw_df = raw_df.iloc[remove_header_rows:, :].reset_index(drop=True)
-        cleaned_df = cleaned_df.iloc[remove_header_rows:, :].reset_index(drop=True)
+        if not dataset_path.is_dir():
+            raise FileNotFoundError(f"Data folders missing under {base_dir}")
 
-    raw_df[date_col] = pd.to_datetime(raw_df[date_col])
-    cleaned_df[date_col] = pd.to_datetime(cleaned_df[date_col])
+        raw_data_path = dataset_path / raw_fname
+        holdout_path = dataset_path / hold_fname
+        if not raw_data_path.is_file():
+            raise FileNotFoundError(f"Raw data file not found: {raw_data_path}")
+        if not holdout_path.is_file():
+            raise FileNotFoundError(f"Holdout data file not found: {holdout_path}")
 
-    raw_df_sorted = raw_df.sort_values(date_col).reset_index(drop=True)
-    cleaned_df_sorted = cleaned_df.sort_values(date_col).reset_index(drop=True)
+        def find_file_with_keywords(folder, *keywords):
+            if not folder.is_dir():
+                return None
+            files = [f.name for f in folder.iterdir() if f.is_file()]
+            for k in keywords:
+                # Prioritize more specific match
+                match = next((f for f in files if k in f.upper()), None)
+                if match:
+                    return str(folder / match)
+            return None
 
-    if not isinstance(split_mark, float):
-        if not isinstance(split_mark, pd.Timestamp):
-            split_mark = pd.to_datetime(split_mark)
-    else:
-        n = len(raw_df_sorted)
-        h_raw = int(round(n * split_mark))
-        split_idx = n - h_raw - 1 if h_raw < n else n - 1
-        split_mark = raw_df_sorted.iloc[split_idx][date_col]
+        # files = [f.name for f in dataset_path.iterdir() if f.is_file()]
+        # val_omr_wo = next((f for f in files if "OMR-CLEANED-VALIDATION" in f.upper()), None)
+        # val_omr_w = next((f for f in files if "OMR-RAW-VALIDATION" in f.upper()), None)
+        # hold_omr = next((f for f in files if "OMR-HOLDOUT" in f.upper()), None)
+        val_omr_wo = find_file_with_keywords(
+            data_splitting_path, "OMR-VALIDATION-WITHOUT-OUTLIER"
+        ) or find_file_with_keywords(
+            dataset_path, "OMR-VALIDATION-WITHOUT-OUTLIER"
+        )
 
-    train_val_df = cleaned_df_sorted[cleaned_df_sorted[date_col] <= split_mark].reset_index(drop=True)
-    holdout_df = cleaned_df_sorted[cleaned_df_sorted[date_col] > split_mark].reset_index(drop=True)
+        val_omr_w = find_file_with_keywords(
+            data_splitting_path, "OMR-VALIDATION-WITH-OUTLIER"
+        ) or find_file_with_keywords(
+            dataset_path, "OMR-VALIDATION-WITH-OUTLIER"
+        )
 
-    def get_stats(df):
-        if len(df) > 0:
-            start = df[date_col].iloc[0]
-            end = df[date_col].iloc[-1]
-            num_days = (end - start).days + 1
-            return {"start": start, "end": end, "size": len(df), "num_days": num_days}
-        else:
-            return {"start": None, "end": None, "size": 0, "num_days": 0}
+        hold_omr = find_file_with_keywords(
+            dataset_path, "OMR-HOLDOUT"
+        )
 
-    stats = {
-        "raw": get_stats(raw_df_sorted),
-        "cleaned": get_stats(cleaned_df_sorted),
-        "train_val": get_stats(train_val_df),
-        "holdout": get_stats(holdout_df),
-    }
+        return {
+            "dataset_path": str(dataset_path),
+            "raw_data_path": str(raw_data_path),
+            "holdout_path": str(holdout_path),
+            "val_without_outlier_omr": val_omr_wo,
+            "val_with_outlier_omr": val_omr_w,
+            "holdout_omr": hold_omr,
+            "fpr_path": str(fpr_dir),
+            "ks_path": str(ks_dir),
+            "report_path": str(perf_dir / "report_document"),
+            "data_stats_fpath": str(ks_dir / "data_stats.yaml"),
+            "datasets_range_fpath": str(fpr_dir / "datasets_range.yaml"),
+            "ks_df_fpath": str(ks_dir / "ks_results.csv"),
+            "fpr_stats_cleaned_omr_fpath": str(fpr_dir / "fpr_stats_cleaned_val_omr_df.yaml"),
+            "fpr_stats_holdout_omr_fpath": str(fpr_dir / "fpr_stats_holdout_omr_df.yaml"),
+            "fpr_stats_raw_omr_fpath": str(fpr_dir / "fpr_stats_raw_val_omr_df.yaml"),
+            "fprp_stats_holdout_omr_fpath": str(fpr_dir / "fprp_stats_holdout_omr_df.yaml")
+        }
 
-    if verbose:
-        for key, stat in stats.items():
-            print(f"\n{key.title()} set:")
-            if stat['size'] > 0:
-                print(f"  Start time: {stat['start']}")
-                print(f"  End time:   {stat['end']}")
-                print(f"  Size:       {stat['size']} rows")
-                print(f"  Num days:   {stat['num_days']}")
-            else:
-                print("  (Empty set)")
+    def _generate_fpr_plots(self, model_name: str, paths: Dict[str, str], cols: List[str], limits: List[Any], ops: List[str]) -> None:
+        generate_report_plots(
+            data_fpath                    = paths["dataset_path"],
+            fpr_fpath                     = paths["fpr_path"],
+            model_name                    = model_name,
+            constraint_cols               = cols,
+            condition_limits              = limits,
+            operators                     = ops,
+            raw_data_fpath                = paths["raw_data_path"],
+            holdout_fpath                 = paths["holdout_path"],
+            holdout_omr_fname             = paths["holdout_omr"],
+            val_without_outlier_omr_fname = paths["val_without_outlier_omr"],
+            val_with_outlier_omr_fname    = paths["val_with_outlier_omr"],
+            sub_ts_length_in_minutes      = self.sub_ts_length,
+            n_ts_above_threshold          = self.n_ts_above_thresh,
+            time_interval                 = self.time_interval,
+            warning_threshold             = self.warning_threshold,
+            alert_threshold               = self.alert_threshold,
+            nsteps                        = 20
+        )
 
-    if df_header is not None:
-        train_val_df = pd.concat([df_header, train_val_df], ignore_index=True)
-        holdout_df = pd.concat([df_header, holdout_df], ignore_index=True)
+    def _generate_ks_plots(self, paths: Dict[str, str]) -> None:
+        compare_data_distributions(
+            validation_fname = paths["raw_data_path"],
+            ks_file_path     = paths["ks_path"],
+            holdout_fpath    = paths["holdout_path"],
+            description_row = 0
+        )
 
-    return train_val_df, holdout_df, split_mark, stats
+    def _generate_model_report(self, model_name: str, paths: Dict[str, str]) -> None:
+        generate_qa_report(
+            model_name                    = model_name,
+            fpr_file_path                 = paths["fpr_path"],
+            ks_file_path                  = paths["ks_path"],
+            report_file_path              = paths["report_path"],
+            fpr_stats_cleaned_omr_fpath   = paths["fpr_stats_cleaned_omr_fpath"],
+            fpr_stats_holdout_omr_fpath   = paths["fpr_stats_holdout_omr_fpath"],
+            fpr_stats_raw_omr_fpath       = paths["fpr_stats_raw_omr_fpath"],
+            fprp_stats_holdout_omr_fpath  = paths["fprp_stats_holdout_omr_fpath"],
+            data_stats_fpath              = paths["data_stats_fpath"],
+            ks_df_fpath                   = paths["ks_df_fpath"],
+            datasets_range_fpath          = paths["datasets_range_fpath"]
+        )
 
-def generate_split_holdout_report(stats: Dict[str, Any], split_mark_used: str, pdf_file_path: Path, fig: plt.figure):
-    """
-    Generates a PDF report with the data split figure and stats tables.
-    """
-    # NOTE: Keeping FPDF here for now as requested to only change Data Cleansing, 
-    # unless you want this one migrated to Playwright as well?
-    # For now, focusing on the Data Cleansing module's consistency.
-    pdf = FPDF(orientation="landscape")
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, "Data Split Report", 0, 1, "C")
-    pdf.ln(5)
+    def _generate_sprint_summaries(self, sprint_path: str) -> None:
+        fprp_df = generate_summary_fprp(sprint_path)
+        generate_summary_fprp_plots(
+            df         = fprp_df,
+            plot_fname = os.path.join(sprint_path, "fprp_plots.jpg"),
+            fpr_limit  = 100
+        )
+        generate_sprint_summary_report(
+            sprint_name = os.path.basename(sprint_path),
+            sprint_path = sprint_path
+        )
 
-    # Add figure to pdf
-    if fig:
-        pdf.set_font("Arial", "B", 14)
-        with BytesIO() as img_buffer:
-            fig.savefig(img_buffer, format="png", bbox_inches='tight')
-            img_buffer.seek(0)
-            image_bytes = img_buffer.read()
-            pdf.image(image_bytes, x=10, y=30, w=pdf.w - 20, type="PNG")
-        plt.close(fig)
-        pdf.ln(120)
-    else:
-        pdf.cell(0, 10, "No time span chart to display.", 0, 1, "L")
+    def _gather_all_reports(self) -> None:
+        for sprint, group in self.df.groupby("sprint_name"):
+            logging.info(f"> Collecting reports from {sprint}")
+            dst_folder = Path(self.summary_base) / sprint
+            dst_folder.mkdir(parents=True, exist_ok=True)
 
-    # Add stats table to pdf
-    pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, "Split Statistics", 0, 1, "L")
-    pdf.set_font("Arial", "", 12)
-    pdf.cell(0, 8, f"Split mark used: {split_mark_used}", 0, 1)
-    pdf.ln(5)
+            summary_pdf = Path(self.local_path) / sprint / f"{sprint} Summary Results.pdf"
+            if summary_pdf.exists():
+                shutil.copy(summary_pdf, dst_folder)
 
-    for set_name, stat in stats.items():
-        pdf.set_font("Arial", "B", 12)
-        pdf.cell(0, 8, f"{set_name.title()}", 0, 1)
-        pdf.set_font("Arial", "", 10)
+            for model in group["model_name"]:
+                report_dir = Path(self.local_path) / sprint / model / "performance_assessment_report" / "report_document"
+                if not report_dir.is_dir():
+                    logging.warning(f"{model} report directory not found, skipping.")
+                    continue
+                for fn in report_dir.iterdir():
+                    if fn.suffix.lower() == ".pdf":
+                        shutil.copy(fn, dst_folder)
 
-        if stat.get("size", 0) > 0:
-            start_str = stat.get("start").strftime("%Y-%m-%d %H:%M:%S") if stat.get("start") else "N/A"
-            end_str = stat.get("end").strftime("%Y-%m-%d %H:%M:%S") if stat.get("end") else "N/A"
 
-            # Create a simple table with borders (1)
-            pdf.cell(40, 6, "Metric", 1)
-            pdf.cell(0, 6, "Value", 1)
-            pdf.ln()
-
-            pdf.cell(40, 6, "Start", 1)
-            pdf.cell(0, 6, start_str, 1)
-            pdf.ln()
-
-            pdf.cell(40, 6, "End", 1)
-            pdf.cell(0, 6, end_str, 1)
-            pdf.ln()
-
-            pdf.cell(40, 6, "Rows", 1)
-            pdf.cell(0, 6, f"{stat.get('size'):,}", 1) # Added comma formatting
-            pdf.ln()
-
-            pdf.cell(40, 6, "Number of days", 1)
-            pdf.cell(0, 6, str(stat.get("num_days", "N/A")), 1)
-            pdf.ln()
-
-            pdf.ln(5) # Space after table
-        else:
-            pdf.cell(0, 6, "(Empty set)", 0, 1)
-            pdf.ln(5)
-
-    try:
-        pdf.output(pdf_file_path)
-        return True
-    except Exception as e:
-        return False
-
-def read_prism_csv(df: pd.DataFrame):
-    # df = pd.read_csv(path, index_col=False)
-
-    df_header = df.iloc[:4,:]
-
-    df.columns = df.iloc[1].values
-    df = df.iloc[4:,:]
-
-    df.rename(columns={'Extended Name':'DATETIME'}, inplace=True)
-    df.reset_index(drop=True, inplace=True)
-    df['DATETIME'] = pd.to_datetime(df['DATETIME'])
-    df = df.apply(pd.to_numeric)
-    df['DATETIME'] = pd.to_datetime(df['DATETIME'])
-
-    return df, df_header
-
-def corrfunc(x, y, **kwds):
-    cmap = kwds['cmap']
-    norm = kwds['norm']
-    ax = plt.gca()
-    ax.tick_params(bottom=False, top=False, left=False, right=False)
-    sns.despine(ax=ax, bottom=True, top=True, left=True, right=True)
-    r, _ = pearsonr(x, y)
-    facecolor = cmap(norm(r))
-    ax.set_facecolor(facecolor)
-    lightness = (max(facecolor[:3]) + min(facecolor[:3]) ) / 2
-    ax.annotate(f"r={r:.2f}", xy=(.5, .5), xycoords=ax.transAxes, color='white' if lightness < 0.7 else 'black', size=30, ha='center', va='center')
+def generate_report_from_table(
+    table_path: str,
+    local_path: str,
+    regenerate: bool = False
+) -> None:
+    rg = ReportGenerator(table_path, local_path, regenerate)
+    rg.process_sprints()

@@ -513,7 +513,7 @@ def generate_data_cleaning_visualizations(raw_df: pd.DataFrame,
         
         # Graph 3 (Cleaned)
         fig_cleaned, ax_cleaned = plt.subplots(figsize=(12, 5))
-        sns.lineplot(data=plot_cleaned_df, x='DATETIME', y=metric, ax=ax_cleaned, label='Cleaned Data', color="green", linewidth=0.5)
+        sns.lineplot(data=plot_cleaned_df, x='DATETIME', y=metric, ax=ax_cleaned, color="green", linewidth=0.5, legend=False)
         
         # Add threshold lines
         x_pos = plot_cleaned_df['DATETIME'].min() if not plot_cleaned_df.empty else None
