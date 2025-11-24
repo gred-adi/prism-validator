@@ -3,12 +3,17 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import seaborn as sns
 import streamlit as st
+import numpy as np
+import base64
+from datetime import datetime
 
 from typing import Tuple, Union, Dict, Any
 from pathlib import Path
 from scipy.stats import pearsonr
-from fpdf import FPDF
+# Removed FPDF import
 from io import BytesIO
+from playwright.sync_api import sync_playwright
+from jinja2 import Environment
 
 def cleaned_dataset_name_split(
         filename:str
@@ -45,142 +50,245 @@ def cleaned_dataset_name_split(
     return site_name, model_name, inclusive_dates
 
 def data_cleaning_read_prism_csv(df: pd.DataFrame, project_points: pd.DataFrame):
-    # df = pd.read_csv(path, index_col=False)
     """
     Takes a PRISM DataFrame and returns a DataFrame with mapped metric names and the original PRISM header.
-    Args:
-        df (pd.DataFrame): PRISM DataFrame to be processed.
-        project_points (pd.DataFrame): DataFrame containing project points mapping (most likely from project_points.csv).
+    Optimized for performance.
     """
-    df_header = df.iloc[:4,:]
+    # Extract header rows (metadata)
+    df_header = df.iloc[:4, :].copy()
+    
+    # Extract data rows (skip the first 4 rows of metadata)
+    df_data = df.iloc[4:, :].copy()
+    
+    # Rename the first column (Time)
+    # Assuming 'Point Name' is the first column in the raw export
+    first_col_name = df_data.columns[0]
+    df_data.rename(columns={first_col_name: 'DATETIME'}, inplace=True)
+    
+    # Optimized Datetime Conversion
+    # Using errors='coerce' is safer and usually faster than letting pandas infer mixed formats
+    df_data['DATETIME'] = pd.to_datetime(df_data['DATETIME'], errors='coerce')
+    
+    # Reset index after slicing
+    df_data.reset_index(drop=True, inplace=True)
 
-    df.columns = df_header.columns
-    df = df.iloc[4:,:]
+    # Optimized Numeric Conversion
+    # Instead of apply(pd.to_numeric) on the whole DF (which is very slow), iterate columns
+    cols_to_convert = [c for c in df_data.columns if c != 'DATETIME']
+    for col in cols_to_convert:
+        df_data[col] = pd.to_numeric(df_data[col], errors='coerce')
 
-    df.rename(columns={'Point Name':'DATETIME'}, inplace=True)
-    df.reset_index(drop=True, inplace=True)
-    df['DATETIME'] = pd.to_datetime(df['DATETIME'])
-    df = df.apply(pd.to_numeric)
-    df['DATETIME'] = pd.to_datetime(df['DATETIME'])
+    # Optimized Column Mapping
+    # Create a dictionary for O(1) lookup instead of O(N) filtering inside the loop
+    # Handle NaN values in mapping by converting to string 'nan' to match existing logic
+    name_to_metric = pd.Series(
+        project_points['Metric'].values, 
+        index=project_points['Name']
+    ).to_dict()
 
-    # Data Point Mapping
-    new_column = []
-    for column in df.columns:
+    new_columns = []
+    for column in df_data.columns:
         if column == 'DATETIME':
-            new_column.append(column)
-        elif column in project_points['Name'].tolist():
-            mapping_value = str(project_points.loc[project_points['Name'] == column, 'Metric'].values[0])
-            if (mapping_value == 'nan'):
-                new_column.append(column)
+            new_columns.append(column)
+        else:
+            # Fast lookup
+            mapping_val = name_to_metric.get(column)
+            # Check if mapping exists and is not nan (pandas might map to nan/float)
+            if mapping_val is not None and str(mapping_val) != 'nan':
+                new_columns.append(str(mapping_val))
             else:
-                new_column.append(mapping_value)
-        else:
-            new_column.append(column)
+                new_columns.append(column)
 
-    df.columns = new_column
-    return df, df_header
+    df_data.columns = new_columns
+    
+    return df_data, df_header
 
-def _generate_report_cover_page(pdf: FPDF,
-                                raw_df: pd.DataFrame,
-                                total_excluded: int,
-                                stats_dict: dict = None,
-                                numeric_filters: list = [],
-                                datetime_filters: list = []):
-    """Adds a summary page to the FPDF object."""
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, "Data Cleaning Report", 0, 1, "C")
-    pdf.ln(10)
-    pdf.set_font("Arial", "", 12)
+def _generate_html_report(stats_payload, numeric_filters, datetime_filters, plot_images):
+    """Generates HTML content for the report using Jinja2."""
+    
+    env = Environment()
+    template_str = """
+    <html>
+    <head>
+        <style>
+            body { font-family: "Helvetica", "Arial", sans-serif; color: #333; margin: 40px; }
+            h1 { color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; }
+            h2 { color: #2980b9; margin-top: 30px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+            .stats-box { background-color: #f9f9f9; border: 1px solid #ddd; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
+            .stats-row { display: flex; justify-content: space-between; margin-bottom: 10px; }
+            .stat-item { text-align: center; flex: 1; }
+            .stat-label { font-size: 0.9em; color: #777; }
+            .stat-value { font-size: 1.2em; font-weight: bold; color: #333; }
+            .filter-list { background-color: #fff; border: 1px solid #eee; padding: 10px; margin-top: 10px; }
+            .img-container { text-align: center; margin-top: 20px; page-break-inside: avoid; }
+            img { max-width: 100%; height: auto; border: 1px solid #ccc; }
+            .footer { font-size: 0.8em; color: #999; text-align: center; margin-top: 50px; }
+        </style>
+    </head>
+    <body>
+        <h1>Data Cleaning Report</h1>
+        <p>Generated on: {{ generation_date }}</p>
 
-    start_time = raw_df['DATETIME'].min()
-    end_time = raw_df['DATETIME'].max()
-    total_rows = len(raw_df)
+        <div class="stats-box">
+            <h2>Impact Statistics</h2>
+            <div class="stats-row">
+                <div class="stat-item">
+                    <div class="stat-label">Total Rows</div>
+                    <div class="stat-value">{{ total_rows }}</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Remaining Rows</div>
+                    <div class="stat-value">{{ remaining_rows }}</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Overall Retention</div>
+                    <div class="stat-value">{{ retention_pct }}%</div>
+                </div>
+            </div>
+            <div class="stats-row">
+                <div class="stat-item">
+                    <div class="stat-label">Numeric Removed</div>
+                    <div class="stat-value">{{ numeric_removed }} ({{ numeric_pct }}%)</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Date Removed</div>
+                    <div class="stat-value">{{ date_removed }} ({{ date_pct }}%)</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Total Removed</div>
+                    <div class="stat-value">{{ total_removed }} ({{ removed_pct }}%)</div>
+                </div>
+            </div>
+        </div>
 
-    pdf.cell(0, 8, f"Raw Data Timespan: {start_time} to {end_time}", 0, 1)
-    pdf.cell(0, 8, f"Total Rows in Raw Data: {total_rows}", 0, 1)
-    pdf.cell(0, 8, f"Total Rows Excluded: {total_excluded}", 0, 1)
+        <h2>Active Filters</h2>
+        <div class="filter-list">
+            <strong>Numeric Filters:</strong>
+            <ul>
+            {% for f in numeric_filters %}
+                <li>{{ f }}</li>
+            {% else %}
+                <li>None</li>
+            {% endfor %}
+            </ul>
+            
+            <strong>Date Filters:</strong>
+            <ul>
+            {% for f in datetime_filters %}
+                <li>{{ f }}</li>
+            {% else %}
+                <li>None</li>
+            {% endfor %}
+            </ul>
+        </div>
 
-    # This section now works for BOTH simple and full reports
-    if stats_dict:
-        pdf.ln(10) # Add a line break
-        pdf.set_font("Arial", "B", 14)
-        pdf.cell(0, 10, "Filter Impact Statistics", 0, 1)
-        pdf.set_font("Arial", "", 12)
-        pdf.cell(0, 8, f"Excluded by Numeric: {stats_dict['pct_numeric']:.2f}% ({stats_dict['numeric_count']:,} points)", 0, 1)
-        pdf.cell(0, 8, f"Excluded by Datetime: {stats_dict['pct_datetime']:.2f}% ({stats_dict['datetime_count']:,} points)", 0, 1)
-        pdf.cell(0, 8, f"Total Excluded (Union): {stats_dict['pct_union']:.2f}% ({stats_dict['union_count']:,} points)", 0, 1)
+        <h2>Visualizations</h2>
+        
+        {% for title, img_data in plot_images %}
+        <div class="img-container">
+            <h3>{{ title }}</h3>
+            <img src="data:image/png;base64,{{ img_data }}" />
+        </div>
+        {% endfor %}
 
-    # --- NEW SECTION: Print the list of filters ---
-    pdf.ln(10)
-    pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, "Active Filters Applied", 0, 1)
-    pdf.set_font("Arial", "", 10) # Use a smaller font for the list
-
-    if not numeric_filters and not datetime_filters:
-        pdf.cell(0, 5, "No filters were applied.", 0, 1)
-
-    for col, op, val in numeric_filters:
-        pdf.cell(0, 5, f"- Numeric: {col} {op} {val}", 0, 1)
-
+        <div class="footer">
+            PRISM Validator Tool
+        </div>
+    </body>
+    </html>
+    """
+    
+    template = env.from_string(template_str)
+    
+    # Format filters for display
+    fmt_numeric = [f"{col} {op} {val}" for col, op, val in numeric_filters]
+    fmt_date = []
     for op, val in datetime_filters:
-        if op == "between (includes edge values)":
-            pdf.cell(0, 5, f"- Datetime: remove between {val[0]} and {val[1]}", 0, 1)
+        if op == "between (includes edge values)" or op == "between":
+            val_str = f"{val[0]} to {val[1]}" if isinstance(val, tuple) or isinstance(val, list) else str(val)
+            fmt_date.append(f"Remove between {val_str}")
         else:
-            pdf.cell(0, 5, f"- Datetime: {op} {val}", 0, 1)
+            fmt_date.append(f"{op} {val}")
+
+    html = template.render(
+        generation_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        total_rows=f"{stats_payload['total_rows']:,}",
+        remaining_rows=f"{stats_payload['remaining_rows']:,}",
+        retention_pct=f"{stats_payload['retention_pct']:.2f}",
+        numeric_removed=f"{stats_payload['numeric_removed']:,}",
+        numeric_pct=f"{stats_payload['numeric_pct']:.2f}",
+        date_removed=f"{stats_payload['date_removed']:,}",
+        date_pct=f"{stats_payload['date_pct']:.2f}",
+        total_removed=f"{stats_payload['total_removed']:,}",
+        removed_pct=f"{stats_payload['removed_pct']:.2f}",
+        numeric_filters=fmt_numeric,
+        datetime_filters=fmt_date,
+        plot_images=plot_images
+    )
+    return html
 
 def generate_simple_report(raw_df: pd.DataFrame, numeric_filters: list, datetime_filters: list, pdf_file_path: Path):
-    """Generates a simple text-only PDF report."""
-
-    total_points = len(raw_df)
-    if total_points == 0:
-        st.error("Cannot generate report from empty data.")
-        return
-
-    datetime_mask = pd.Series(False, index=raw_df.index)
-    for op, val in datetime_filters:
-        start_time = pd.to_datetime(val[0]) if op == "between (includes edge values)" else None
-        end_time = pd.to_datetime(val[1]) if op == "between (includes edge values)" else None
-        if op == "< (remove before)": datetime_mask = datetime_mask | (raw_df['DATETIME'] < pd.to_datetime(val))
-        elif op == "> (remove after)": datetime_mask = datetime_mask | (raw_df['DATETIME'] > pd.to_datetime(val))
-        elif op == "between (includes edge values)": datetime_mask = datetime_mask | ((raw_df['DATETIME'] >= start_time) & (raw_df['DATETIME'] <= end_time))
-
-    all_numeric_mask = pd.Series(False, index=raw_df.index)
+    """Generates a simple PDF report using Playwright (consistent with other reports)."""
+    # Reuse the full generation logic but with empty metrics list to skip charts
+    # But we need to calculate stats first.
+    
+    # --- Calculate Stats (Replicated Logic for Consistency) ---
+    total_rows = len(raw_df)
+    
+    # 1. Numeric Mask
+    numeric_mask = pd.Series(True, index=raw_df.index)
     for col, op, val in numeric_filters:
-        if op == "<": all_numeric_mask = all_numeric_mask | (raw_df[col] < val)
-        elif op == "<=": all_numeric_mask = all_numeric_mask | (raw_df[col] <= val)
-        elif op == "==": all_numeric_mask = all_numeric_mask | (raw_df[col] == val)
-        elif op == ">=": all_numeric_mask = all_numeric_mask | (raw_df[col] >= val)
-        elif op == ">": all_numeric_mask = all_numeric_mask | (raw_df[col] > val)
+        if col in raw_df.columns:
+            if op == "<": numeric_mask &= ~(raw_df[col] < val)
+            elif op == "<=": numeric_mask &= ~(raw_df[col] <= val)
+            elif op == "==": numeric_mask &= ~(raw_df[col] == val)
+            elif op == ">=": numeric_mask &= ~(raw_df[col] >= val)
+            elif op == ">": numeric_mask &= ~(raw_df[col] > val)
+    numeric_removed_count = (~numeric_mask).sum()
 
-    total_excluded = (all_numeric_mask | datetime_mask).sum()
-    numeric_count = all_numeric_mask.sum()
-    datetime_count = datetime_mask.sum()
+    # 2. Date Mask
+    date_mask = pd.Series(True, index=raw_df.index)
+    if 'DATETIME' in raw_df.columns:
+        for op, val in datetime_filters:
+            if op == "< (remove before)":
+                date_mask &= ~(raw_df['DATETIME'] < pd.to_datetime(val))
+            elif op == "> (remove after)":
+                date_mask &= ~(raw_df['DATETIME'] > pd.to_datetime(val))
+            elif op in ["between", "between (includes edge values)"]:
+                # Handle list or tuple
+                start = pd.to_datetime(val[0])
+                end = pd.to_datetime(val[1])
+                date_mask &= ~((raw_df['DATETIME'] >= start) & (raw_df['DATETIME'] <= end))
+    date_removed_count = (~date_mask).sum()
 
-    pct_numeric = (numeric_count / total_points) * 100
-    pct_datetime = (datetime_count / total_points) * 100
-    pct_union = (total_excluded / total_points) * 100
+    final_mask = numeric_mask & date_mask
+    remaining_count = final_mask.sum()
+    total_removed = total_rows - remaining_count
 
     stats_payload = {
-        "numeric_count": numeric_count, "datetime_count": datetime_count, "union_count": total_excluded,
-        "pct_numeric": pct_numeric, "pct_datetime": pct_datetime, "pct_union": pct_union
+        "total_rows": total_rows,
+        "remaining_rows": remaining_count,
+        "numeric_removed": numeric_removed_count,
+        "date_removed": date_removed_count,
+        "total_removed": total_removed,
+        "retention_pct": (remaining_count / total_rows * 100) if total_rows > 0 else 0,
+        "numeric_pct": (numeric_removed_count / total_rows * 100) if total_rows > 0 else 0,
+        "date_pct": (date_removed_count / total_rows * 100) if total_rows > 0 else 0,
+        "removed_pct": (total_removed / total_rows * 100) if total_rows > 0 else 0
     }
 
-    pdf = FPDF(orientation="portrait")
-
-    _generate_report_cover_page(
-        pdf,
-        raw_df,
-        total_excluded,
-        stats_payload,
-        numeric_filters,
-        datetime_filters
-    )
-
+    html_content = _generate_html_report(stats_payload, numeric_filters, datetime_filters, [])
+    
     try:
-        pdf.output(pdf_file_path)
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.set_content(html_content)
+            page.pdf(path=str(pdf_file_path), format="A4", margin={'top': '1cm', 'bottom': '1cm', 'left': '1cm', 'right': '1cm'})
+            browser.close()
     except Exception as e:
-        st.error(f"Failed to save PDF report: {e}")
+        st.error(f"Failed to generate PDF: {e}")
+
 
 def generate_data_cleaning_visualizations(raw_df: pd.DataFrame,
                                           cleaned_df: pd.DataFrame,
@@ -190,294 +298,257 @@ def generate_data_cleaning_visualizations(raw_df: pd.DataFrame,
                                           generate_report: bool,
                                           pdf_file_path: Path = None):
     """
-    Generates and displays all data cleaning visualizations and consolidates them in a report
-    if generate_report is True
+    Generates and displays all data cleaning visualizations.
+    Uses Playwright for PDF generation.
     """
-    pdf = None
-    if generate_report:
-        if not pdf_file_path:
-            st.error("PDF file path is missing. Cannot generate report.")
-            generate_report = False # Abort report generation
-        else:
-            pdf = FPDF(orientation="portrait") # Initialize PDF object
+    plot_images = [] # List to store (title, base64_string) for PDF
 
-    # Create Masks for all filter types
-    total_points = len(raw_df)
-    if total_points == 0:
+    # FIX: Define total_rows explicitly from len(raw_df)
+    total_rows = len(raw_df)
+    if total_rows == 0:
         st.info("No data to visualize.")
         return
 
-    # Master mask for all datetime filters
-    datetime_mask = pd.Series(False, index=raw_df.index)
-    for op, val in datetime_filters:
-        start_time = pd.to_datetime(val[0]) if op == "between (includes edge values)" else None
-        end_time = pd.to_datetime(val[1]) if op == "between (includes edge values)" else None
+    # --- OPTIMIZATION: Downsampling ---
+    MAX_PLOT_POINTS = 15000
+    use_downsampling = total_rows > MAX_PLOT_POINTS
+    
+    if use_downsampling:
+        step = total_rows // MAX_PLOT_POINTS
+        plot_raw_df = raw_df.iloc[::step].copy()
+        plot_cleaned_df = cleaned_df.iloc[::step].copy()
+        st.toast(f"⚡ Data downsampled for visualization (displaying ~{len(plot_raw_df)} points)", icon="ℹ️")
+    else:
+        plot_raw_df = raw_df
+        plot_cleaned_df = cleaned_df
 
-        if op == "< (remove before)":
-            datetime_mask = datetime_mask | (raw_df['DATETIME'] < pd.to_datetime(val))
-        elif op == "> (remove after)":
-            datetime_mask = datetime_mask | (raw_df['DATETIME'] > pd.to_datetime(val))
-        elif op == "between (includes edge values)":
-            datetime_mask = datetime_mask | ((raw_df['DATETIME'] >= start_time) & (raw_df['DATETIME'] <= end_time))
-
-    # Master mask for all numeric filters
-    all_numeric_mask = pd.Series(False, index=raw_df.index)
+    # --- STATISTICS (Use FULL Data to match Preview Impact) ---
+    # 1. Numeric Mask
+    numeric_mask = pd.Series(True, index=raw_df.index)
     for col, op, val in numeric_filters:
-        if op == "<": all_numeric_mask = all_numeric_mask | (raw_df[col] < val)
-        elif op == "<=": all_numeric_mask = all_numeric_mask | (raw_df[col] <= val)
-        elif op == "==": all_numeric_mask = all_numeric_mask | (raw_df[col] == val)
-        elif op == ">=": all_numeric_mask = all_numeric_mask | (raw_df[col] >= val)
-        elif op == ">": all_numeric_mask = all_numeric_mask | (raw_df[col] > val)
+        if col in raw_df.columns:
+            if op == "<": numeric_mask &= ~(raw_df[col] < val)
+            elif op == "<=": numeric_mask &= ~(raw_df[col] <= val)
+            elif op == "==": numeric_mask &= ~(raw_df[col] == val)
+            elif op == ">=": numeric_mask &= ~(raw_df[col] >= val)
+            elif op == ">": numeric_mask &= ~(raw_df[col] > val)
+    numeric_removed_count = (~numeric_mask).sum()
 
-    # Generate Filter Statistics
-    numeric_count = all_numeric_mask.sum()
-    datetime_count = datetime_mask.sum()
-    union_count = (all_numeric_mask | datetime_mask).sum()
-    pct_numeric = (numeric_count / total_points) * 100
-    pct_datetime = (datetime_count / total_points) * 100
-    pct_union = (union_count / total_points) * 100
+    # 2. Date Mask
+    date_mask = pd.Series(True, index=raw_df.index)
+    if 'DATETIME' in raw_df.columns:
+        for op, val in datetime_filters:
+            if op == "< (remove before)":
+                date_mask &= ~(raw_df['DATETIME'] < pd.to_datetime(val))
+            elif op == "> (remove after)":
+                date_mask &= ~(raw_df['DATETIME'] > pd.to_datetime(val))
+            elif op in ["between", "between (includes edge values)"]:
+                start = pd.to_datetime(val[0])
+                end = pd.to_datetime(val[1])
+                date_mask &= ~((raw_df['DATETIME'] >= start) & (raw_df['DATETIME'] <= end))
+    date_removed_count = (~date_mask).sum()
+
+    final_mask = numeric_mask & date_mask
+    remaining_count = final_mask.sum()
+    total_removed = total_rows - remaining_count
+
+    # Calculate percentages (formatted to 2 decimals)
+    # FIX: total_rows variable is now properly defined in scope
+    retention_pct = (remaining_count / total_rows * 100) if total_rows > 0 else 0
+    numeric_pct = (numeric_removed_count / total_rows * 100) if total_rows > 0 else 0
+    date_pct = (date_removed_count / total_rows * 100) if total_rows > 0 else 0
+    removed_pct = (total_removed / total_rows * 100) if total_rows > 0 else 0
 
     stats_payload = {
-        "numeric_count": numeric_count, "datetime_count": datetime_count, "union_count": union_count,
-        "pct_numeric": pct_numeric, "pct_datetime": pct_datetime, "pct_union": pct_union
+        "total_rows": total_rows,
+        "remaining_rows": remaining_count,
+        "numeric_removed": numeric_removed_count,
+        "date_removed": date_removed_count,
+        "total_removed": total_removed,
+        "retention_pct": retention_pct,
+        "numeric_pct": numeric_pct,
+        "date_pct": date_pct,
+        "removed_pct": removed_pct
     }
 
+    # --- Display Stats (Aligned with Preview Impact) ---
     st.markdown("### Filter Impact Statistics")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown(f"""
-        ### Excluded by Numeric
-        ## {pct_numeric:.2f}%
-        {numeric_count:,} points
-        """)
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Rows", f"{total_rows:,}")
+    m2.metric("Remaining", f"{remaining_count:,}", delta=f"-{removed_pct:.2f}% removed", delta_color="inverse")
+    m3.metric("Numeric Removed", f"{numeric_removed_count:,}", delta=f"-{numeric_pct:.2f}% removed", delta_color="inverse")
+    m4.metric("Date Removed", f"{date_removed_count:,}", delta=f"-{date_pct:.2f}% removed", delta_color="inverse")
 
-    with col2:
-        st.markdown(f"""
-        ### Excluded by Datetime
-        ## {pct_datetime:.2f}%
-        {datetime_count:,} points
-        """)
-
-    with col3:
-        st.markdown(f"""
-        ### Total Excluded (Union)
-        ## {pct_union:.2f}%
-        {union_count:,} points
-        """)
-
-    # Create first page for pdf
-    if generate_report:
-        _generate_report_cover_page(
-            pdf,
-            raw_df,
-            stats_payload['union_count'],
-            stats_payload,
-            numeric_filters,
-            datetime_filters
-        )
-
-    # Generate Graph 1 (Timeline)
+    # --- Generate Timeline Graph (using fill_between) ---
     st.markdown("### Filter Timeline")
-
-    numeric_points = raw_df.loc[all_numeric_mask, 'DATETIME']
-    datetime_points = raw_df.loc[datetime_mask & ~all_numeric_mask, 'DATETIME']
+    
+    # We need boolean arrays for fill_between. 
+    # If downsampling, re-calculate masks on the small DF for plotting.
+    if use_downsampling:
+        timeline_df = plot_raw_df
+        t_date_mask = pd.Series(False, index=timeline_df.index)
+        if 'DATETIME' in timeline_df.columns:
+            for op, val in datetime_filters:
+                if op == "< (remove before)": t_date_mask |= (timeline_df['DATETIME'] < pd.to_datetime(val))
+                elif op == "> (remove after)": t_date_mask |= (timeline_df['DATETIME'] > pd.to_datetime(val))
+                elif op in ["between", "between (includes edge values)"]:
+                    t_date_mask |= ((timeline_df['DATETIME'] >= pd.to_datetime(val[0])) & (timeline_df['DATETIME'] <= pd.to_datetime(val[1])))
+        
+        t_num_mask = pd.Series(False, index=timeline_df.index)
+        for col, op, val in numeric_filters:
+            if col in timeline_df.columns:
+                if op == "<": t_num_mask |= (timeline_df[col] < val)
+                elif op == "<=": t_num_mask |= (timeline_df[col] <= val)
+                elif op == "==": t_num_mask |= (timeline_df[col] == val)
+                elif op == ">=": t_num_mask |= (timeline_df[col] >= val)
+                elif op == ">": t_num_mask |= (timeline_df[col] > val)
+    else:
+        timeline_df = raw_df
+        # Invert original KEEP masks to get REMOVE masks
+        t_date_mask = ~date_mask 
+        t_num_mask = ~numeric_mask
 
     fig_timeline, ax_timeline = plt.subplots(figsize=(12, 3))
-    ax_timeline.vlines(numeric_points, ymin=0, ymax=1, color='gray', alpha=0.7, linewidth=0.5, label='Removed (Numeric)')
-    ax_timeline.vlines(datetime_points, ymin=0, ymax=1, color='purple', alpha=0.7, label='Removed (Datetime)')
+    
+    # Fill 1: Removed by Numeric (Gray)
+    ax_timeline.fill_between(
+        timeline_df['DATETIME'], 0, 1,
+        where=t_num_mask,
+        color='gray', alpha=0.3, label='Removed (Numeric)', step='mid'
+    )
+    
+    # Fill 2: Removed by Date (Purple) - Prioritize if overlapping
+    ax_timeline.fill_between(
+        timeline_df['DATETIME'], 0, 1,
+        where=t_date_mask,
+        color='purple', alpha=0.3, label='Removed (Datetime)', step='mid'
+    )
+
     ax_timeline.get_yaxis().set_visible(False)
     ax_timeline.set_ylim(0, 1)
     ax_timeline.set_xlabel('DATETIME')
-    ax_timeline.legend()
+    ax_timeline.legend(loc='upper right')
     ax_timeline.grid(axis='x', linestyle='--', alpha=0.5)
+    ax_timeline.set_title("Data Removal Timeline")
+    
     st.pyplot(fig_timeline)
 
-    # Add timeline graph to pdf report
     if generate_report:
-        pdf.add_page()
-        pdf.set_font("Arial", "B", 16)
-        pdf.cell(0, 10, f"Timeline Graph", 0, 1, "C")
-        img_buffer = BytesIO()
-        fig_timeline.savefig(img_buffer, format="png", bbox_inches='tight')
-        img_buffer.seek(0)
-        image_bytes = img_buffer.read()
-        # Center image
-        pdf.image(image_bytes, x=10, y=20, w=pdf.w - 20, type="PNG")
+        buf = BytesIO()
+        fig_timeline.savefig(buf, format="png", bbox_inches='tight', dpi=100)
+        buf.seek(0)
+        plot_images.append(("Filter Timeline", base64.b64encode(buf.read()).decode('utf-8')))
+        buf.close()
 
     plt.close(fig_timeline)
 
-    # Generate Graphs 2 and 3 (Metric-Specific Plots)
+    # --- Metric Plots ---
     st.markdown("### Filtered Metric Plots")
 
     for metric in selected_metrics:
         st.subheader(f"Plot for: {metric}")
 
-        # Create 3 new masks specific to this loop
-        metric_specific_mask = pd.Series(False, index=raw_df.index)
-        other_numeric_mask = pd.Series(False, index=raw_df.index)
+        # Calculate metric-specific masks for highlighting
+        # Using plot_raw_df (downsampled or full)
+        m_spec_mask = pd.Series(False, index=plot_raw_df.index)
+        m_other_mask = pd.Series(False, index=plot_raw_df.index)
+        m_date_mask = pd.Series(False, index=plot_raw_df.index)
+        
         metric_filters_list = []
 
-        for col, op, val in numeric_filters:
-            if col not in raw_df.columns: continue
+        # 1. Date Mask for Plotting
+        if 'DATETIME' in plot_raw_df.columns:
+            for op, val in datetime_filters:
+                if op == "< (remove before)": m_date_mask |= (plot_raw_df['DATETIME'] < pd.to_datetime(val))
+                elif op == "> (remove after)": m_date_mask |= (plot_raw_df['DATETIME'] > pd.to_datetime(val))
+                elif op in ["between", "between (includes edge values)"]: m_date_mask |= ((plot_raw_df['DATETIME'] >= pd.to_datetime(val[0])) & (plot_raw_df['DATETIME'] <= pd.to_datetime(val[1])))
 
-            if op == "<": mask = (raw_df[col] < val)
-            elif op == "<=": mask = (raw_df[col] <= val)
-            elif op == "==": mask = (raw_df[col] == val)
-            elif op == ">=": mask = (raw_df[col] >= val)
-            elif op == ">": mask = (raw_df[col] > val)
+        # 2. Numeric Masks for Plotting
+        for col, op, val in numeric_filters:
+            if col not in plot_raw_df.columns: continue
+            
+            if op == "<": mask = (plot_raw_df[col] < val)
+            elif op == "<=": mask = (plot_raw_df[col] <= val)
+            elif op == "==": mask = (plot_raw_df[col] == val)
+            elif op == ">=": mask = (plot_raw_df[col] >= val)
+            elif op == ">": mask = (plot_raw_df[col] > val)
             else: continue
 
             if col == metric:
-                metric_specific_mask = metric_specific_mask | mask
+                m_spec_mask |= mask
                 metric_filters_list.append((op, val))
             else:
-                other_numeric_mask = other_numeric_mask | mask
+                m_other_mask |= mask
 
-        # boolean conditions for coloring
-        purple_condition = datetime_mask
-        dark_gray_condition = metric_specific_mask & ~datetime_mask
-        light_gray_condition = other_numeric_mask & ~datetime_mask & ~metric_specific_mask
+        # Conditions for coloring
+        cond_date = m_date_mask
+        cond_spec = m_spec_mask & ~m_date_mask
+        cond_other = m_other_mask & ~m_date_mask & ~m_spec_mask
 
-        # Graph 2
+        # Graph 2 (Raw with Highlights)
         fig_metric, ax_metric = plt.subplots(figsize=(12, 5))
+        sns.lineplot(data=plot_raw_df, x='DATETIME', y=metric, ax=ax_metric, label='Raw Data', color="green", linewidth=0.5)
+        
+        # Get limits
+        if not plot_raw_df.empty:
+            ymin, ymax = plot_raw_df[metric].min(), plot_raw_df[metric].max()
+        else:
+            ymin, ymax = 0, 1
 
-        sns.lineplot(
-            data=raw_df,
-            x='DATETIME',
-            y=metric,
-            ax=ax_metric,
-            label=f"{metric} (Raw Data)",
-            zorder=10,  # Make sure line is on top
-            linewidth=0.5,
-            color="green"
-        )
+        ax_metric.fill_between(plot_raw_df['DATETIME'], ymin, ymax, where=cond_date, color='purple', alpha=0.3, label='Datetime Filter')
+        ax_metric.fill_between(plot_raw_df['DATETIME'], ymin, ymax, where=cond_other, color='gray', alpha=0.3, label='Other Numeric Filter')
+        ax_metric.fill_between(plot_raw_df['DATETIME'], ymin, ymax, where=cond_spec, color='blue', alpha=0.3, label=f'{metric} Filter')
+        
+        ax_metric.set_title(f"{metric} - Raw Data & Filters")
+        ax_metric.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=4)
+        
+        # Graph 3 (Cleaned)
+        fig_cleaned, ax_cleaned = plt.subplots(figsize=(12, 5))
+        sns.lineplot(data=plot_cleaned_df, x='DATETIME', y=metric, ax=ax_cleaned, label='Cleaned Data', color="green", linewidth=0.5)
+        
+        # Add threshold lines
+        x_pos = plot_cleaned_df['DATETIME'].min() if not plot_cleaned_df.empty else None
+        if x_pos:
+            for op, val in metric_filters_list:
+                ax_cleaned.axhline(y=val, color='red', linestyle='--', linewidth=1)
+                ax_cleaned.text(x=x_pos, y=val, s=f" {op} {val}", color='red', verticalalignment='bottom')
 
-        # Graph 3
-        fig_metric_cleaned, ax_metric_cleaned = plt.subplots(figsize=(12, 5))
+        ax_cleaned.set_ylim(ymin, ymax)
+        ax_cleaned.set_title(f"{metric} - Cleaned Result")
 
-        sns.lineplot(
-            data=cleaned_df,
-            x='DATETIME',
-            y=metric,
-            ax=ax_metric_cleaned,
-            label=f"{metric} (Cleaned Data)",
-            zorder=10,  # Make sure line is on top
-            linewidth=0.5,
-            color='green',
-            legend=None
-        )
-
-
-
-        # Get ymin and max from the raw dataset to be used as limits for both graphs
-        xmin_raw, xmax_raw = ax_metric.get_xlim()
-        ymin_raw, ymax_raw = ax_metric.get_ylim()
-
-        # Apply global limits to BOTH plots
-        ax_metric.set_ylim(ymin_raw, ymax_raw)
-        ax_metric_cleaned.set_ylim(ymin_raw, ymax_raw)
-
-        # Plot the highlights for Graph 2
-        ax_metric.fill_between(
-            raw_df['DATETIME'], ymin_raw, ymax_raw,
-            where=purple_condition,
-            color='purple', alpha=0.4, label='Datetime Filter', linewidth=0
-        )
-
-        ax_metric.fill_between(
-            raw_df['DATETIME'], ymin_raw, ymax_raw,
-            where=light_gray_condition,
-            color='gray', alpha=0.6, label='Other Numeric Filter', linewidth=0
-        )
-
-        ax_metric.fill_between(
-            raw_df['DATETIME'], ymin_raw, ymax_raw,
-            where=dark_gray_condition,
-            color='blue', alpha=0.4, label=f'{metric} Filter', linewidth=0
-        )
-        ax_metric.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1))
-        ax_metric.grid(False)
-        ax_metric.set_xlabel('DATETIME')
-        ax_metric.set_ylabel(metric)
-        ax_metric.set_title(f"Time Series for {metric} with Filter Highlights")
-
-        #Finish Graph 3
-        ax_metric_cleaned.set_xlim(xmin_raw, xmax_raw)
-        ax_metric_cleaned.set_ylim(ymin_raw, ymax_raw) # Re-apply limits
-        ax_metric_cleaned.grid(False)
-        ax_metric_cleaned.set_xlabel('DATETIME')
-        ax_metric_cleaned.set_ylabel(metric)
-        ax_metric_cleaned.set_title(f"Time Series for {metric} for cleaned data")
-
-        x_pos = cleaned_df['DATETIME'].min()
-
-        for op, val in metric_filters_list:
-            # Draw the horizontal dotted line
-            ax_metric_cleaned.axhline(
-                y=val,
-                color='gray',
-                linestyle='--',
-                linewidth=1
-            )
-            # Draw the text label directly on the plot
-            ax_metric_cleaned.text(
-                x=x_pos,
-                y=val,
-                s=f" {op} {val}",
-                color='gray',
-                verticalalignment='top',
-                horizontalalignment='left'
-            )
-
-        graph_col1, graph_col2 = st.columns(2)
-        with graph_col1:
-            st.pyplot(fig_metric)
-        with graph_col2:
-            st.pyplot(fig_metric_cleaned)
+        c1, c2 = st.columns(2)
+        with c1: st.pyplot(fig_metric)
+        with c2: st.pyplot(fig_cleaned)
 
         if generate_report:
-            pdf.add_page()
-            pdf.set_font("Arial", "B", 16)
-            pdf.cell(0, 10, f"Plots for Metric: {metric}", 0, 1, "C")
+            # Save Raw Plot
+            buf1 = BytesIO()
+            fig_metric.savefig(buf1, format="png", bbox_inches='tight', dpi=100)
+            buf1.seek(0)
+            plot_images.append((f"{metric} (Raw)", base64.b64encode(buf1.read()).decode('utf-8')))
+            buf1.close()
 
-            margin = 10
-            gutter = 30
+            # Save Cleaned Plot
+            buf2 = BytesIO()
+            fig_cleaned.savefig(buf2, format="png", bbox_inches='tight', dpi=100)
+            buf2.seek(0)
+            plot_images.append((f"{metric} (Cleaned)", base64.b64encode(buf2.read()).decode('utf-8')))
+            buf2.close()
 
-            # Width for both images (full page width minus margins)
-            img_width = pdf.w - (margin * 2)
-
-            # Calculate height based on your 12,5 fig_metric aspect ratio (height = width * 5/12)
-            img_height = img_width * (5 / 12)
-
-            # X position for both plots
-            img_x = margin
-
-            # Y position for Graph 2 (top)
-            img_y1 = 30 # Position below the title
-
-            # Y position for Graph 3 (bottom)
-            img_y2 = img_y1 + img_height + gutter
-
-            # Save Graph 2 (Raw) to buffer and add to top
-            with BytesIO() as img_buffer_raw:
-                fig_metric.savefig(img_buffer_raw, format="png", bbox_inches='tight')
-                img_buffer_raw.seek(0)
-                pdf.image(img_buffer_raw, x=img_x, y=img_y1, w=img_width, type="PNG")
-
-            # Save Graph 3 (Cleaned) to buffer and add to bottom
-            with BytesIO() as img_buffer_cleaned:
-                fig_metric_cleaned.savefig(img_buffer_cleaned, format="png", bbox_inches='tight')
-                img_buffer_cleaned.seek(0)
-                pdf.image(img_buffer_cleaned, x=img_x, y=img_y2, w=img_width, type="PNG")
-
-                plt.close(fig_metric)
-                plt.close(fig_metric_cleaned)
+        plt.close(fig_metric)
+        plt.close(fig_cleaned)
 
     if generate_report:
+        html_content = _generate_html_report(stats_payload, numeric_filters, datetime_filters, plot_images)
         try:
-            pdf.output(pdf_file_path)
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page()
+                page.set_content(html_content)
+                page.pdf(path=str(pdf_file_path), format="A4", margin={'top': '1cm', 'bottom': '1cm', 'left': '1cm', 'right': '1cm'})
+                browser.close()
         except Exception as e:
-            st.error(f"Failed to save full PDF report: {e}")
+            st.error(f"Failed to save PDF: {e}")
 
 def split_holdout(
     raw_df: pd.DataFrame,
@@ -554,6 +625,9 @@ def generate_split_holdout_report(stats: Dict[str, Any], split_mark_used: str, p
     """
     Generates a PDF report with the data split figure and stats tables.
     """
+    # NOTE: Keeping FPDF here for now as requested to only change Data Cleansing, 
+    # unless you want this one migrated to Playwright as well?
+    # For now, focusing on the Data Cleansing module's consistency.
     pdf = FPDF(orientation="landscape")
     pdf.add_page()
     pdf.set_font("Arial", "B", 16)
