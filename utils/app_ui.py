@@ -1,17 +1,31 @@
 import streamlit as st
 
 def render_sidebar():
+    """
+    Renders a custom sidebar navigation menu.
+    
+    Note: Since app.py uses st.navigation(), this creates a secondary menu 
+    inside the sidebar. If you only want one menu, you can remove the calls 
+    to render_sidebar() in your pages.
+    """
     with st.sidebar:
-        st.title("Navigation")
-        st.page_link("main.py", label="Home", icon="🏠", width="stretch")
-        st.subheader("Model Development", divider="blue")
-        st.page_link("pages/data_cleaning.py", label="Data Cleaning", icon="1️⃣")
-        st.page_link("pages/split_holdout_dataset.py", label="Split Holdout Dataset", icon="2️⃣")
-        st.page_link("pages/outlier_removal.py", label="Outlier Removal", icon="3️⃣")
-        st.page_link("pages/train_validation_split.py", label="Train Validation Split", icon="4️⃣")
-        st.subheader("Model Validation", divider="red")
-        st.page_link("pages/calculate_accuracy.py", label="Calculate Accuracy", icon="🅰️")
-        st.page_link("pages/model_qa.py", label="QA", icon="🅱️")
+        st.divider()  # Add a separator from the main app navigation
+        st.subheader("Quick Access")
+        
+        # Fixed: Link to the actual file path defined in app.py
+        st.page_link("pages/Home.py", label="Home", icon="🏠")
+        
+        st.caption("Model Development")
+        # Fixed: Updated paths and icons to match app.py definitions
+        st.page_link("pages/2_Data_Cleansing.py", label="Data Cleansing", icon="🧹")
+        st.page_link("pages/3_Holdout_Splitting.py", label="Holdout Splitting", icon="🔪")
+        st.page_link("pages/7_Outlier_Removal.py", label="Outlier Removal", icon="🗑️")
+        st.page_link("pages/4_Training_Validation_Splitting.py", label="Training-Validation Splitting", icon="🔬")
+        
+        st.caption("Model Validation")
+        # Fixed: Updated paths and icons to match app.py definitions
+        st.page_link("pages/5_Model_Accuracy.py", label="Model Accuracy", icon="🎯")
+        st.page_link("pages/6_Model_FPR.py", label="Model FPR", icon="🔎")
 
 def get_model_info(auto_site_name="", auto_model_name="", auto_inclusive_dates=""):
     """

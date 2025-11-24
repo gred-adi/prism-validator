@@ -1,9 +1,3 @@
-def extract_numeric(value):
-        try:
-            return float(str(value).split(', ')[1])
-        except (IndexError, ValueError):
-            return float('nan')
-
 import os
 import ast
 import shutil
@@ -12,15 +6,6 @@ import pandas as pd
 from pathlib import Path
 from typing import Dict, Any, List
 import logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s -%(message)s",
-    handlers=[
-        logging.FileHandler("report_generator.log", encoding='utf-8'),
-        logging.StreamHandler()
-    ]
-)
-
 import click
 
 from utils.qa_reporting import (
@@ -34,7 +19,23 @@ from utils.qa_plotting import (
 )
 from utils.qa_reporting import generate_summary_fprp
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s -%(message)s",
+    handlers=[
+        logging.FileHandler("report_generator.log", encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+
 warnings.filterwarnings("ignore")
+
+def extract_numeric(value):
+    try:
+        return float(str(value).split(', ')[1])
+    except (IndexError, ValueError):
+        return float('nan')
 
 def build_partial_config_table(base_folder: str, site: str, asset: str,
                                sub_ts_length: int, n_ts_above_thresh: int,
