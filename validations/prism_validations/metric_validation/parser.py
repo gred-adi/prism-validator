@@ -3,9 +3,19 @@ import streamlit as st
 
 @st.cache_data
 def parse_excel(uploaded_file):
-    """
-    Processes the uploaded Excel file for the 'Metric Validation' section.
-    Returns a single DataFrame with all necessary columns for Metric and Calculation validation.
+    """Parses the 'Consolidated Point Survey' sheet for metric validation.
+
+    This function reads the specified sheet, selects the columns relevant for
+    both standard metric validation and calculation validation, and returns a
+    single cleaned DataFrame.
+
+    Args:
+        uploaded_file (streamlit.runtime.uploaded_file_manager.UploadedFile):
+            The uploaded 'Consolidated Point Survey' Excel file object.
+
+    Returns:
+        pd.DataFrame: A DataFrame containing the necessary data for validation,
+        or an empty DataFrame if an error occurs or the sheet is not found.
     """
     try:
         xls = pd.ExcelFile(uploaded_file)

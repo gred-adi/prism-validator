@@ -45,8 +45,34 @@ TDT_VALIDATION_COLUMNS = {
 }
 
 def generate_pdf_report(browser, report_data, tdt_model_name, selected_submodules, report_type, page_size="A3", orientation="landscape"):
-    """
-    Generates a PDF report using an existing Playwright browser instance.
+    """Generates a PDF report from HTML content using Playwright.
+
+    This function takes report data as HTML, injects it into a Jinja2
+    template, and uses a running Playwright browser instance to render the
+    HTML and convert it into a PDF byte stream. It includes a title page,
+    a table of contents, and content pages for each submodule.
+
+    Args:
+        browser (playwright.sync_api.Browser):
+            An active Playwright browser instance.
+        report_data (dict):
+            A dictionary where keys are submodule names and values are the
+            HTML content blocks to be included in the report.
+        tdt_model_name (str):
+            The name of the TDT or Model for which the report is generated.
+        selected_submodules (list):
+            A list of submodule names to be included in the report and the
+            table of contents.
+        report_type (str):
+            The type of the report (e.g., "TDT", "PRISM").
+        page_size (str, optional):
+            The page size for the PDF. Defaults to "A3".
+        orientation (str, optional):
+            The page orientation ('landscape' or 'portrait'). Defaults to "landscape".
+
+    Returns:
+        bytes: The generated PDF report as a byte stream, or None if an
+               error occurred.
     """
     try:
         # Initialize Jinja2 environment without a specific loader to avoid path issues
@@ -190,8 +216,33 @@ def generate_pdf_report(browser, report_data, tdt_model_name, selected_submodule
         return None
 
 def display_report_generation_tab(st, session_state, report_type, validation_filter_cols, submodule_options, highlight_function, axis=None):
-    """
-    Renders the report generation tab UI.
+    """Renders the report generation tab UI in the Streamlit app.
+
+    This function creates the user interface for selecting TDTs, report
+    sections, and PDF settings. It handles the logic for filtering data based
+    on user selections, orchestrating the PDF generation process, and
+    providing a download link for the final report(s) as a single PDF or a
+    ZIP archive.
+
+    Args:
+        st (streamlit): The Streamlit module instance.
+        session_state (streamlit.runtime.state.SessionState):
+            The Streamlit session state object, used to access loaded data and
+            validation results.
+        report_type (str):
+            The type of report being generated (e.g., "TDT", "PRISM").
+        validation_filter_cols (dict):
+            A dictionary mapping submodule keys to the column name used for
+            filtering (e.g., 'TDT' or 'Model').
+        submodule_options (dict):
+            A dictionary of available report sections, where keys are the
+            display names and values are the corresponding keys in the session
+            state.
+        highlight_function (function):
+            The function used to apply conditional styling to the DataFrames
+            before rendering them as HTML.
+        axis (int or None, optional):
+            The axis along which the highlight function is applied. Defaults to None.
     """
     st.header("Report Generation")
     st.markdown(f"""

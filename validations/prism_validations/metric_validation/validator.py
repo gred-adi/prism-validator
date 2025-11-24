@@ -2,12 +2,27 @@ import pandas as pd
 import numpy as np
 
 def validate_data(survey_df, tdt_df, prism_df, prism_calc_df=None):
-    """
-    Performs comparison between TDT and PRISM dataframes.
-    
-    Generates:
-    1. Standard Metric Validation Tables (Summary, Matches, Mismatches, All Entries)
-    2. Calculation Validation Tables (TDT Calculations, PRISM Calculations)
+    """Performs metric and calculation validation between TDT and PRISM data.
+
+    This function is divided into two parts:
+    1.  **Standard Metric Validation**: Compares the `Point Type` for each metric
+        between the TDT and PRISM data on a per-TDT basis.
+    2.  **Calculation Validation**: Extracts and displays details for `PRiSM Calc`
+        points from both the TDT and PRISM data sources.
+
+    Args:
+        survey_df (pd.DataFrame): The full consolidated survey DataFrame, used
+                                  for the calculation validation part.
+        tdt_df (pd.DataFrame): The parsed TDT DataFrame specific to metric validation.
+        prism_df (pd.DataFrame): The DataFrame with metric data queried from PRISM.
+        prism_calc_df (pd.DataFrame, optional): A DataFrame with detailed
+            calculation data from PRISM. Defaults to None.
+
+    Returns:
+        dict: A dictionary containing the validation results, including keys
+        for "summary", "matches", "mismatches", "all_entries",
+        "calculations_tdt", and "calculations_prism". Returns an empty dict
+        if the input `tdt_df` is empty.
     """
     all_mismatches = []
     all_matches = []

@@ -1,3 +1,15 @@
+"""
+This script defines the 'Canary Historian Downloader' page of the Streamlit application.
+
+This page allows users to extract time-series data from the Canary Historian
+based on the tags defined in the TDT files. It provides a user interface to:
+- Select a TDT and Model to filter the relevant metrics.
+- Configure the data query, including the time range, aggregation, and API token.
+- Fetch the data from the Canary API, handling pagination and chunking for
+  large data requests.
+- Preview the downloaded data, including statistics and plots.
+- Download the final dataset as a CSV file with metadata headers.
+"""
 import streamlit as st
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -32,8 +44,16 @@ It is designed to help you quickly gather training or analysis data for specific
 
 # --- TDT Consolidation Functions ---
 def _process_survey_sheets(file_path, survey_data_list):
-    """
-    Processes the 'Point Survey' and related sheets from a single TDT Excel file.
+    """Processes the 'Point Survey' and related sheets from a TDT Excel file.
+
+    This is a local helper function for this page, designed to process a single
+    TDT Excel file from a file path. It extracts data from 'Point Survey',
+    'Version', 'Attribute', and 'Calculation' sheets, combines them, and
+    appends the resulting DataFrame to a list.
+
+    Args:
+        file_path (str): The local path to the TDT Excel file.
+        survey_data_list (list): A list to which the processed DataFrame is appended.
     """
     try:
         xls = pd.ExcelFile(file_path)
@@ -81,8 +101,22 @@ def _process_survey_sheets(file_path, survey_data_list):
 
 @st.cache_data
 def generate_survey_df_from_folder(folder_path):
-    """
-    Scans a folder for TDT Excel files and consolidates them into a single DataFrame.
+    """Scans a folder for TDT Excel files and consolidates survey data.
+
+    This function iterates through all `.xlsx` files in a given folder,
+    processes the 'Point Survey' sheets from each, and concatenates them into
+    a single, comprehensive DataFrame. The result is cached to avoid reprocessing.
+
+    Args:
+        folder_path (str): The path to the folder containing TDT Excel files.
+
+    Returns:
+        pd.DataFrame or None: The consolidated survey DataFrame, or None if the
+                              folder path is invalid.
+
+    Raises:
+        FileNotFoundError: If no Excel files are found in the specified folder.
+        ValueError: If no valid survey data can be extracted from the files.
     """
     if not folder_path or not os.path.isdir(folder_path):
         st.error("Invalid folder path provided.")
@@ -108,8 +142,13 @@ def generate_survey_df_from_folder(folder_path):
     return survey_df
 
 def convert_df_to_excel_bytes(survey_df):
-    """
-    Converts the survey DataFrame into an in-memory Excel file.
+    """Converts a DataFrame to an in-memory Excel file byte stream.
+
+    Args:
+        survey_df (pd.DataFrame): The DataFrame to be converted.
+
+    Returns:
+        io.BytesIO: An in-memory byte stream representing the Excel file.
     """
     output_survey = io.BytesIO()
     with pd.ExcelWriter(output_survey, engine='xlsxwriter') as writer:
@@ -175,9 +214,21 @@ AGGREGATE_NAMES = list(AGGREGATE_DEFINITIONS.keys())
 MAX_POINTS_PER_CHUNK = 10_000
 
 def calculate_time_chunks(start_dt, end_dt, interval_str, num_tags):
-    """
-    Splits the date range into time chunks based on a max point limit.
-    Returns a list of (start, end) datetime tuples for each chunk.
+    """Splits a time range into smaller chunks to avoid API limits.
+
+    This function calculates the total number of data points expected from a
+    Canary API query and, if it exceeds a predefined maximum, splits the
+    requested time range into smaller, sequential chunks.
+
+    Args:
+        start_dt (datetime): The start of the total time range.
+        end_dt (datetime): The end of the total time range.
+        interval_str (str): The aggregation interval in "HH:MM:SS" format.
+        num_tags (int): The number of tags being queried.
+
+    Returns:
+        list[tuple[datetime, datetime]]: A list of tuples, where each tuple
+        contains the start and end datetime for a chunk.
     """
     total_duration_sec = (end_dt - start_dt).total_seconds()
 

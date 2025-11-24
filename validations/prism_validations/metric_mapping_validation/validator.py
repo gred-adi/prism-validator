@@ -3,9 +3,22 @@ import streamlit as st
 
 @st.cache_data
 def validate_data(model_dfs, prism_df):
-    """
-    Performs the comparison logic for the 'Metric Mapping' section and
-    returns a dictionary of results.
+    """Validates metric mapping details between TDT and PRISM data.
+
+    This function compares key metric attributes (`POINT_NAME`,
+    `POINT_DESCRIPTION`, `FUNCTION`, `POINT_TYPE`, `POINT_UNIT`) for each
+    metric on a per-model basis. It includes special logic to handle
+    `PRiSM Calc` points, where mismatches in certain fields are ignored.
+
+    Args:
+        model_dfs (dict[str, pd.DataFrame]): A dictionary of DataFrames parsed
+            from the TDT, where keys are model names.
+        prism_df (pd.DataFrame): A DataFrame containing the metric mapping data
+            queried from the PRISM database.
+
+    Returns:
+        dict: A dictionary containing the validation results, with keys for
+        "summary", "matches", "mismatches", and "all_entries".
     """
     prism_df = prism_df.copy()
     all_matches = []

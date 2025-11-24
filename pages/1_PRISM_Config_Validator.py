@@ -1,3 +1,27 @@
+"""
+This script defines the 'PRISM Config Validator' page of the Streamlit application.
+
+This page provides the main functionality for validating PRISM configurations
+against Technical Design Templates (TDTs). It is organized into several tabs,
+each dedicated to a specific type of validation, such as Metric Validation,
+Metric Mapping, Filter Validation, and more.
+
+The script handles the following key responsibilities:
+- **UI Layout**: Defines the structure of the page, including the sidebar for
+  database connection and file uploads, and the main area with validation tabs.
+- **State Management**: Initializes and manages the Streamlit session state to
+  store database connections, uploaded files, and validation results.
+- **Validation Orchestration**: For each validation type, it calls the
+  appropriate modules for parsing input files, querying the database, and
+  running the comparison logic.
+- **Results Display**: Implements a generic `display_results` function to
+  render the outcomes of the validations in a consistent format, including
+  summaries, detailed tables for matches and mismatches, and filtering
+  capabilities.
+- **Report Generation**: Integrates the `report_generator` module to provide a
+  'Report Generation' tab, allowing users to create PDF reports from the
+  validation results.
+"""
 import pandas as pd
 import streamlit as st
 from db_utils import PrismDB
@@ -67,10 +91,26 @@ for key in prism_validation_keys:
 # --- Reusable Helper Functions ---
 
 def display_results(results, key_prefix, filter_column_name):
-    """
-    Generic function to display validation results in a consistent format.
-    Includes a summary table, a filter, and detailed tables for matches,
-    mismatches, and (conditionally) all entries.
+    """Displays validation results in a standardized format.
+
+    This function renders the results of a validation check, including a
+    summary table, filterable detail tables for matches, mismatches, and all
+    entries. It provides a consistent user experience across different
+    validation types.
+
+    Args:
+        results (dict): A dictionary containing the validation results. Expected
+                        keys include 'summary', 'matches', 'mismatches', and
+                        'all_entries', where the values are pandas DataFrames.
+        key_prefix (str): A unique string prefix to be used for the keys of
+                          Streamlit widgets to avoid key collisions.
+        filter_column_name (str): The name of the column to be used for
+                                  filtering the detailed results (e.g., 'TDT'
+                                  or 'MODEL').
+
+    Returns:
+        str or None: The selected value from the filter dropdown, or None if
+                     the results cannot be displayed.
     """
     if not results or results.get('summary', pd.DataFrame()).empty:
         st.info("Run the validation to see the results.")

@@ -1,3 +1,23 @@
+"""
+This script defines the 'TDT Validator' page of the Streamlit application.
+
+This page is dedicated to performing offline integrity checks on the TDT
+(Technical Design Template) Excel files. It helps ensure the quality and
+correctness of the TDTs themselves before they are used for validation against
+the live PRISM database.
+
+The page includes several tabs for different validation aspects:
+- **Point Survey Validation**: Checks for duplicate and blank fields.
+- **Calculation Validation**: Ensures that `PRiSM Calc` points have the necessary details.
+- **Attribute Validation**: Validates the logic for functions, constraints, and diagnostics.
+- **Diagnostics Validation**: Audits the structure of failure modes.
+
+Key functionalities include:
+- A generic `display_validation_results` function to render issue-based
+  tables with cell-specific highlighting.
+- A simpler `display_simple_results` for straightforward data audits.
+- Integration with the `report_generator` to create PDF summaries of the TDT validation results.
+"""
 import pandas as pd
 import streamlit as st
 import os
@@ -35,16 +55,32 @@ if "tdt_diagnostics" not in st.session_state.validation_states:
 
 # --- NEW: Reusable Helper Function for Sub-Tables ---
 def display_validation_results(
-    summary_df, 
-    details_df, 
-    columns_to_show, 
+    summary_df,
+    details_df,
+    columns_to_show,
     issue_to_col_map,
     summary_info_msg="No issues found.",
     details_info_msg="No issues found matching the filter."
 ):
-    """
-    Displays pre-filtered TDT validation results with summary, and 
-    SEPARATE sub-tables for each issue type, highlighting specific cells.
+    """Displays complex validation results with issue-specific highlighting.
+
+    This function is designed for TDT validations where results are categorized
+    by different issue types. It renders a summary table and then creates
+    separate sub-tables for each unique issue found in the details DataFrame.
+    It uses a mapping to highlight the specific cells relevant to each issue.
+
+    Args:
+        summary_df (pd.DataFrame): A DataFrame for the summary view.
+        details_df (pd.DataFrame): A DataFrame containing the detailed results,
+                                   including an 'Issue' column.
+        columns_to_show (list[str]): A list of column names to display in the
+                                     details tables.
+        issue_to_col_map (dict): A dictionary that maps issue strings to the
+                                 column name(s) that should be highlighted.
+        summary_info_msg (str, optional): A message to display if the summary
+                                          is empty.
+        details_info_msg (str, optional): A message to display if the details
+                                          are empty.
     """
     st.subheader("Validation Summary")
     if summary_df.empty:
@@ -102,9 +138,19 @@ def display_validation_results(
 
 # --- FIX: Add display_simple_results back in for the Filter Audit report ---
 def display_simple_results(summary_df, details_df, columns_to_show, show_summary=True, summary_info_msg="No items found to summarize.", details_info_msg="No items were found in the TDTs."):
-    """
-    Displays pre-filtered TDT validation results with a summary
-    and a single details table. This is for simple lists, not issue-based tables.
+    """Displays simple validation results in a summary and a single detail table.
+
+    This function is used for displaying validation results that do not require
+    issue-based categorization or complex styling, such as the Filter Audit report.
+
+    Args:
+        summary_df (pd.DataFrame): The DataFrame for the summary view.
+        details_df (pd.DataFrame): The DataFrame for the detailed view.
+        columns_to_show (list[str]): The columns to display in the details table.
+        show_summary (bool, optional): Whether to display the summary section.
+                                       Defaults to True.
+        summary_info_msg (str, optional): Message if the summary is empty.
+        details_info_msg (str, optional): Message if the details are empty.
     """
     if show_summary:
         st.subheader("Validation Summary")

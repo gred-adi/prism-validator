@@ -4,14 +4,26 @@ import numpy as np
 
 @st.cache_data
 def validate_attribute(survey_df: pd.DataFrame, diag_df: pd.DataFrame) -> dict:
-    """
-    Validates 'Attribute' and 'Function' related columns from the survey DataFrame.
-    It deduplicates all points by TDT/Metric first.
+    """Validates attribute and function logic within the TDT survey data.
 
-    Returns a dictionary with two reports:
-    1.  'function_validation': Checks logic for 'Operational State', 'Not Modeled',
-        'Fault Detection', and 'Filter Info Incomplete'. Returns all rows.
-    2.  'filter_audit': A simple report listing all metrics with active (complete) filters.
+    This function performs several checks on the consolidated TDT data:
+    -   Ensures 'Operational State' functions are constrained.
+    -   Verifies that 'Not Modeled' functions do not appear in diagnostics.
+    -   Confirms that modeled functions ('Operational State', 'Fault Detection')
+        are present in diagnostics.
+    -   Flags metrics with incomplete filter information.
+
+    It returns a dictionary containing two reports: one for the function
+    validation results and a second that audits all complete filters.
+
+    Args:
+        survey_df (pd.DataFrame): The consolidated DataFrame from the 'Point Survey' sheets.
+        diag_df (pd.DataFrame): The consolidated DataFrame from the 'Diagnostic' sheets.
+
+    Returns:
+        dict: A nested dictionary containing two reports:
+              'function_validation' and 'filter_audit'. Each report has 'summary'
+              and 'details' DataFrames. Returns an empty dict if `survey_df` is empty.
     """
     if survey_df is None or survey_df.empty:
         return {}

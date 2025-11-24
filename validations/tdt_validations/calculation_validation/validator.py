@@ -4,17 +4,20 @@ import numpy as np
 
 @st.cache_data
 def validate_calculation(survey_df: pd.DataFrame) -> dict:
-    """
-    Validates 'Calculation' related columns for metrics where 'Point Type' is 'PRiSM Calc'.
-    This check is grouped by TDT, as calc points are identical across models in a TDT.
-    
-    Checks:
-    - Finds all 'PRiSM Calc' points (deduplicated by TDT/Metric).
-    - Tags them as "✅" or "Missing all calculation details".
-      
+    """Validates 'Calculation' fields for 'PRiSM Calc' metrics in the TDT.
+
+    This function filters the survey data to find all metrics marked as
+    'PRiSM Calc'. It then checks if these metrics have any of the required
+    calculation-specific details filled in. Metrics that have none of these
+    details are flagged as an issue.
+
+    Args:
+        survey_df (pd.DataFrame): The consolidated DataFrame from the 'Point Survey' sheets.
+
     Returns:
-        A dictionary containing a summary DataFrame (of statuses) and a
-        details DataFrame (of all unique PRiSM Calc points).
+        dict: A dictionary containing 'summary' and 'details' DataFrames.
+              The 'summary' provides a count of issues by TDT, and 'details'
+              lists every unique 'PRiSM Calc' point with its validation status.
     """
     if survey_df is None or survey_df.empty:
         return {"summary": pd.DataFrame(), "details": pd.DataFrame()}

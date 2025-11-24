@@ -1,3 +1,12 @@
+"""
+This script defines the Home page of the Streamlit application.
+
+The Home page serves as the entry point for users, providing the essential
+functionality to upload and process Technical Design Template (TDT) Excel files.
+It uses the `file_generator` module to consolidate the uploaded files into
+standardized DataFrames, which are then stored in the Streamlit session state
+for use by other validation pages.
+"""
 import streamlit as st
 import os
 from file_generator import generate_files_from_uploads, convert_dfs_to_excel_bytes
