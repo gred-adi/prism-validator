@@ -1,7 +1,17 @@
 def get_query(model_names=None):
-    """
-    Returns the SQL query for Filter Validation.
-    Optionally filters by a list of Model names (Project names) to optimize performance.
+    """Constructs the SQL query for Filter Validation.
+
+    This complex query uses Common Table Expressions (CTEs) to rebuild the
+    logic of a proprietary view, combining existing and missing metrics to get
+    a full picture of the filter configurations in PRISM. It can be
+    optionally filtered by a list of model (project) names to improve performance.
+
+    Args:
+        model_names (list[str], optional): A list of model names to include in
+                                           the WHERE clause. Defaults to None.
+
+    Returns:
+        str: A multi-line string containing the SQL query for filter validation.
     """
     
     # Create dynamic filter condition

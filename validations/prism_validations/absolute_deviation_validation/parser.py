@@ -4,10 +4,24 @@ import re
 
 @st.cache_data
 def parse_excel(uploaded_file):
-    """
-    Processes the uploaded 'Consolidated Statistics' Excel file.
-    Parses the 'Statistics' sheet, extracts the metric from the point name,
-    and groups the data by 'Model'.
+    """Parses the 'Consolidated Statistics' Excel file for threshold data.
+
+    This function reads the 'Statistics' sheet from the uploaded Excel file,
+    extracts the base metric name from the 'Point Name' column, and cleans up
+    the data. It then groups the resulting DataFrame by 'Model' and returns a
+    dictionary of DataFrames, where each key is a model name.
+
+    Args:
+        uploaded_file (streamlit.runtime.uploaded_file_manager.UploadedFile):
+            The uploaded 'Consolidated Statistics' Excel file object.
+
+    Returns:
+        dict[str, pd.DataFrame]: A dictionary where keys are model names (in
+        uppercase) and values are DataFrames containing the threshold data for
+        that model.
+
+    Raises:
+        ValueError: If the required 'Statistics' sheet is not found in the file.
     """
     xls = pd.ExcelFile(uploaded_file)
     sheet_name = "Statistics"

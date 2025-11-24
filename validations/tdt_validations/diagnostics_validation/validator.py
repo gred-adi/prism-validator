@@ -4,18 +4,22 @@ import numpy as np
 
 @st.cache_data
 def validate_diagnostics(diag_df: pd.DataFrame) -> dict:
-    """
-    Validates the 'Consolidated Failure Diagnostic' DataFrame.
-    
-    Checks:
-    1.  Reports the 'Enabled' status of the failure mode.
-    2.  Counts metrics per TDT/Failure Mode.
-    3.  Sums 'Weighting' per TDT/Failure Mode and checks if it equals 100.
-    
+    """Validates the integrity of the 'Consolidated Failure Diagnostic' data.
+
+    This function groups the diagnostic data by TDT and Failure Mode to perform
+    several checks:
+    -   It reports the enabled status of each failure mode.
+    -   It counts the number of metrics associated with each failure mode.
+    -   It sums the 'Weighting' for each failure mode and flags any that do not
+        sum to 100 (while allowing for a sum of 0).
+
+    Args:
+        diag_df (pd.DataFrame): The consolidated DataFrame from the 'Diagnostic' sheets.
+
     Returns:
-        A dictionary containing:
-        - 'summary': A DataFrame with counts, enabled status, and weight sums.
-        - 'details': The raw diag_df for filtering.
+        dict: A dictionary containing 'summary' and 'details' DataFrames.
+              'summary' provides the aggregated checks, and 'details' contains
+              the original data for drill-down filtering.
     """
     if diag_df is None or diag_df.empty:
         return {"summary": pd.DataFrame(), "details": pd.DataFrame()}

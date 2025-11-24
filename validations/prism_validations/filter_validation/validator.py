@@ -2,16 +2,39 @@ import pandas as pd
 import streamlit as st
 
 def clean_filter_string(series):
-    """ Standardize filter strings for comparison """
+    """Standardizes filter strings for robust comparison.
+
+    This helper function converts a series of filter strings to a consistent
+    format by making them lowercase, replacing '=' with 'equal to', and
+    trimming whitespace.
+
+    Args:
+        series (pd.Series): A pandas Series containing filter strings.
+
+    Returns:
+        pd.Series: The cleaned and standardized Series.
+    """
     if series is None:
         return ""
     return series.astype(str).str.lower().str.replace('=', 'equal to', regex=False).str.strip()
 
 @st.cache_data
 def validate_data(model_dfs, prism_df):
-    """
-    Performs the comparison logic for the 'Filter Validation' section and
-    returns a dictionary of results.
+    """Validates filter configurations between TDT and PRISM data.
+
+    This function compares the filter strings for each metric on a per-model
+    basis. It uses a standardized cleaning function to ensure comparisons are
+    not affected by minor formatting differences.
+
+    Args:
+        model_dfs (dict[str, pd.DataFrame]): A dictionary of DataFrames parsed
+            from the TDT, where keys are model names.
+        prism_df (pd.DataFrame): A DataFrame containing the filter data queried
+            from the PRISM database.
+
+    Returns:
+        dict: A dictionary containing the validation results, with keys for
+        "summary", "matches", "mismatches", and "all_entries".
     """
     prism_df = prism_df.copy()
     all_matches = []

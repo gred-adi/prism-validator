@@ -3,10 +3,31 @@ import streamlit as st
 
 @st.cache_data
 def validate_data(tdt_dfs, prism_df):
-    """
-    Performs the comparison logic for the 'Failure Diagnostics' section.
-    Compares Direction and Weight, separates mismatches by column, and returns a dict.
-    Also extracts 'Prescriptive' info (Description/Next Steps) for display.
+    """Validates failure diagnostics between TDT and PRISM data.
+
+    This function compares diagnostic `DIRECTION` and `WEIGHT` for each metric
+    within a failure mode. It identifies matches, various types of mismatches,
+    and missing records. It also extracts the 'Prescriptive' information (failure
+    description and next steps) from the PRISM data for display.
+
+    Args:
+        tdt_dfs (dict[str, pd.DataFrame]): A dictionary of DataFrames parsed
+            from the TDT, where keys are TDT names.
+        prism_df (pd.DataFrame): A DataFrame containing the failure diagnostics
+            data queried from the PRISM database.
+
+    Returns:
+        dict: A dictionary containing the validation results, with the
+        following keys:
+        - "summary" (pd.DataFrame): A summary of matches, mismatches, and
+          prescriptive checks per TDT.
+        - "matches" (pd.DataFrame): A DataFrame of records that match perfectly.
+        - "mismatches" (dict[str, pd.DataFrame]): A dictionary of DataFrames for
+          different mismatch types.
+        - "all_entries" (pd.DataFrame): A DataFrame showing the full outer join
+          between TDT and PRISM data.
+        - "prescriptive" (pd.DataFrame): A DataFrame with the unique failure
+          descriptions and next steps from PRISM.
     """
     prism_df = prism_df.copy()
     all_matches = []

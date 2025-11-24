@@ -3,9 +3,30 @@ import streamlit as st
 
 @st.cache_data
 def validate_data(model_dfs, prism_df):
-    """
-    Performs the comparison logic for the 'Absolute Deviation' section.
-    Compares alert and warning thresholds and returns a dictionary of results.
+    """Validates absolute deviation thresholds between TDT and PRISM data.
+
+    This function iterates through each model provided in `model_dfs`, compares
+    its threshold data against the corresponding data in `prism_df`, and
+    categorizes the results. It identifies exact matches, mismatches for each
+    specific threshold type, and records that are missing in either the TDT or
+    PRISM data.
+
+    Args:
+        model_dfs (dict[str, pd.DataFrame]): A dictionary of DataFrames parsed
+            from the TDT, where keys are model names.
+        prism_df (pd.DataFrame): A DataFrame containing the absolute deviation
+            threshold data queried from the PRISM database.
+
+    Returns:
+        dict: A dictionary containing the validation results, with the
+        following keys:
+        - "summary" (pd.DataFrame): A summary of matches and mismatches per model.
+        - "matches" (pd.DataFrame): A DataFrame of records that match perfectly.
+        - "mismatches" (dict[str, pd.DataFrame]): A dictionary where keys are
+          mismatch types (e.g., 'HIGH ALERT', 'Missing_in_PRISM') and values
+          are DataFrames of the corresponding mismatched records.
+        - "all_entries" (pd.DataFrame): A DataFrame showing the full outer join
+          between the TDT and PRISM data for all models.
     """
     prism_df = prism_df.copy()
     all_matches = []

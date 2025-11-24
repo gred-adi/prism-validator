@@ -1,7 +1,15 @@
 def get_query(tdt_names=None):
-    """
-    Returns the SQL query for validatng point types (Analog/Digital).
-    Optionally filters by a list of TDT names (Template names) to optimize performance.
+    """Constructs the SQL query for validating point types.
+
+    This query retrieves the basic metric information, including the point type
+    (Analog, Digital, or PRiSM Calc), for metrics within specified TDTs.
+
+    Args:
+        tdt_names (list[str], optional): A list of TDT names (templates) to
+                                         filter the query. Defaults to None.
+
+    Returns:
+        str: The SQL query string.
     """
     # Base filtering condition
     where_clause = "P.ProjectTypeID = 2 AND P.Name LIKE 'AP-%' AND PP.PointTypeID = 1"
@@ -32,9 +40,18 @@ def get_query(tdt_names=None):
     """
 
 def get_calc_query(tdt_names=None):
-    """
-    Returns the SQL query for fetching PRISM Calculations details.
-    Optionally filters by a list of TDT names to optimize performance.
+    """Constructs the SQL query for fetching PRISM Calculation details.
+
+    This query extracts the calculation logic and variable names for
+    `PRiSM Calc` points. It uses CTEs to parse the `CalcScript` field and
+    can be filtered by TDT names.
+
+    Args:
+        tdt_names (list[str], optional): A list of TDT names to filter the query.
+                                         Defaults to None.
+
+    Returns:
+        str: The SQL query string.
     """
     # Base filtering condition
     where_clause = "FORM.PROJECTTYPEID = 2 AND FORM_POINTS_DETAIL.PointTypeID = 1 AND FORM.Name LIKE 'AP-%'"

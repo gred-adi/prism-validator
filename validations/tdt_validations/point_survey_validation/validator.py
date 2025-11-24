@@ -4,16 +4,22 @@ import numpy as np
 
 @st.cache_data
 def validate_point_survey(survey_df: pd.DataFrame) -> dict:
-    """
-    Validates the 'Consolidated Point Survey' DataFrame for internal consistency.
-    
-    Checks (for non-PRiSM Calc points):
-    1.  Duplicates: 'Metric', 'KKS Point Name', etc.
-    2.  Blanks: 'Point Type', 'KKS Point Name', 'Unit', etc.
-    
+    """Validates the internal consistency of the 'Point Survey' data.
+
+    This function checks for two main types of issues in all non-'PRiSM Calc'
+    points:
+    1.  **Duplicates**: Identifies duplicate values within the same TDT/Model
+        for key columns like 'Metric', 'KKS Point Name', etc.
+    2.  **Blanks**: Flags any records where essential columns are empty or null.
+
+    Args:
+        survey_df (pd.DataFrame): The consolidated DataFrame from the 'Point Survey' sheets.
+
     Returns:
-        A dictionary containing a summary DataFrame (with '✅' for OK) and a 
-        details DataFrame (with *all* non-PRiSM Calc points).
+        dict: A dictionary containing 'summary' and 'details' DataFrames.
+              'summary' provides a count of issues by TDT and Model, and
+              'details' contains all non-'PRiSM Calc' points with an 'Issue'
+              column detailing any findings.
     """
     if survey_df is None or survey_df.empty:
         return {

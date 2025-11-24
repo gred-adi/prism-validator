@@ -1,7 +1,17 @@
 def get_query(model_names=None):
-    """
-    Returns the SQL query for Metric Mapping Validation.
-    Optionally filters by a list of Model names (Project names) to optimize performance.
+    """Constructs the SQL query for Metric Mapping Validation.
+
+    This query rebuilds the logic of a proprietary view to gather detailed
+    metric mapping information for PRISM projects. It includes point names,
+    descriptions, units, functions, and point types. The query can be
+    filtered by model names for efficiency.
+
+    Args:
+        model_names (list[str], optional): A list of model (project) names to
+                                           filter the query results. Defaults to None.
+
+    Returns:
+        str: A multi-line string containing the SQL query.
     """
     
     # Create dynamic filter condition
