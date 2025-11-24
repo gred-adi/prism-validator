@@ -8,7 +8,8 @@ import seaborn as sns
 from pathlib import Path
 from datetime import datetime, time as dt_time
 
-from utils.app_ui import render_sidebar, get_model_info
+from utils.app_ui import render_sidebar
+# removed get_model_info import as we implement custom inputs in Step 3
 from utils.model_dev_utils import (
     data_cleaning_read_prism_csv, 
     cleaned_dataset_name_split, 
@@ -34,7 +35,7 @@ if 'project_points_df' not in st.session_state: st.session_state.project_points_
 if 'raw_df' not in st.session_state: st.session_state.raw_df = None
 if 'raw_df_header' not in st.session_state: st.session_state.raw_df_header = None
 if 'cleaned_df' not in st.session_state: st.session_state.cleaned_df = None
-if 'use_cache_decision' not in st.session_state: st.session_state.use_cache_decision = None
+# Removed use_cache_decision state as it is no longer needed
 
 # Model Metadata States
 if 'site_name' not in st.session_state: st.session_state.site_name = ""
@@ -80,9 +81,6 @@ def calculate_impact_breakdown(df, num_filters, dt_filters):
     """
     Calculates how many rows would remain after filtering, and breaks down 
     how many are removed by numeric vs date filters specifically.
-    
-    Returns:
-        tuple: (remaining_count, numeric_removed_count, date_removed_count)
     """
     if df is None or df.empty:
         return 0, 0, 0
@@ -93,15 +91,12 @@ def calculate_impact_breakdown(df, num_filters, dt_filters):
     numeric_mask = pd.Series(True, index=df.index)
     for col, op, val in num_filters:
         if col in df.columns:
-            # Logic: We keep rows where NOT (condition_to_remove)
             if op == "<": numeric_mask &= ~(df[col] < val)
             elif op == "<=": numeric_mask &= ~(df[col] <= val)
             elif op == "==": numeric_mask &= ~(df[col] == val)
             elif op == ">=": numeric_mask &= ~(df[col] >= val)
             elif op == ">": numeric_mask &= ~(df[col] > val)
 
-    # Count rows removed PURELY by numeric filters (ignoring date overlaps for now)
-    # i.e., rows where numeric_mask is False
     numeric_removed_count = (~numeric_mask).sum()
 
     # 2. Calculate Date Mask (Rows to KEEP based on date rules)
@@ -115,7 +110,6 @@ def calculate_impact_breakdown(df, num_filters, dt_filters):
             elif op == "between (includes edge values)" or op == "between":
                 date_mask &= ~((df['DATETIME'] >= val[0]) & (df['DATETIME'] <= val[1]))
     
-    # Count rows removed PURELY by date filters
     date_removed_count = (~date_mask).sum()
 
     # 3. Combined Result
@@ -140,7 +134,8 @@ def load_filters_from_json(json_data):
         if "datetime" in json_data:
             loaded_dt_filters = []
             for op, val in json_data["datetime"]:
-                if op == "between (includes edge values)" and isinstance(val, list):
+                # Handle both verbose and simple "between" keys
+                if op in ["between", "between (includes edge values)"] and isinstance(val, list):
                     start_ts = pd.to_datetime(val[0])
                     end_ts = pd.to_datetime(val[1])
                     loaded_dt_filters.append((op, (start_ts, end_ts)))
@@ -158,8 +153,13 @@ def load_filters_from_json(json_data):
         st.error(f"Failed to load filters: {e}")
 
 def read_process_cache_files(raw_file, point_list_dataset_file):
+    # Extract info silently without UI blocking
     auto_site_name, auto_model_name, auto_inclusive_dates = cleaned_dataset_name_split(raw_file.name)
-    get_model_info(auto_site_name, auto_model_name, auto_inclusive_dates)
+    
+    # Populate session state if empty, otherwise keep existing (user might have edited it in previous run)
+    if not st.session_state.site_name: st.session_state.site_name = auto_site_name
+    if not st.session_state.model_name: st.session_state.model_name = auto_model_name
+    if not st.session_state.inclusive_dates: st.session_state.inclusive_dates = auto_inclusive_dates
 
     progress_text = "Starting file processing..."
     my_bar = st.progress(0, text=progress_text)
@@ -169,7 +169,8 @@ def read_process_cache_files(raw_file, point_list_dataset_file):
         raw_file_df = pd.read_csv(raw_file)
         project_points_df = pd.read_csv(point_list_dataset_file)
 
-        my_bar.progress(50, text="Formatting and mapping data points (this may take a moment)...")
+        my_bar.progress(50, text="Formatting and mapping data points...")
+        # Using the optimized version from previous step implicitly if utils updated
         raw_df, raw_df_header = data_cleaning_read_prism_csv(raw_file_df, project_points_df)
 
         my_bar.progress(100, text="Processing complete!")
@@ -207,39 +208,39 @@ if current_step == 1:
     raw_file = st.file_uploader("Upload RAW dataset (.csv)", type=["csv"], accept_multiple_files=False)
     point_list_dataset_file = st.file_uploader("Upload POINT LIST dataset (project_points.csv)", type=["csv"], accept_multiple_files=False)
 
-    # --- Cache / Process Logic ---
+    # --- Simplified Cache / Process Logic ---
     if raw_file is not None and point_list_dataset_file is not None:
-        if 'model' in st.session_state and st.session_state.model == raw_file.name:
-            st.info(f"You have loaded {raw_file.name} before. Use the saved data?")
+        
+        # 1. Check if we need to process (New file OR Force Reload)
+        # We use a unique key combination to detect if it's the same file
+        current_file_key = f"{raw_file.name}_{raw_file.size}"
+        
+        # If state is empty OR filenames don't match, we process automatically
+        if st.session_state.raw_df is None or st.session_state.model != raw_file.name:
             
-            col1, col2 = st.columns(2)
-            if col1.button("Yes, use saved data"):
-                st.session_state.use_cache_decision = 'yes'
-            if col2.button("No, re-process file"):
-                st.session_state.use_cache_decision = 'no'
-
-            if st.session_state.use_cache_decision == 'yes':
-                # Ensure data is actually there
-                if st.session_state.raw_df is None:
-                    st.error("Cache was empty. Please re-process.")
-                    st.session_state.use_cache_decision = 'no'
-            elif st.session_state.use_cache_decision == 'no':
-                 # Re-process
-                 read_process_cache_files(raw_file, point_list_dataset_file)
-                 st.session_state.use_cache_decision = 'yes' # Mark as decided so we don't loop
-                 st.rerun()
-
-        else:
-            # New File Logic
-            if 'filters' in st.session_state:
-                clear_all_numeric_filters()
-                clear_all_date_filters()
+            # Clear filters only if it's a genuinely new file load (not just a rerun)
+            # Logic: If raw_df is None, it's a fresh start.
+            if st.session_state.raw_df is None:
+                if 'filters' in st.session_state:
+                    clear_all_numeric_filters()
+                    clear_all_date_filters()
+            
             read_process_cache_files(raw_file, point_list_dataset_file)
             st.rerun()
+            
+        else:
+            # Data is already loaded and matches current file
+            st.success(f"✅ Loaded **{raw_file.name}** from cache.")
+            
+            # Optional: Force Reload Button
+            if st.button("↻ Force Re-process File"):
+                # Clear state and rerun to trigger the logic above
+                st.session_state.raw_df = None
+                st.session_state.model = None
+                st.rerun()
 
     # --- Preview & Navigation ---
     if st.session_state.raw_df is not None:
-        st.success("Data loaded successfully.")
         
         with st.expander("View Dataset Preview & Stats", expanded=True):
             tab1, tab2 = st.tabs(["Preview", "Statistics"])
@@ -356,12 +357,11 @@ elif current_step == 2:
     st.subheader("Preview Impact")
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Total Rows", f"{total_rows:,}")
-    m2.metric("Rows Remaining", f"{remaining_rows:,}", delta=f"-{pct_removed:.3}% removed", delta_color="inverse")
-    m3.metric("Numeric Removed", f"{numeric_removed:,}", delta=f"-{pct_numeric_removed:.3}% removed", delta_color="inverse", help="Rows removed based on numeric filters")
-    m4.metric("Date Removed", f"{date_removed:,}", delta=f"-{pct_date_removed:.3}% removed", delta_color="inverse", help="Rows removed based on date filters")
+    m2.metric("Rows Remaining", f"{remaining_rows:,}", delta=f"-{pct_removed:.2f}% removed", delta_color="inverse")
+    m3.metric("Numeric Removed", f"{numeric_removed:,}", delta=f"-{pct_numeric_removed:.2f}% removed", delta_color="inverse", help="Rows removed based on numeric filters")
+    m4.metric("Date Removed", f"{date_removed:,}", delta=f"-{pct_date_removed:.2f}% removed", delta_color="inverse", help="Rows removed based on date filters")
 
-    # Also show overall retention below or as caption
-    st.caption(f"**Overall Retention:** {100 - pct_removed:.1f}% kept ({pct_removed:.1f}% removed)")
+    st.caption(f"**Overall Retention:** {100 - pct_removed:.2f}% kept ({pct_removed:.2f}% removed)")
 
     # Active Rules List
     st.subheader("Active Rules")
@@ -406,9 +406,52 @@ elif current_step == 3:
     raw_df_header = st.session_state.raw_df_header
 
     st.markdown(f"**Ready to process:** `{st.session_state.model}`")
-    st.markdown(f"**Active Filters:** {len(st.session_state.filters)} Numeric, {len(st.session_state.datetime_filters)} Date")
+    
+    # --- Export Metadata Configuration (Moved from Step 1) ---
+    st.subheader("Export Configuration (Metadata)")
+    st.markdown("Confirm details for the output filename and folder structure.")
+    
+    with st.container(border=True):
+        meta_col1, meta_col2 = st.columns(2)
+        with meta_col1:
+            st.session_state.site_name = st.text_input("Site Name", value=st.session_state.site_name, help="e.g., TVI, TSI")
+            st.session_state.system_name = st.text_input("System Name", value=st.session_state.system_name, help="e.g., BOP, U1")
+            st.session_state.model_name = st.text_input("Model Name", value=st.session_state.model_name)
+        with meta_col2:
+            st.session_state.sprint_name = st.text_input("Sprint Name", value=st.session_state.sprint_name, help="e.g., Sprint_1")
+            st.session_state.inclusive_dates = st.text_input("Inclusive Dates (YYYYMMDD)", value=st.session_state.inclusive_dates, help="e.g., 20240101-20240601")
 
-    if st.button("🚀 Apply Filters & Process Data", type="primary"):
+    st.divider()
+
+    # --- Active Rules Summary (Read-Only) ---
+    st.subheader("Active Rules Summary")
+    if not st.session_state.filters and not st.session_state.datetime_filters:
+        st.info("No filters active.")
+    else:
+        ac1, ac2 = st.columns(2)
+        with ac1:
+            if st.session_state.filters:
+                st.markdown("**Numeric:**")
+                for col, op, val in st.session_state.filters:
+                    st.code(f"{col} {op} {val}")
+            else:
+                st.markdown("**Numeric:** None")
+        with ac2:
+            if st.session_state.datetime_filters:
+                st.markdown("**Date:**")
+                for op, val in st.session_state.datetime_filters:
+                    val_str = f"{val[0]} to {val[1]}" if isinstance(val, tuple) else str(val)
+                    st.code(f"{op} {val_str}")
+            else:
+                st.markdown("**Date:** None")
+
+    # Check if metadata is filled before enabling the button
+    meta_filled = all([st.session_state.site_name, st.session_state.system_name, st.session_state.model_name, st.session_state.sprint_name, st.session_state.inclusive_dates])
+    
+    if not meta_filled:
+        st.warning("Please fill in all Export Configuration fields above to enable processing.")
+    
+    if st.button("🚀 Apply Filters & Process Data", type="primary", disabled=not meta_filled):
         with st.spinner("Processing..."):
             filtered_df = raw_df.copy()
 
@@ -454,40 +497,51 @@ elif current_step == 3:
     # --- Post-Processing Options ---
     if st.session_state.filters_applied:
         st.divider()
-        st.subheader("📊 Reporting & Visualization")
         
-        col_vis1, col_vis2 = st.columns(2)
-        with col_vis1:
-            st.toggle("Generate PDF Report", key="generate_report")
-        with col_vis2:
-            st.toggle("Show Visuals (Slow)", key="show_visuals")
+        with st.container(border=True):
+            st.subheader("📊 Reporting & Visualization")
+            
+            col_actions, col_metrics = st.columns([1, 2])
+            
+            with col_actions:
+                st.markdown("**Settings**")
+                st.session_state.generate_report = st.checkbox("Include PDF Report in output", value=st.session_state.generate_report)
+                st.session_state.show_visuals = st.checkbox("Show Interactive Visuals", value=st.session_state.show_visuals)
+                
+                # Only show button if one of the options is selected
+                enable_gen = st.session_state.generate_report or st.session_state.show_visuals
+                if st.button("Generate Visuals & Report", disabled=not enable_gen, type="primary", use_container_width=True):
+                     # Re-construct path for report
+                     base_path = Path.cwd()
+                     dataset_path = base_path / st.session_state.site_name / st.session_state.system_name / st.session_state.sprint_name / st.session_state.model_name / "dataset"
+                     report_file_path = dataset_path / f"CLEANED-{st.session_state.model_name}-{st.session_state.inclusive_dates}-DATA-CLEANING-REPORT.pdf"
+                     
+                     if st.session_state.generate_report and not st.session_state.show_visuals:
+                         generate_simple_report(raw_df, st.session_state.filters, st.session_state.datetime_filters, report_file_path)
+                         st.success("Simple Report Generated.")
+                     
+                     if st.session_state.show_visuals:
+                         generate_data_cleaning_visualizations(
+                             raw_df, 
+                             st.session_state.cleaned_df, 
+                             st.session_state.filters, 
+                             st.session_state.datetime_filters, 
+                             # Using selected metrics from the multiselect in the next column
+                             st.session_state.get('selected_metrics_for_report', raw_df.select_dtypes(include='number').columns.tolist()[:3]), 
+                             st.session_state.generate_report, 
+                             report_file_path
+                         )
+                         st.success("Visualizations Generated.")
 
-        selected_metrics = []
-        if st.session_state.show_visuals:
-            numeric_cols = raw_df.select_dtypes(include='number').columns.tolist()
-            selected_metrics = st.multiselect("Select metrics to plot:", numeric_cols, default=numeric_cols[:3])
-
-        if st.button("Generate Output"):
-             # Re-construct path for report
-             base_path = Path.cwd()
-             dataset_path = base_path / st.session_state.site_name / st.session_state.system_name / st.session_state.sprint_name / st.session_state.model_name / "dataset"
-             report_file_path = dataset_path / f"CLEANED-{st.session_state.model_name}-{st.session_state.inclusive_dates}-DATA-CLEANING-REPORT.pdf"
-             
-             if st.session_state.generate_report and not st.session_state.show_visuals:
-                 generate_simple_report(raw_df, st.session_state.filters, st.session_state.datetime_filters, report_file_path)
-                 st.success("Simple Report Generated.")
-             
-             if st.session_state.show_visuals:
-                 generate_data_cleaning_visualizations(
-                     raw_df, 
-                     st.session_state.cleaned_df, 
-                     st.session_state.filters, 
-                     st.session_state.datetime_filters, 
-                     selected_metrics, 
-                     st.session_state.generate_report, 
-                     report_file_path
-                 )
-                 st.success("Visualizations Generated.")
+            with col_metrics:
+                if st.session_state.show_visuals or st.session_state.generate_report:
+                    numeric_cols = raw_df.select_dtypes(include='number').columns.tolist()
+                    st.session_state.selected_metrics_for_report = st.multiselect(
+                        "Select metrics to include in report/charts:", 
+                        numeric_cols, 
+                        default=numeric_cols[:3],
+                        key="metric_multiselect"
+                    )
 
     st.markdown("---")
     st.button("⬅️ Back to Filters", on_click=prev_step)
