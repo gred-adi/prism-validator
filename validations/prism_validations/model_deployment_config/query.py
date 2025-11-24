@@ -1,12 +1,17 @@
 def get_query(asset_descriptions: list):
-    """
-    Generates the SQL query for Model Deployment Config based on a dynamic list of assets.
-    
+    """Generates the SQL query for Model Deployment Config.
+
+    This query uses several Common Table Expressions (CTEs) to consolidate
+    project information, pivot point data, and validate PA Archive settings.
+    It is designed to be filtered by a user-provided list of asset descriptions.
+
     Args:
-        asset_descriptions: A list of asset description strings provided by the user.
+        asset_descriptions (list[str]): A list of asset description strings to
+                                        be included in the WHERE clause.
 
     Returns:
-        A formatted SQL query string.
+        str: A formatted SQL query string. If `asset_descriptions` is empty,
+             it returns a query that safely selects no results.
     """
     if not asset_descriptions:
         # Return a query that safely yields no results if the list is empty.

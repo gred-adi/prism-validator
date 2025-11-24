@@ -3,9 +3,30 @@ import streamlit as st
 
 @st.cache_data
 def validate_data(model_dfs, prism_df):
-    """
-    Performs the comparison logic for the 'Absolute Deviation' section.
-    Compares alert and warning thresholds and returns a dictionary of results.
+    """Validates absolute deviation thresholds between TDT and PRISM data.
+
+    This function iterates through each model provided in `model_dfs`, compares
+    its threshold data against the corresponding data in `prism_df`, and
+    categorizes the results. It identifies exact matches, mismatches for each
+    specific threshold type, and records that are missing in either the TDT or
+    PRISM data.
+
+    Args:
+        model_dfs (dict[str, pd.DataFrame]): A dictionary of DataFrames parsed
+            from the TDT, where keys are model names.
+        prism_df (pd.DataFrame): A DataFrame containing the absolute deviation
+            threshold data queried from the PRISM database.
+
+    Returns:
+        dict: A dictionary containing the validation results, with the
+        following keys:
+        - "summary" (pd.DataFrame): A summary of matches and mismatches per model.
+        - "matches" (pd.DataFrame): A DataFrame of records that match perfectly.
+        - "mismatches" (dict[str, pd.DataFrame]): A dictionary where keys are
+          mismatch types (e.g., 'HIGH ALERT', 'Missing_in_PRISM') and values
+          are DataFrames of the corresponding mismatched records.
+        - "all_entries" (pd.DataFrame): A DataFrame showing the full outer join
+          between the TDT and PRISM data for all models.
     """
     prism_df = prism_df.copy()
     all_matches = []
@@ -94,11 +115,8 @@ def validate_data(model_dfs, prism_df):
         for col in columns_to_compare:
             col_order.extend([f'{col}_TDT', f'{col}_PRISM'])
 
-        # Get remaining columns that are not in the specified order
-        remaining_cols = [c for c in all_entries_df.columns if c not in col_order]
-
         # Combine the ordered columns with the remaining ones
-        final_order = col_order + remaining_cols
+        final_order = col_order
         all_entries_df = all_entries_df[final_order]
 
     matches_df = pd.concat(all_matches, ignore_index=True) if all_matches else pd.DataFrame()
@@ -110,10 +128,9 @@ def validate_data(model_dfs, prism_df):
 
         # Get existing columns in the ideal order and then the rest
         existing_cols_in_order = [c for c in col_order if c in matches_df.columns]
-        remaining_cols = [c for c in matches_df.columns if c not in existing_cols_in_order]
 
         # Combine to get the final order
-        final_order = existing_cols_in_order + remaining_cols
+        final_order = existing_cols_in_order
         matches_df = matches_df[final_order]
 
     final_mismatches_dict = {}

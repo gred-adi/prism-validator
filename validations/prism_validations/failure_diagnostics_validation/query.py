@@ -1,7 +1,16 @@
 def get_query(tdt_names=None):
-    """
-    Returns the SQL query for Failure Diagnostics Validation.
-    Optionally filters by a list of TDT names to optimize performance.
+    """Constructs the SQL query for Failure Diagnostics Validation.
+
+    This query retrieves the diagnostic details, including failure modes,
+    metric direction, and weight, from the PRISM database. It can be
+    optionally filtered by a list of TDT names to improve query performance.
+
+    Args:
+        tdt_names (list[str], optional): A list of TDT names to include in the
+                                         WHERE clause of the query. Defaults to None.
+
+    Returns:
+        str: A multi-line string containing the SQL query.
     """
     # Base filtering condition
     where_clause = "p.Name LIKE 'AP-%'"

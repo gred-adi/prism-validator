@@ -6,8 +6,18 @@ import streamlit as st
 
 # --- Helper functions (from your script, largely unchanged) ---
 def _process_survey_sheets(uploaded_file, survey_data_list):
-    """
-    Processes the 'Point Survey' and related sheets from a single TDT Excel file.
+    """Processes the 'Point Survey' and related sheets from a single TDT Excel file.
+
+    This function reads an uploaded TDT Excel file and extracts data from the
+    'Point Survey', 'Version', 'Attribute', and 'Calculation' sheets. It
+    reshapes the 'Point Survey' data, merges it with attributes and
+    calculations, and appends the resulting DataFrame to the `survey_data_list`.
+
+    Args:
+        uploaded_file (streamlit.runtime.uploaded_file_manager.UploadedFile):
+            The uploaded TDT Excel file object.
+        survey_data_list (list):
+            A list to which the processed survey DataFrame will be appended.
     """
     # pd.ExcelFile can read an UploadedFile object directly
     xls = pd.ExcelFile(uploaded_file)
@@ -52,8 +62,18 @@ def _process_survey_sheets(uploaded_file, survey_data_list):
         start_col = end_col
 
 def _process_diagnostic_sheet(uploaded_file, diag_data_list):
-    """
-    Processes the 'Diagnostic' sheet from a single TDT Excel file.
+    """Processes the 'Diagnostic' sheet from a single TDT Excel file.
+
+    This function reads an uploaded TDT Excel file, extracts data from the
+    'Diagnostic' and 'Version' sheets, and reshapes the diagnostic data into a
+    tidy DataFrame. The processed DataFrame is then appended to the
+    `diag_data_list`.
+
+    Args:
+        uploaded_file (streamlit.runtime.uploaded_file_manager.UploadedFile):
+            The uploaded TDT Excel file object.
+        diag_data_list (list):
+            A list to which the processed diagnostic DataFrame will be appended.
     """
     xls = pd.ExcelFile(uploaded_file)
     if 'Diagnostic' not in xls.sheet_names:
@@ -86,7 +106,21 @@ def _process_diagnostic_sheet(uploaded_file, diag_data_list):
 
 # --- NEW: Helper function to create the filter summary ---
 def _create_filter_summary(all_survey_data):
-    """Creates the filter summary DataFrame from the consolidated survey data."""
+    """Creates the filter summary DataFrame from the consolidated survey data.
+
+    This function filters the consolidated survey DataFrame to include only rows
+    where 'Filter Condition' is not null. It then selects and renames columns
+    to create a standardized filter summary.
+
+    Args:
+        all_survey_data (pd.DataFrame):
+            The consolidated DataFrame of all survey data from the TDTs.
+
+    Returns:
+        pd.DataFrame: A DataFrame containing the filter summary, with columns
+        for TDT, Model, Metric, Point Name, Constraint, Filter Condition,
+        and Filter Value.
+    """
     if 'Filter Condition' not in all_survey_data.columns:
         # Return an empty df with expected columns if the necessary column is missing
         return pd.DataFrame(columns=['TDT', 'Model', 'Metric', 'Point Name', 'Constraint', 'Filter Condition', 'Filter Value'])
@@ -107,10 +141,26 @@ def _create_filter_summary(all_survey_data):
 # --- Main Generator Function (MODIFIED) ---
 @st.cache_data
 def generate_files_from_uploads(uploaded_files):
-    """
-    Scans a list of uploaded TDT Excel files and consolidates them into two DataFrames.
+    """Scans uploaded TDT Excel files and consolidates them into DataFrames.
+
+    This function iterates through a list of uploaded Excel files, processing
+    the 'Point Survey' and 'Diagnostic' sheets from each. It then
+    concatenates the results into two main DataFrames: one for survey data and
+    one for diagnostic data. The function is cached to improve performance on
+    repeated runs with the same files.
+
+    Args:
+        uploaded_files (list of streamlit.runtime.uploaded_file_manager.UploadedFile):
+            A list of uploaded file objects from the Streamlit file uploader.
+
     Returns:
-        A tuple of two pandas DataFrames: (survey_df, diag_df)
+        tuple[pd.DataFrame, pd.DataFrame]: A tuple containing two pandas
+        DataFrames: `survey_df` and `diag_df`.
+
+    Raises:
+        FileNotFoundError: If the `uploaded_files` list is empty.
+        ValueError: If no valid survey or diagnostic data could be extracted
+                    from the provided files.
     """
     if not uploaded_files:
         raise FileNotFoundError(f"No Excel files (.xlsx) were uploaded.")
@@ -147,11 +197,20 @@ def generate_files_from_uploads(uploaded_files):
 
 # --- UPDATED: Optional Excel Conversion Function ---
 def convert_dfs_to_excel_bytes(survey_df, diag_df):
-    """
-    Converts the survey and diagnostic DataFrames into in-memory Excel files,
-    including the new 'Filter Summary' sheet in the survey file.
+    """Converts DataFrames into in-memory Excel files.
+
+    This function takes the consolidated survey and diagnostic DataFrames and
+    writes them to in-memory byte buffers as Excel files. The survey Excel
+    file includes a 'Consolidated Point Survey' sheet and a 'Filter Summary'
+    sheet.
+
+    Args:
+        survey_df (pd.DataFrame): The consolidated survey DataFrame.
+        diag_df (pd.DataFrame): The consolidated diagnostic DataFrame.
+
     Returns:
-        A tuple of two in-memory bytes objects: (survey_excel_bytes, diag_excel_bytes)
+        tuple[io.BytesIO, io.BytesIO]: A tuple containing two in-memory
+        bytes buffers: `survey_excel_bytes` and `diag_excel_bytes`.
     """
     output_survey = io.BytesIO()
     with pd.ExcelWriter(output_survey, engine='xlsxwriter') as writer:

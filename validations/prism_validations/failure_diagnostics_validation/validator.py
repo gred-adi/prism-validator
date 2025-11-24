@@ -3,10 +3,31 @@ import streamlit as st
 
 @st.cache_data
 def validate_data(tdt_dfs, prism_df):
-    """
-    Performs the comparison logic for the 'Failure Diagnostics' section.
-    Compares Direction and Weight, separates mismatches by column, and returns a dict.
-    Also extracts 'Prescriptive' info (Description/Next Steps) for display.
+    """Validates failure diagnostics between TDT and PRISM data.
+
+    This function compares diagnostic `DIRECTION` and `WEIGHT` for each metric
+    within a failure mode. It identifies matches, various types of mismatches,
+    and missing records. It also extracts the 'Prescriptive' information (failure
+    description and next steps) from the PRISM data for display.
+
+    Args:
+        tdt_dfs (dict[str, pd.DataFrame]): A dictionary of DataFrames parsed
+            from the TDT, where keys are TDT names.
+        prism_df (pd.DataFrame): A DataFrame containing the failure diagnostics
+            data queried from the PRISM database.
+
+    Returns:
+        dict: A dictionary containing the validation results, with the
+        following keys:
+        - "summary" (pd.DataFrame): A summary of matches, mismatches, and
+          prescriptive checks per TDT.
+        - "matches" (pd.DataFrame): A DataFrame of records that match perfectly.
+        - "mismatches" (dict[str, pd.DataFrame]): A dictionary of DataFrames for
+          different mismatch types.
+        - "all_entries" (pd.DataFrame): A DataFrame showing the full outer join
+          between TDT and PRISM data.
+        - "prescriptive" (pd.DataFrame): A DataFrame with the unique failure
+          descriptions and next steps from PRISM.
     """
     prism_df = prism_df.copy()
     all_matches = []
@@ -169,10 +190,9 @@ def validate_data(tdt_dfs, prism_df):
 
         # Get existing columns in the ideal order and then the rest
         existing_cols_in_order = [c for c in col_order if c in all_entries_df.columns]
-        remaining_cols = [c for c in all_entries_df.columns if c not in existing_cols_in_order]
 
         # Combine to get the final order
-        final_order = existing_cols_in_order + remaining_cols
+        final_order = existing_cols_in_order
         all_entries_df = all_entries_df[final_order]
 
     matches_df = pd.concat(all_matches, ignore_index=True) if all_matches else pd.DataFrame()
@@ -181,13 +201,19 @@ def validate_data(tdt_dfs, prism_df):
         col_order = ['TDT'] + join_keys
         for col in columns_to_compare:
             col_order.extend([f'{col}_TDT', f'{col}_PRISM'])
+    
+    # Format WEIGHT columns to remove trailing '.0'
+    if not matches_df.empty:
+        for col in ['WEIGHT_TDT', 'WEIGHT_PRISM']:
+            if col in matches_df.columns:
+                # Using .astype(str) to handle mixed types and replacing .0 for whole numbers
+                matches_df[col] = matches_df[col].astype(str).str.replace(r'\.0$', '', regex=True).replace('nan', pd.NA)
 
         # Get existing columns in the ideal order and then the rest
         existing_cols_in_order = [c for c in col_order if c in matches_df.columns]
-        remaining_cols = [c for c in matches_df.columns if c not in existing_cols_in_order]
 
         # Combine to get the final order
-        final_order = existing_cols_in_order + remaining_cols
+        final_order = existing_cols_in_order
         matches_df = matches_df[final_order]
 
     final_mismatches_dict = {}

@@ -1,7 +1,36 @@
+"""
+This script defines the 'PRISM Config Validator' page of the Streamlit application.
+
+This page provides the main functionality for validating PRISM configurations
+against Technical Design Templates (TDTs). It is organized into several tabs,
+each dedicated to a specific type of validation, such as Metric Validation,
+Metric Mapping, Filter Validation, and more.
+
+The script handles the following key responsibilities:
+- **UI Layout**: Defines the structure of the page, including the sidebar for
+  database connection and file uploads, and the main area with validation tabs.
+- **State Management**: Initializes and manages the Streamlit session state to
+  store database connections, uploaded files, and validation results.
+- **Validation Orchestration**: For each validation type, it calls the
+  appropriate modules for parsing input files, querying the database, and
+  running the comparison logic.
+- **Results Display**: Implements a generic `display_results` function to
+  render the outcomes of the validations in a consistent format, including
+  summaries, detailed tables for matches and mismatches, and filtering
+  capabilities.
+- **Report Generation**: Integrates the `report_generator` module to provide a
+  'Report Generation' tab, allowing users to create PDF reports from the
+  validation results.
+"""
 import pandas as pd
 import streamlit as st
 from db_utils import PrismDB
 import os
+from datetime import datetime
+import io
+import zipfile
+from report_generator import generate_pdf_report, display_report_generation_tab
+from style_utils import highlight_diff
 
 # --- Import validation-specific modules ---
 from validations.prism_validations.metric_validation.query import get_query as get_metric_query, get_calc_query
@@ -60,33 +89,28 @@ for key in prism_validation_keys:
         st.session_state.validation_states[key] = {"results": None}
 
 # --- Reusable Helper Functions ---
-def highlight_diff(data, color='background-color: #FFCCCB'):
-    """
-    Highlights cells in PRISM columns that do not match their corresponding TDT column.
-    Returns a DataFrame of styles.
-    """
-    attr = f'{color}'
-    # Create a new DataFrame of the same shape as `data` to store styles, initialized with empty strings
-    style_df = pd.DataFrame('', index=data.index, columns=data.columns)
-
-    # Find pairs of TDT/PRISM columns to compare
-    prism_cols = [c for c in data.columns if c.endswith('_PRISM')]
-
-    for p_col in prism_cols:
-        t_col = p_col.replace('_PRISM', '_TDT')
-        if t_col in data.columns:
-            # Using .astype(str) for robust comparison across dtypes and NaNs
-            is_mismatch = data[p_col].astype(str) != data[t_col].astype(str)
-            # Apply the style attribute to the PRISM column where there is a mismatch
-            style_df.loc[is_mismatch, p_col] = attr
-
-    return style_df
 
 def display_results(results, key_prefix, filter_column_name):
-    """
-    Generic function to display validation results in a consistent format.
-    Includes a summary table, a filter, and detailed tables for matches,
-    mismatches, and (conditionally) all entries.
+    """Displays validation results in a standardized format.
+
+    This function renders the results of a validation check, including a
+    summary table, filterable detail tables for matches, mismatches, and all
+    entries. It provides a consistent user experience across different
+    validation types.
+
+    Args:
+        results (dict): A dictionary containing the validation results. Expected
+                        keys include 'summary', 'matches', 'mismatches', and
+                        'all_entries', where the values are pandas DataFrames.
+        key_prefix (str): A unique string prefix to be used for the keys of
+                          Streamlit widgets to avoid key collisions.
+        filter_column_name (str): The name of the column to be used for
+                                  filtering the detailed results (e.g., 'TDT'
+                                  or 'MODEL').
+
+    Returns:
+        str or None: The selected value from the filter dropdown, or None if
+                     the results cannot be displayed.
     """
     if not results or results.get('summary', pd.DataFrame()).empty:
         st.info("Run the validation to see the results.")
@@ -236,7 +260,8 @@ tab_list = [
     "Filter Validation (Project)",
     "Failure Diagnostics Validation (Template)",
     "Absolute Deviation Validation",
-    "Model Deployment Config"
+    "Model Deployment Config",
+    "Report Generation"
 ]
 tabs = st.tabs(tab_list)
 
@@ -446,3 +471,31 @@ with tabs[6]:
     results_df = st.session_state.validation_states["model_deployment_config"]["results"]
     if results_df is not None: st.dataframe(results_df, use_container_width=True)
     else: st.info("Enter Asset Descriptions and click 'Fetch Configuration' to see results.")
+
+with tabs[7]:
+    # --- Define Report Generation Configuration ---
+    validation_filter_cols = {
+        "metric_validation": "TDT",
+        "metric_mapping": "MODEL",
+        "filter_validation": "MODEL",
+        "failure_diagnostics": "TDT",
+        "absolute_deviation": "MODEL"
+    }
+    submodule_options = {
+        "Metric Validation": "metric_validation",
+        "Metric Mapping": "metric_mapping",
+        "Filter Validation": "filter_validation",
+        "Failure Diagnostics": "failure_diagnostics",
+        "Absolute Deviation": "absolute_deviation",
+    }
+
+    # --- Render the reusable tab UI ---
+    display_report_generation_tab(
+        st,
+        st.session_state,
+        "PRISM",
+        validation_filter_cols,
+        submodule_options,
+        highlight_diff,
+        axis=None
+    )

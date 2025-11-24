@@ -1,3 +1,10 @@
+"""
+Main entry point for the Streamlit application.
+
+This script sets up the multipage navigation for the PRISM Configuration Validator tool
+using Streamlit's experimental `st.navigation` feature. It defines the pages and
+their corresponding icons, titles, and script paths.
+"""
 import streamlit as st
 
 pages = {

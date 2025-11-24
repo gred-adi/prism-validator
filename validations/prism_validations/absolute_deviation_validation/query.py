@@ -1,7 +1,13 @@
 def get_query():
-    """
-    Returns the SQL query for Absolute Deviation Validation.
-    The query extracts High/Low Alert and Warning thresholds for project-level models.
+    """Constructs the SQL query for Absolute Deviation Validation.
+
+    This query retrieves the High/Low Alert and Warning thresholds for metrics
+    configured with 'Absolute Signal Deviation' in deployed PRISM projects. It
+    pivots the threshold values from the `AlarmThresholds` table into separate
+    columns.
+
+    Returns:
+        str: A multi-line string containing the SQL query.
     """
     return """
     SELECT

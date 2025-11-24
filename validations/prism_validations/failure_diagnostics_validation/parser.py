@@ -3,10 +3,24 @@ import streamlit as st
 
 @st.cache_data
 def parse_excel(uploaded_file):
-    """
-    Processes the uploaded Excel file for the 'Failure Diagnostics' section.
-    Parses the 'Consolidated Failure Diagnostic' sheet, filters for enabled modes,
-    and groups the data by TDT.
+    """Parses the 'Consolidated Failure Diagnostic' Excel file.
+
+    This function reads the specified sheet from the uploaded diagnostics file,
+    filters for failure modes that are enabled ('YES'), and performs necessary
+    data cleaning. It then groups the data by TDT, returning a dictionary of
+    DataFrames.
+
+    Args:
+        uploaded_file (streamlit.runtime.uploaded_file_manager.UploadedFile):
+            The uploaded 'Consolidated Failure Diagnostics' Excel file object.
+
+    Returns:
+        dict[str, pd.DataFrame]: A dictionary where keys are TDT names and
+        values are DataFrames containing the diagnostic data for that TDT.
+
+    Raises:
+        ValueError: If the required 'Consolidated Failure Diagnostic' sheet is
+                    not found in the file.
     """
     xls = pd.ExcelFile(uploaded_file)
     sheet_name = "Consolidated Failure Diagnostic"

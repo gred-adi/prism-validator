@@ -1,6 +1,31 @@
+"""
+This script defines the 'TDT Validator' page of the Streamlit application.
+
+This page is dedicated to performing offline integrity checks on the TDT
+(Technical Design Template) Excel files. It helps ensure the quality and
+correctness of the TDTs themselves before they are used for validation against
+the live PRISM database.
+
+The page includes several tabs for different validation aspects:
+- **Point Survey Validation**: Checks for duplicate and blank fields.
+- **Calculation Validation**: Ensures that `PRiSM Calc` points have the necessary details.
+- **Attribute Validation**: Validates the logic for functions, constraints, and diagnostics.
+- **Diagnostics Validation**: Audits the structure of failure modes.
+
+Key functionalities include:
+- A generic `display_validation_results` function to render issue-based
+  tables with cell-specific highlighting.
+- A simpler `display_simple_results` for straightforward data audits.
+- Integration with the `report_generator` to create PDF summaries of the TDT validation results.
+"""
 import pandas as pd
 import streamlit as st
 import os
+from datetime import datetime
+import io
+import zipfile
+from report_generator import generate_pdf_report, display_report_generation_tab
+from style_utils import highlight_issue_cells, highlight_issue_rows
 # import re # <-- Removed this import as it's no longer needed
 
 # --- Import the new validator ---
@@ -27,50 +52,35 @@ if "tdt_diagnostics" not in st.session_state.validation_states:
     st.session_state.validation_states["tdt_diagnostics"] = {"results": None}
 
 
-# --- NEW: Helper function to highlight specific cells based on 'Issue' string ---
-def highlight_issue_cells(row, issue_to_col_map, current_issue):
-    """
-    Applies a style to cells that are flagged as duplicates based on the 'Issue' column.
-    """
-    styles = [''] * len(row)
-    
-    # Get the column(s) to highlight for this specific issue
-    cols_to_highlight = issue_to_col_map.get(current_issue)
-    
-    if cols_to_highlight:
-        # col_names can be a single string or a list of strings
-        if isinstance(cols_to_highlight, str):
-            cols_to_highlight = [cols_to_highlight]
-        
-        for col_name in cols_to_highlight:
-            try:
-                col_index = list(row.index).index(col_name)
-                styles[col_index] = 'background-color: #FFCCCB' # Light red
-            except ValueError:
-                pass # Column not in the final view, so we skip
-                    
-    return styles
-    
-# --- Helper function to highlight rows for Diagnostics ---
-def highlight_issue_rows(row):
-    """
-    Applies a style to the entire row if the 'Issue' column is not '✅'.
-    """
-    style = 'background-color: #FFCCCB' if (pd.notna(row.get('Issue')) and row.get('Issue') != '✅') else ''
-    return [style] * len(row)
 
 # --- NEW: Reusable Helper Function for Sub-Tables ---
 def display_validation_results(
-    summary_df, 
-    details_df, 
-    columns_to_show, 
+    summary_df,
+    details_df,
+    columns_to_show,
     issue_to_col_map,
     summary_info_msg="No issues found.",
     details_info_msg="No issues found matching the filter."
 ):
-    """
-    Displays pre-filtered TDT validation results with summary, and 
-    SEPARATE sub-tables for each issue type, highlighting specific cells.
+    """Displays complex validation results with issue-specific highlighting.
+
+    This function is designed for TDT validations where results are categorized
+    by different issue types. It renders a summary table and then creates
+    separate sub-tables for each unique issue found in the details DataFrame.
+    It uses a mapping to highlight the specific cells relevant to each issue.
+
+    Args:
+        summary_df (pd.DataFrame): A DataFrame for the summary view.
+        details_df (pd.DataFrame): A DataFrame containing the detailed results,
+                                   including an 'Issue' column.
+        columns_to_show (list[str]): A list of column names to display in the
+                                     details tables.
+        issue_to_col_map (dict): A dictionary that maps issue strings to the
+                                 column name(s) that should be highlighted.
+        summary_info_msg (str, optional): A message to display if the summary
+                                          is empty.
+        details_info_msg (str, optional): A message to display if the details
+                                          are empty.
     """
     st.subheader("Validation Summary")
     if summary_df.empty:
@@ -128,9 +138,19 @@ def display_validation_results(
 
 # --- FIX: Add display_simple_results back in for the Filter Audit report ---
 def display_simple_results(summary_df, details_df, columns_to_show, show_summary=True, summary_info_msg="No items found to summarize.", details_info_msg="No items were found in the TDTs."):
-    """
-    Displays pre-filtered TDT validation results with a summary
-    and a single details table. This is for simple lists, not issue-based tables.
+    """Displays simple validation results in a summary and a single detail table.
+
+    This function is used for displaying validation results that do not require
+    issue-based categorization or complex styling, such as the Filter Audit report.
+
+    Args:
+        summary_df (pd.DataFrame): The DataFrame for the summary view.
+        details_df (pd.DataFrame): The DataFrame for the detailed view.
+        columns_to_show (list[str]): The columns to display in the details table.
+        show_summary (bool, optional): Whether to display the summary section.
+                                       Defaults to True.
+        summary_info_msg (str, optional): Message if the summary is empty.
+        details_info_msg (str, optional): Message if the details are empty.
     """
     if show_summary:
         st.subheader("Validation Summary")
@@ -167,7 +187,8 @@ tab_list = [
     "Calculation Validation",
     "Attribute Validation",
     "Diagnostics Validation",
-    "Prescriptive Validation"
+    "Prescriptive Validation",
+    "Report Generation"
 ]
 tabs = st.tabs(tab_list)
 
@@ -570,5 +591,31 @@ with tabs[5]:
     if st.button("Run Prescriptive Validation", key="run_presc_val", disabled=not prerequisites_met):
         with st.spinner('Running...'):
             st.info("Validation logic for 'Prescriptive' is not yet implemented.")
-            
+
     # (Display results logic will go here)
+
+with tabs[6]:
+    # --- Define Report Generation Configuration ---
+    validation_filter_cols = {
+        "tdt_point_survey": "TDT",
+        "tdt_calculation": "TDT",
+        "tdt_attribute": "TDT",
+        "tdt_diagnostics": "TDT"
+    }
+    submodule_options = {
+        "Point Survey Validation": "tdt_point_survey",
+        "Calculation Validation": "tdt_calculation",
+        "Attribute Validation": "tdt_attribute",
+        "Diagnostics Validation": "tdt_diagnostics",
+    }
+
+    # --- Render the reusable tab UI ---
+    display_report_generation_tab(
+        st,
+        st.session_state,
+        "TDT",
+        validation_filter_cols,
+        submodule_options,
+        highlight_issue_rows,  # Use the appropriate styling function
+        axis=1
+    )

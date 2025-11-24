@@ -3,9 +3,22 @@ import streamlit as st
 
 @st.cache_data
 def validate_data(model_dfs, prism_df):
-    """
-    Performs the comparison logic for the 'Metric Mapping' section and
-    returns a dictionary of results.
+    """Validates metric mapping details between TDT and PRISM data.
+
+    This function compares key metric attributes (`POINT_NAME`,
+    `POINT_DESCRIPTION`, `FUNCTION`, `POINT_TYPE`, `POINT_UNIT`) for each
+    metric on a per-model basis. It includes special logic to handle
+    `PRiSM Calc` points, where mismatches in certain fields are ignored.
+
+    Args:
+        model_dfs (dict[str, pd.DataFrame]): A dictionary of DataFrames parsed
+            from the TDT, where keys are model names.
+        prism_df (pd.DataFrame): A DataFrame containing the metric mapping data
+            queried from the PRISM database.
+
+    Returns:
+        dict: A dictionary containing the validation results, with keys for
+        "summary", "matches", "mismatches", and "all_entries".
     """
     prism_df = prism_df.copy()
     all_matches = []
@@ -28,7 +41,22 @@ def validate_data(model_dfs, prism_df):
     if 'POINT_TYPE' in prism_df.columns:
         prism_df['POINT_TYPE'] = prism_df['POINT_TYPE'].str.title().str.replace('Prism Calc', 'PRiSM Calc', regex=False)
     if 'FUNCTION' in prism_df.columns:
-        prism_df['FUNCTION'] = prism_df['FUNCTION'].str.title().str.replace('Non-Modeled', 'Not Modeled', regex=False)
+        # Standardize casing first
+        prism_df['FUNCTION'] = prism_df['FUNCTION'].str.title()
+
+        if 'Modeled in Profile' in prism_df.columns:
+            # Identify 'Non-Modeled' entries (which results from .title())
+            mask_non_modeled = prism_df['FUNCTION'] == 'Non-Modeled'
+            mask_in_profile = prism_df['Modeled in Profile'] == 'YES'
+
+            # If YES then 'Non-Modeled' to 'Not in Diagnostics'
+            prism_df.loc[mask_non_modeled & mask_in_profile, 'FUNCTION'] = 'Not in Diagnostics'
+            
+            # If NO then 'Non-Modeled' to 'Not Modeled'
+            prism_df.loc[mask_non_modeled & ~mask_in_profile, 'FUNCTION'] = 'Not Modeled'
+        else:
+            # Fallback behavior if 'Modeled in Profile' is missing
+            prism_df['FUNCTION'] = prism_df['FUNCTION'].str.replace('Non-Modeled', 'Not Modeled', regex=False)
 
     # 2. Setup for comparison
     columns_to_compare = ['POINT_NAME', 'POINT_DESCRIPTION', 'FUNCTION', 'POINT_TYPE', 'POINT_UNIT']
@@ -134,10 +162,9 @@ def validate_data(model_dfs, prism_df):
 
         # Get existing columns in the ideal order and then the rest
         existing_cols_in_order = [c for c in col_order if c in all_entries_df.columns]
-        remaining_cols = [c for c in all_entries_df.columns if c not in existing_cols_in_order]
 
         # Combine to get the final order
-        final_order = existing_cols_in_order + remaining_cols
+        final_order = existing_cols_in_order
         all_entries_df = all_entries_df[final_order]
 
     matches_df = pd.concat(all_matches, ignore_index=True) if all_matches else pd.DataFrame()
@@ -149,10 +176,9 @@ def validate_data(model_dfs, prism_df):
 
         # Get existing columns in the ideal order and then the rest
         existing_cols_in_order = [c for c in col_order if c in matches_df.columns]
-        remaining_cols = [c for c in matches_df.columns if c not in existing_cols_in_order]
 
         # Combine to get the final order
-        final_order = existing_cols_in_order + remaining_cols
+        final_order = existing_cols_in_order
         matches_df = matches_df[final_order]
 
     final_mismatches_dict = {}
