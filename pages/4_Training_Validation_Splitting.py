@@ -44,21 +44,21 @@ if outlier_file is not None and no_outlier_file is not None and point_list_datas
     # Automatically extract site_name, model_name, inclusive_dates from filename if cleaned outlier file name format is correct
     auto_site_name, auto_model_name, auto_inclusive_dates = cleaned_dataset_name_split(outlier_file.name)
 
-    # Get user inputs for site_name, utility_name, model_name, sprint_name, inclusive_dates (Saves it to session_state now)
+    # Get user inputs for site_name, system_name, model_name, sprint_name, inclusive_dates (Saves it to session_state now)
     get_model_info(auto_site_name, auto_model_name, auto_inclusive_dates)
 
     if (st.button("Split Dataset", type="primary")):
 
         site_name = st.session_state.site_name
-        utility_name = st.session_state.utility_name
+        system_name = st.session_state.system_name
         model_name = st.session_state.model_name
         sprint_name = st.session_state.sprint_name
         inclusive_dates = st.session_state.inclusive_dates
 
         # Path to save datasets and visualizations after splitting
         base_path = Path.cwd()
-        data_splitting_path = base_path / site_name / utility_name / sprint_name / model_name / "data_splitting"
-        dataset_path = base_path / site_name / utility_name / sprint_name / model_name / "dataset"
+        data_splitting_path = base_path / site_name / system_name / sprint_name / model_name / "data_splitting"
+        dataset_path = base_path / site_name / system_name / sprint_name / model_name / "dataset"
         # Create folders if they don't exist
         data_splitting_path.mkdir(parents=True, exist_ok=True)
         # Should already exist but just in case

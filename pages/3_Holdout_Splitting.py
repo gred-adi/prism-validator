@@ -14,7 +14,7 @@ render_sidebar()
 def get_and_cache_model_info_from_file():
     """
     Asks the user for the raw and cleaned datasets and asks for site_name,
-    utility_name, model_name, sprint_name, and inclusive_dates. Also reads from the files for the
+    system_name, model_name, sprint_name, and inclusive_dates. Also reads from the files for the
     raw and cleaned dataframes.
 
     Stores all the information and dataframes in the session state for later use.
@@ -29,7 +29,7 @@ def get_and_cache_model_info_from_file():
         # Automatically extract site_name, model_name, inclusive_dates from filename if cleaned file name format is correct
         auto_site_name, auto_model_name, auto_inclusive_dates = cleaned_dataset_name_split(cleaned_file.name)
 
-        # Get user inputs for site_name, utility_name, model_name, sprint_name, inclusive_dates
+        # Get user inputs for site_name, system_name, model_name, sprint_name, inclusive_dates
         get_model_info(auto_site_name, auto_model_name, auto_inclusive_dates)
 
         with st.spinner("Reading Files..."):
@@ -40,7 +40,7 @@ def get_and_cache_model_info_from_file():
         st.session_state.raw_df = raw_df
         st.session_state.cleaned_df = cleaned_df
         st.session_state.has_data = True
-        # return raw_df, cleaned_df, site_name, utility_name, model_name, sprint_name, inclusive_dates
+        # return raw_df, cleaned_df, site_name, system_name, model_name, sprint_name, inclusive_dates
 
 st.header("Split Holdout Dataset")
 
@@ -64,7 +64,7 @@ if st.session_state.has_data == False:
         if st.button("Yes"):
             try:
                 site_name = st.session_state.site_name
-                utility_name = st.session_state.utility_name
+                system_name = st.session_state.system_name
                 model_name = st.session_state.model_name
                 sprint_name = st.session_state.sprint_name
                 inclusive_dates = st.session_state.inclusive_dates
@@ -97,7 +97,7 @@ if st.session_state.has_data == True:
     st.markdown(f"""
             Current Data:
             Site Name: {st.session_state.site_name}
-            Utility Name: {st.session_state.utility_name}
+            System Name: {st.session_state.system_name}
             Model Name: {st.session_state.model_name}
             Sprint Name: {st.session_state.sprint_name}
             Inclusive Dates: {st.session_state.inclusive_dates}
@@ -108,7 +108,7 @@ if st.session_state.has_data == True:
         st.session_state.has_data = False
 
     site_name = st.session_state.site_name
-    utility_name = st.session_state.utility_name
+    system_name = st.session_state.system_name
     model_name = st.session_state.model_name
     sprint_name = st.session_state.sprint_name
     inclusive_dates = st.session_state.inclusive_dates
@@ -125,8 +125,8 @@ if st.session_state.has_data == True:
         split_mark = split_mark
 
     if (st.button("Split Dataset", type="primary")):
-        # if not site_name or not utility_name or not model_name or not sprint_name or not inclusive_dates:
-        #     st.error("Please fill in all the missing fields: Site Name, Utility Name, Model Name, Sprint Name, and Inclusive Dates.")
+        # if not site_name or not system_name or not model_name or not sprint_name or not inclusive_dates:
+        #     st.error("Please fill in all the missing fields: Site Name, System Name, Model Name, Sprint Name, and Inclusive Dates.")
         if not split_mark:
             st.error("Please specify a valid Split Mark (float or date).")
         else:
@@ -142,7 +142,7 @@ if st.session_state.has_data == True:
             with st.spinner("Saving datasets..."):
                 # Path to save datasets after splitting
                 base_path = Path.cwd()
-                dataset_path = base_path / site_name / utility_name / sprint_name / model_name / "dataset"
+                dataset_path = base_path / site_name / system_name / sprint_name / model_name / "dataset"
                 # Create folders if they don't exist
                 dataset_path.mkdir(parents=True, exist_ok=True)
 

@@ -11,11 +11,11 @@ st.header("Model QA")
 # Generate config meta table
 st.write("Please enter the following information:")
 site_name = st.text_input("Site Name (e.g., TVI/TSI)")
-utility_name = st.text_input("Utility Name (e.g., BOP)")
+system_name = st.text_input("System Name (e.g., BOP)")
 
 if st.button("Generate QA report", type="primary"):
-    if not site_name or not utility_name:
-        st.error("Please enter both Site Name and Utility Name.")
+    if not site_name or not system_name:
+        st.error("Please enter both Site Name and System Name.")
         st.stop()
 
     # Can be moved to text input if necessary
@@ -26,13 +26,13 @@ if st.button("Generate QA report", type="primary"):
     alert = 10.0
 
     base_path = Path.cwd()
-    dataset_path = base_path / site_name / utility_name
+    dataset_path = base_path / site_name / system_name
     constraint_table = dataset_path / "constraint_table.csv"
 
     df_partial = build_partial_config_table(
         dataset_path,
         site_name,
-        utility_name,
+        system_name,
         sub_ts_length,
         n_ts_above_thresh,
         time_interval,

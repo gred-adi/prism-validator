@@ -8,9 +8,7 @@ from utils.model_dev_utils import data_cleaning_read_prism_csv, cleaned_dataset_
 from pathlib import Path
 from datetime import datetime, time as dt_time
 
-st.set_page_config(page_title="Data Cleaning", page_icon="1️⃣", layout="wide")
-
-render_sidebar()
+st.set_page_config(page_title="Data Cleansing", page_icon="1️⃣", layout="wide")
 
 # --- Helper Functions for State Management ---
 
@@ -114,9 +112,9 @@ def read_process_cache_files(raw_file, point_list_dataset_file):
 
 # --- Main UI ---
 
-st.header("Data Cleaning")
+st.header("Data Cleansing")
 
-site_name, utility_name, model_name, sprint_name, inclusive_dates = None, None, None, None, None
+site_name, system_name, model_name, sprint_name, inclusive_dates = None, None, None, None, None
 project_points_df, raw_df, raw_df_header = None, None, None
 
 # Initialize Session State
@@ -130,8 +128,7 @@ raw_file = st.file_uploader("Upload your RAW dataset file", type=["csv"], accept
 point_list_dataset_file = st.file_uploader("Upload your POINT LIST dataset file (project_points.csv)", type=["csv"], accept_multiple_files=False)
 
 if raw_file is not None and point_list_dataset_file is not None:
-    st.success(f"File '{raw_file.name}' uploaded successfully.")
-    st.success(f"File '{point_list_dataset_file.name}' uploaded successfully.")
+    st.success(f"Files '{raw_file.name}' & '{point_list_dataset_file.name}' uploaded successfully.")
 
     if 'model' in st.session_state and st.session_state.model == raw_file.name:
 
@@ -158,7 +155,7 @@ if raw_file is not None and point_list_dataset_file is not None:
         if st.session_state.use_cache_decision == 'yes':
             try:
                 site_name = st.session_state.site_name
-                utility_name = st.session_state.utility_name
+                system_name = st.session_state.system_name
                 model_name = st.session_state.model_name
                 sprint_name = st.session_state.sprint_name
                 inclusive_dates = st.session_state.inclusive_dates
@@ -355,7 +352,8 @@ if raw_df is not None:
         export_filtered_df = pd.concat([raw_df_header, filtered_df])
 
         base_path = Path.cwd()
-        dataset_path = base_path / st.session_state.site_name / st.session_state.utility_name / st.session_state.sprint_name / st.session_state.model_name / "dataset"
+        # FIXED: Replaced utility_name with system_name
+        dataset_path = base_path / st.session_state.site_name / st.session_state.system_name / st.session_state.sprint_name / st.session_state.model_name / "dataset"
         dataset_path.mkdir(parents=True, exist_ok=True)
         dataset_file_path = dataset_path / f"CLEANED-{model_name}-{inclusive_dates}-RAW.csv"
         export_filtered_df.to_csv(dataset_file_path, index=False)
@@ -385,7 +383,8 @@ if st.session_state.filters_applied:
 
     if st.button("Generate Report / Visuals"):
         base_path = Path.cwd()
-        dataset_path = base_path / st.session_state.site_name / st.session_state.utility_name / st.session_state.sprint_name / st.session_state.model_name / "dataset"
+        # FIXED: Replaced utility_name with system_name
+        dataset_path = base_path / st.session_state.site_name / st.session_state.system_name / st.session_state.sprint_name / st.session_state.model_name / "dataset"
         report_file_path = dataset_path / f"CLEANED-{model_name}-{inclusive_dates}-DATA-CLEANING-REPORT.pdf"
 
         # Generate simple report

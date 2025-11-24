@@ -68,7 +68,7 @@ if data_file is not None and fault_detection_file is not None:
         st.dataframe(df_scores)
 
         base_path = Path.cwd()
-        relative_deviation_path = base_path/ st.session_state.site_name / st.session_state.utility_name / st.session_state.sprint_name / st.session_state.model_name / "relative_deviation"
+        relative_deviation_path = base_path/ st.session_state.site_name / st.session_state.system_name / st.session_state.sprint_name / st.session_state.model_name / "relative_deviation"
         relative_deviation_path.mkdir(parents=True, exist_ok=True)
         accuracy_file_path = relative_deviation_path / f"{st.session_state.model_name}_Accuracy.csv"
         df_scores.to_csv(accuracy_file_path, index=False)
