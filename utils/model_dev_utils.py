@@ -10,7 +10,6 @@ from datetime import datetime
 from typing import Tuple, Union, Dict, Any
 from pathlib import Path
 from scipy.stats import pearsonr
-# Removed FPDF import
 from io import BytesIO
 from playwright.sync_api import sync_playwright
 from jinja2 import Environment
@@ -637,76 +636,117 @@ def split_holdout(
 
 def generate_split_holdout_report(stats: Dict[str, Any], split_mark_used: str, pdf_file_path: Path, fig: plt.figure):
     """
-    Generates a PDF report with the data split figure and stats tables.
+    Generates a PDF report with the data split figure and stats tables using Playwright/HTML.
+    Replaces the old FPDF version.
     """
-    # NOTE: Keeping FPDF here for now as requested to only change Data Cleansing, 
-    # unless you want this one migrated to Playwright as well?
-    # For now, focusing on the Data Cleansing module's consistency.
-    pdf = FPDF(orientation="landscape")
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, "Data Split Report", 0, 1, "C")
-    pdf.ln(5)
+    env = Environment()
+    template_str = """
+    <html>
+    <head>
+        <style>
+            body { font-family: "Helvetica", "Arial", sans-serif; color: #333; margin: 40px; }
+            h1 { color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; }
+            h2 { color: #2980b9; margin-top: 30px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+            .info-box { background-color: #f9f9f9; border: 1px solid #ddd; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
+            .stat-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
+            .stat-table th, .stat-table td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+            .stat-table th { background-color: #eee; font-weight: bold; }
+            .img-container { text-align: center; margin-top: 20px; page-break-inside: avoid; }
+            img { max-width: 100%; height: auto; border: 1px solid #ccc; }
+            .footer { font-size: 0.8em; color: #999; text-align: center; margin-top: 50px; }
+        </style>
+    </head>
+    <body>
+        <h1>Data Split Report</h1>
+        <p>Generated on: {{ generation_date }}</p>
 
-    # Add figure to pdf
+        <div class="info-box">
+            <strong>Split Configuration</strong><br>
+            Split Mark Used: {{ split_mark }}
+        </div>
+
+        <h2>Split Statistics</h2>
+        <table class="stat-table">
+            <thead>
+                <tr>
+                    <th>Dataset</th>
+                    <th>Start Time</th>
+                    <th>End Time</th>
+                    <th>Rows</th>
+                    <th>Duration (Days)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for set_name, stat in stats.items() %}
+                <tr>
+                    <td><strong>{{ set_name }}</strong></td>
+                    <td>{{ stat.start }}</td>
+                    <td>{{ stat.end }}</td>
+                    <td>{{ stat.formatted_size }}</td>
+                    <td>{{ stat.num_days }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <h2>Timeline Visualization</h2>
+        {% if img_data %}
+        <div class="img-container">
+            <img src="data:image/png;base64,{{ img_data }}" />
+        </div>
+        {% else %}
+        <p>No visualization available.</p>
+        {% endif %}
+
+        <div class="footer">
+            PRISM Toolkit - Holdout Split Module
+        </div>
+    </body>
+    </html>
+    """
+    
+    # Prepare Image
+    img_b64 = None
     if fig:
-        pdf.set_font("Arial", "B", 14)
-        with BytesIO() as img_buffer:
-            fig.savefig(img_buffer, format="png", bbox_inches='tight')
-            img_buffer.seek(0)
-            image_bytes = img_buffer.read()
-            pdf.image(image_bytes, x=10, y=30, w=pdf.w - 20, type="PNG")
-        plt.close(fig)
-        pdf.ln(120)
-    else:
-        pdf.cell(0, 10, "No time span chart to display.", 0, 1, "L")
+        buf = BytesIO()
+        fig.savefig(buf, format="png", bbox_inches='tight', dpi=100)
+        buf.seek(0)
+        img_b64 = base64.b64encode(buf.read()).decode('utf-8')
+        buf.close()
 
-    # Add stats table to pdf
-    pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, "Split Statistics", 0, 1, "L")
-    pdf.set_font("Arial", "", 12)
-    pdf.cell(0, 8, f"Split mark used: {split_mark_used}", 0, 1)
-    pdf.ln(5)
+    # Format Stats for Template
+    formatted_stats = {}
+    for key, val in stats.items():
+        formatted_stats[key.title()] = {
+            "size": val.get("size", 0),  # Raw integer for logic check
+            "formatted_size": f"{val.get('size', 0):,}",  # String with commas for display
+            "start": val.get("start").strftime("%Y-%m-%d %H:%M:%S") if val.get("start") else "N/A",
+            "end": val.get("end").strftime("%Y-%m-%d %H:%M:%S") if val.get("end") else "N/A",
+            "num_days": val.get("num_days", 0)
+        }
 
-    for set_name, stat in stats.items():
-        pdf.set_font("Arial", "B", 12)
-        pdf.cell(0, 8, f"{set_name.title()}", 0, 1)
-        pdf.set_font("Arial", "", 10)
+    template = env.from_string(template_str)
+    html = template.render(
+        generation_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        split_mark=split_mark_used,
+        stats=formatted_stats,
+        img_data=img_b64
+    )
 
-        if stat.get("size", 0) > 0:
-            start_str = stat.get("start").strftime("%Y-%m-%d %H:%M:%S") if stat.get("start") else "N/A"
-            end_str = stat.get("end").strftime("%Y-%m-%d %H:%M:%S") if stat.get("end") else "N/A"
-
-            # Create a simple table with borders (1)
-            pdf.cell(40, 6, "Metric", 1)
-            pdf.cell(0, 6, "Value", 1)
-            pdf.ln()
-
-            pdf.cell(40, 6, "Start", 1)
-            pdf.cell(0, 6, start_str, 1)
-            pdf.ln()
-
-            pdf.cell(40, 6, "End", 1)
-            pdf.cell(0, 6, end_str, 1)
-            pdf.ln()
-
-            pdf.cell(40, 6, "Rows", 1)
-            pdf.cell(0, 6, f"{stat.get('size'):,}", 1) # Added comma formatting
-            pdf.ln()
-
-            pdf.cell(40, 6, "Number of days", 1)
-            pdf.cell(0, 6, str(stat.get("num_days", "N/A")), 1)
-            pdf.ln()
-
-            pdf.ln(5) # Space after table
-        else:
-            pdf.cell(0, 6, "(Empty set)", 0, 1)
-            pdf.ln(5)
+    # Generate PDF using Playwright
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
     try:
-        pdf.output(pdf_file_path)
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.set_content(html)
+            page.pdf(path=str(pdf_file_path), format="A4", margin={'top': '1cm', 'bottom': '1cm', 'left': '1cm', 'right': '1cm'})
+            browser.close()
         return True
     except Exception as e:
+        print(f"PDF generation error: {e}")
         return False
 
 def read_prism_csv(df: pd.DataFrame):

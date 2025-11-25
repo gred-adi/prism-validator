@@ -1,259 +1,390 @@
 import streamlit as st
 import pandas as pd
-
-from pathlib import Path
-from utils.model_dev_utils import cleaned_dataset_name_split, split_holdout, generate_split_holdout_report
-from utils.app_ui import render_sidebar, get_model_info
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import seaborn as sns
+from pathlib import Path
+from datetime import datetime
 
-st.set_page_config(page_title="Split Holdout Dataset", page_icon="2️⃣")
+# Import utils
+from utils.model_dev_utils import cleaned_dataset_name_split, split_holdout, generate_split_holdout_report
+from utils.app_ui import render_sidebar
+
+st.set_page_config(page_title="Split Holdout Dataset", page_icon="2️⃣", layout="wide")
 
 render_sidebar()
 
-def get_and_cache_model_info_from_file():
-    """
-    Asks the user for the raw and cleaned datasets and asks for site_name,
-    system_name, model_name, sprint_name, and inclusive_dates. Also reads from the files for the
-    raw and cleaned dataframes.
+# --- Initialize Session State ---
+if 'holdout_step' not in st.session_state: st.session_state.holdout_step = 1
 
-    Stores all the information and dataframes in the session state for later use.
-    """
-    raw_file = st.file_uploader("Upload your RAW dataset file", type=["csv"], accept_multiple_files=False)
-    cleaned_file = st.file_uploader("Upload your CLEANED RAW dataset file", type=["csv"], accept_multiple_files=False)
+# Data States
+if 'holdout_raw_df' not in st.session_state: st.session_state.holdout_raw_df = None
+if 'holdout_cleaned_df' not in st.session_state: st.session_state.holdout_cleaned_df = None
+if 'holdout_raw_header' not in st.session_state: st.session_state.holdout_raw_header = None
+if 'holdout_split_mark_date' not in st.session_state: st.session_state.holdout_split_mark_date = None
+if 'holdout_split_pct' not in st.session_state: st.session_state.holdout_split_pct = 0.15
 
-    if raw_file is not None and cleaned_file is not None:
-        st.success(f"File '{raw_file.name}' uploaded successfully.")
-        st.success(f"File '{cleaned_file.name}' uploaded successfully.")
+# Metadata States
+if 'site_name' not in st.session_state: st.session_state.site_name = ""
+if 'system_name' not in st.session_state: st.session_state.system_name = ""
+if 'model_name' not in st.session_state: st.session_state.model_name = ""
+if 'sprint_name' not in st.session_state: st.session_state.sprint_name = ""
+if 'inclusive_dates' not in st.session_state: st.session_state.inclusive_dates = ""
 
-        # Automatically extract site_name, model_name, inclusive_dates from filename if cleaned file name format is correct
-        auto_site_name, auto_model_name, auto_inclusive_dates = cleaned_dataset_name_split(cleaned_file.name)
+# --- Helper Functions ---
+def set_step(step):
+    st.session_state.holdout_step = step
 
-        # Get user inputs for site_name, system_name, model_name, sprint_name, inclusive_dates
-        get_model_info(auto_site_name, auto_model_name, auto_inclusive_dates)
+def next_step():
+    st.session_state.holdout_step += 1
 
-        with st.spinner("Reading Files..."):
-            raw_df = pd.read_csv(raw_file)
-            cleaned_df = pd.read_csv(cleaned_file)
+def prev_step():
+    st.session_state.holdout_step -= 1
 
-        # Store in cache
-        st.session_state.raw_df = raw_df
-        st.session_state.cleaned_df = cleaned_df
-        st.session_state.has_data = True
-        # return raw_df, cleaned_df, site_name, system_name, model_name, sprint_name, inclusive_dates
-
-st.header("Split Holdout Dataset")
-
-st.write(
-    "This page is for splitting the holdout dataset from the cleaned dataset. To begin, please upload the raw and cleaned raw datasets below."
-)
-
-if 'raw_df' not in st.session_state:
-    st.session_state.raw_df = None
-
-if 'cleaned_df' not in st.session_state:
-    st.session_state.cleaned_df = None
-
-if 'has_data' not in st.session_state:
-    st.session_state.has_data = False
-
-if st.session_state.has_data == False:
-    # raw_df and cleaned_df found in cache
-    if st.session_state.raw_df is not None and st.session_state.cleaned_df is not None:
-        st.info(f"Data for {st.session_state.model_name} found. Would you like to use it?")
-        if st.button("Yes"):
-            try:
-                site_name = st.session_state.site_name
-                system_name = st.session_state.system_name
-                model_name = st.session_state.model_name
-                sprint_name = st.session_state.sprint_name
-                inclusive_dates = st.session_state.inclusive_dates
-                raw_df = st.session_state.raw_df
-                cleaned_df = st.session_state.cleaned_df
-
-                # Might cause issues because there is no raw_df_header unless it came from data_cleaning, needs testing
-                raw_df_header = st.session_state.raw_df_header
-
-                # Add original headers to the dataframes to match current process
-                raw_df.columns = raw_df_header.columns
-                raw_df = pd.concat([raw_df_header, raw_df])
-
-                cleaned_df.columns = raw_df_header.columns
-                cleaned_df = pd.concat([raw_df_header, cleaned_df])
-
-                st.session_state.has_data = True
-            except KeyError or AttributeError:
-                st.error("Cache was incomplete. Please upload the files.")
-                get_and_cache_model_info_from_file()
-
-        elif st.button("No"):
-            # Add code to reset cache values
-            get_and_cache_model_info_from_file()
-    # raw_df and cleaned_df not found in cache
-    else:
-        get_and_cache_model_info_from_file()
-
-if st.session_state.has_data == True:
-    st.markdown(f"""
-            Current Data:
-            Site Name: {st.session_state.site_name}
-            System Name: {st.session_state.system_name}
-            Model Name: {st.session_state.model_name}
-            Sprint Name: {st.session_state.sprint_name}
-            Inclusive Dates: {st.session_state.inclusive_dates}
-            """)
-    if st.button("Re-enter Data"):
-        st.session_state.raw_df = None
-        st.session_state.cleaned_df = None
-        st.session_state.has_data = False
-
-    site_name = st.session_state.site_name
-    system_name = st.session_state.system_name
-    model_name = st.session_state.model_name
-    sprint_name = st.session_state.sprint_name
-    inclusive_dates = st.session_state.inclusive_dates
-    remove_header_rows = 4
-
-    st.header("Split Mark")
-    st.write("Specify the split mark to divide the cleaned dataset into training and holdout sets.")
-    st.write("This can be a float (e.g., 0.1 for 10% holdout) or a date (YYYY-MM-DD) to split based on date. If 0.1 is selected, 10% of the data will be used as the holdout set. If a date is selected, all data after that date will be used as the holdout set.")
-    split_mark = st.text_input("Split Mark (float for fraction or date in YYYY-MM-DD format)")
-    # If float, convert to float, if not, keep it as string
+def load_data(raw_file, cleaned_file):
+    """Reads files and populates session state using dynamic header detection."""
     try:
-        split_mark = float(split_mark)
-    except ValueError:
-        split_mark = split_mark
+        # Parse filename for metadata defaults
+        try:
+            site, model, dates = cleaned_dataset_name_split(cleaned_file.name)
+            if not st.session_state.site_name: st.session_state.site_name = site
+            if not st.session_state.model_name: st.session_state.model_name = model
+            if not st.session_state.inclusive_dates: st.session_state.inclusive_dates = dates
+        except Exception:
+            # Fallback if filename parsing fails (non-standard format)
+            pass
+        
+        # Read Files with low_memory=False to avoid DtypeWarning on mixed columns
+        # We read without header initially to inspect the structure
+        raw_df_full = pd.read_csv(raw_file, header=None, low_memory=False)
+        cleaned_df_full = pd.read_csv(cleaned_file, header=None, low_memory=False)
+        
+        # --- Dynamic Header Detection ---
+        # Instead of hardcoding 4 rows, we find where the actual data starts.
+        # We assume the first column contains timestamps.
+        
+        # Coerce the first column to datetime. Errors become NaT.
+        # The first valid date index is the start of our data.
+        first_col_dates = pd.to_datetime(raw_df_full.iloc[:, 0], errors='coerce')
+        data_start_idx = first_col_dates.first_valid_index()
+        
+        if data_start_idx is None:
+            # Fallback: If detection fails, try to force standard 4 rows
+            st.warning("Could not auto-detect timestamp column. Assuming standard 4 header rows.")
+            data_start_idx = 4
+            
+        # Split Header and Data based on detected index
+        raw_header = raw_df_full.iloc[:data_start_idx].copy()
+        raw_data = raw_df_full.iloc[data_start_idx:].copy()
+        cleaned_data = cleaned_df_full.iloc[data_start_idx:].copy()
+        
+        # Assign Column Names
+        # Standard PRISM files usually have column names in the 2nd row (index 1)
+        # If detected data start is > 1, we try to grab row index 1 for names.
+        # If data starts at 0 or 1, we might not have headers or they are at 0.
+        name_row_idx = 1 if data_start_idx > 1 else 0
+        col_names = raw_df_full.iloc[name_row_idx].astype(str).values
+        
+        raw_data.columns = col_names
+        cleaned_data.columns = col_names
+        
+        # Rename first column to 'DATETIME' for internal consistency
+        # (Using columns[0] ensures we target the right one regardless of name)
+        raw_data.rename(columns={raw_data.columns[0]: 'DATETIME'}, inplace=True)
+        cleaned_data.rename(columns={cleaned_data.columns[0]: 'DATETIME'}, inplace=True)
+        
+        # Convert to datetime using coerce to handle any lingering metadata rows
+        raw_data['DATETIME'] = pd.to_datetime(raw_data['DATETIME'], errors='coerce')
+        cleaned_data['DATETIME'] = pd.to_datetime(cleaned_data['DATETIME'], errors='coerce')
+        
+        # Drop rows where DATETIME became NaT (this cleans up any edge cases)
+        raw_data = raw_data.dropna(subset=['DATETIME'])
+        cleaned_data = cleaned_data.dropna(subset=['DATETIME'])
+        
+        # Sort by time
+        raw_data.sort_values('DATETIME', inplace=True)
+        cleaned_data.sort_values('DATETIME', inplace=True)
+        
+        st.session_state.holdout_raw_df = raw_data
+        st.session_state.holdout_cleaned_df = cleaned_data
+        st.session_state.holdout_raw_header = raw_header # Save exact header block to restore later
+        
+        return True
+    except Exception as e:
+        st.error(f"Error reading files: {e}")
+        return False
 
-    if (st.button("Split Dataset", type="primary")):
-        # if not site_name or not system_name or not model_name or not sprint_name or not inclusive_dates:
-        #     st.error("Please fill in all the missing fields: Site Name, System Name, Model Name, Sprint Name, and Inclusive Dates.")
-        if not split_mark:
-            st.error("Please specify a valid Split Mark (float or date).")
+# --- Page Layout ---
+st.title("Holdout Splitting Wizard")
+
+steps = ["1. Upload Data", "2. Configure Split", "3. Export & Report"]
+current_step = st.session_state.holdout_step
+st.progress(current_step / len(steps), text=f"Step {current_step}: {steps[current_step-1]}")
+
+# ==========================================
+# STEP 1: UPLOAD DATA
+# ==========================================
+if current_step == 1:
+    st.header("Step 1: Upload Data")
+    st.write("Upload the **RAW** and **CLEANED** datasets. These files should be the output of the Data Cleansing step.")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        raw_file = st.file_uploader("Upload RAW dataset", type=["csv"], key="u_raw")
+    with col2:
+        cleaned_file = st.file_uploader("Upload CLEANED dataset", type=["csv"], key="u_clean")
+        
+    if raw_file and cleaned_file:
+        if st.button("Load Files & Next", type="primary"):
+            with st.spinner("Reading and processing files..."):
+                success = load_data(raw_file, cleaned_file)
+                if success:
+                    next_step()
+                    st.rerun()
+
+# ==========================================
+# STEP 2: CONFIGURE SPLIT
+# ==========================================
+elif current_step == 2:
+    st.header("Step 2: Interactive Split Configuration")
+    
+    if st.session_state.holdout_cleaned_df is None:
+        st.error("No data loaded.")
+        st.button("Back", on_click=prev_step)
+        st.stop()
+        
+    df = st.session_state.holdout_cleaned_df
+    
+    # --- Split Control (Slider) ---
+    st.subheader("Define Holdout Size")
+    st.write("Drag the slider to define how much recent data to set aside for the Holdout set.")
+    
+    # Slider returns percentage (0-100)
+    split_pct_val = st.slider(
+        "Holdout Percentage (%)", 
+        min_value=5, 
+        max_value=50, 
+        value=int(st.session_state.holdout_split_pct * 100),
+        format="%d%%",
+        help="The percentage of data from the END of the timeline to reserve for Holdout."
+    )
+    
+    # Convert to float (0.0 - 1.0) and index
+    split_fraction = split_pct_val / 100.0
+    st.session_state.holdout_split_pct = split_fraction
+    
+    total_rows = len(df)
+    holdout_count = int(total_rows * split_fraction)
+    train_count = total_rows - holdout_count
+    
+    # Determine the split DATE based on the count
+    # We take the timestamp at the split index
+    if total_rows > 0:
+        split_date = df.iloc[train_count]['DATETIME']
+    else:
+        split_date = datetime.now()
+        
+    st.session_state.holdout_split_mark_date = split_date
+
+    # --- Visualization: Density & Timeline ---
+    st.subheader("Split Preview")
+    
+    fig, ax = plt.subplots(figsize=(12, 4))
+    
+    # 1. Plot Histogram/Density of Data Availability
+    # We use timestamps converted to numbers for histogramming
+    dates = mdates.date2num(df['DATETIME'])
+    
+    # Plot histogram (density of points over time)
+    n, bins, patches = ax.hist(dates, bins=100, color='#e0e0e0', edgecolor='white', label='Data Density')
+    
+    # 2. Add Vertical Line for Split
+    split_num = mdates.date2num(split_date)
+    ax.axvline(split_num, color='#FF4B4B', linestyle='--', linewidth=2, label=f'Split: {split_date.strftime("%Y-%m-%d")}')
+    
+    # 3. Highlight Regions
+    # Get Time Limits
+    start_num = mdates.date2num(df['DATETIME'].iloc[0])
+    end_num = mdates.date2num(df['DATETIME'].iloc[-1])
+    
+    # Train Region (Green)
+    ax.axvspan(start_num, split_num, color='#4CAF50', alpha=0.2, label=f'Train/Val ({100-split_pct_val}%)')
+    # Holdout Region (Orange)
+    ax.axvspan(split_num, end_num, color='#FFA726', alpha=0.3, label=f'Holdout ({split_pct_val}%)')
+    
+    # Formatting
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+    ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+    plt.xticks(rotation=15)
+    ax.set_yticks([]) # Hide y-axis counts (density is relative)
+    ax.set_title("Data Density Timeline & Split Point")
+    ax.legend(loc='upper left')
+    sns.despine(left=True)
+    
+    st.pyplot(fig)
+    plt.close(fig)
+    
+    # --- Impact Stats Table ---
+    st.markdown("### Segment Details")
+    c1, c2 = st.columns(2)
+    
+    with c1:
+        st.info(f"**Train / Validation Set**\n\n"
+                f"📅 **End:** {split_date.strftime('%Y-%m-%d %H:%M')}\n\n"
+                f"🔢 **Rows:** {train_count:,} ({(1-split_fraction)*100:.1f}%)")
+        
+    with c2:
+        st.warning(f"**Holdout Set**\n\n"
+                   f"📅 **Start:** {split_date.strftime('%Y-%m-%d %H:%M')}\n\n"
+                   f"🔢 **Rows:** {holdout_count:,} ({split_fraction*100:.1f}%)")
+        
+    st.markdown("---")
+    c_back, c_next = st.columns([1, 5])
+    with c_back:
+        st.button("⬅️ Back", on_click=prev_step)
+    with c_next:
+        st.button("Next: Review & Export ➡️", on_click=next_step, type="primary")
+
+# ==========================================
+# STEP 3: EXPORT
+# ==========================================
+elif current_step == 3:
+    st.header("Step 3: Review & Export")
+    
+    st.write("Please confirm the metadata for the file naming convention.")
+    
+    with st.container(border=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.session_state.site_name = st.text_input("Site Name", value=st.session_state.site_name)
+            st.session_state.system_name = st.text_input("System Name", value=st.session_state.system_name)
+            st.session_state.model_name = st.text_input("Model Name", value=st.session_state.model_name)
+        with col2:
+            st.session_state.sprint_name = st.text_input("Sprint Name", value=st.session_state.sprint_name)
+            st.session_state.inclusive_dates = st.text_input("Inclusive Dates", value=st.session_state.inclusive_dates, help="Format: YYYYMMDD-YYYYMMDD")
+
+    st.divider()
+    
+    # --- Calculate Stats for Preview ---
+    split_mark = st.session_state.holdout_split_mark_date
+    raw_df = st.session_state.holdout_raw_df
+    cleaned_df = st.session_state.holdout_cleaned_df
+    
+    # Filter subsets
+    train_val_df = cleaned_df[cleaned_df['DATETIME'] <= split_mark]
+    holdout_df = cleaned_df[cleaned_df['DATETIME'] > split_mark]
+    
+    # Helper to calc stats row
+    def get_stat_row(name, df):
+        if df.empty:
+            return {"Dataset": name, "Start Time": "N/A", "End Time": "N/A", "Rows": 0, "Duration (Days)": 0}
+        start = df['DATETIME'].iloc[0]
+        end = df['DATETIME'].iloc[-1]
+        return {
+            "Dataset": name,
+            "Start Time": start.strftime("%Y-%m-%d %H:%M"),
+            "End Time": end.strftime("%Y-%m-%d %H:%M"),
+            "Rows": f"{len(df):,}",
+            "Duration (Days)": (end - start).days + 1
+        }
+
+    stats_data = [
+        get_stat_row("Raw", raw_df),
+        get_stat_row("Cleaned", cleaned_df),
+        get_stat_row("Train / Validation", train_val_df),
+        get_stat_row("Holdout", holdout_df)
+    ]
+    stats_df_preview = pd.DataFrame(stats_data)
+
+    # --- Visualization: Re-render Timeline ---
+    st.subheader("Split Visualization")
+    fig, ax = plt.subplots(figsize=(10, 3))
+    dates = mdates.date2num(cleaned_df['DATETIME'])
+    ax.hist(dates, bins=100, color='#e0e0e0', edgecolor='white', label='Data Density')
+    split_num = mdates.date2num(split_mark)
+    ax.axvline(split_num, color='#FF4B4B', linestyle='--', linewidth=2, label='Split Mark')
+    
+    # Highlight Regions
+    start_num = mdates.date2num(cleaned_df['DATETIME'].iloc[0]) if not cleaned_df.empty else 0
+    end_num = mdates.date2num(cleaned_df['DATETIME'].iloc[-1]) if not cleaned_df.empty else 0
+    ax.axvspan(start_num, split_num, color='#4CAF50', alpha=0.2, label='Train/Val')
+    ax.axvspan(split_num, end_num, color='#FFA726', alpha=0.3, label='Holdout')
+    
+    ax.set_title(f"Dataset Split (Split Date: {split_mark.strftime('%Y-%m-%d')})")
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+    plt.xticks(rotation=15)
+    ax.legend(loc='upper left')
+    st.pyplot(fig)
+    
+    # --- Statistics Table ---
+    st.subheader("Split Statistics")
+    st.dataframe(stats_df_preview, hide_index=True, use_container_width=True)
+    
+    st.divider()
+    
+    if st.button("🚀 Process Split & Save Files", type="primary"):
+        meta_filled = all([
+            st.session_state.site_name, st.session_state.system_name, 
+            st.session_state.model_name, st.session_state.sprint_name, 
+            st.session_state.inclusive_dates
+        ])
+        
+        if not meta_filled:
+            st.error("Please fill in all metadata fields above.")
         else:
-            with st.spinner("Processing dataset split..."):
-                train_val, holdout, split_mark_used, stats = split_holdout(
-                    st.session_state.raw_df,
-                    st.session_state.cleaned_df,
+            with st.spinner("Processing split and generating report..."):
+                # Use the utility to perform the actual split and stats generation
+                # We pass the calculated split date
+                
+                # Note: We pass remove_header_rows=0 because we already stripped headers
+                # in the dynamic load_data function.
+                train_val, holdout, used_mark, stats = split_holdout(
+                    st.session_state.holdout_raw_df,
+                    st.session_state.holdout_cleaned_df,
                     split_mark,
-                    date_col="Point Name",
-                    remove_header_rows=remove_header_rows
+                    date_col="DATETIME", 
+                    remove_header_rows=0 
                 )
-
-            with st.spinner("Saving datasets..."):
-                # Path to save datasets after splitting
+                
+                # Restore Header: Prepend the original metadata rows
+                header_df = st.session_state.holdout_raw_header
+                
+                # Align column names for concatenation
+                train_val.columns = header_df.columns
+                holdout.columns = header_df.columns
+                
+                final_train_val = pd.concat([header_df, train_val], ignore_index=True)
+                final_holdout = pd.concat([header_df, holdout], ignore_index=True)
+                
+                # --- Save Files ---
                 base_path = Path.cwd()
-                dataset_path = base_path / site_name / system_name / sprint_name / model_name / "dataset"
-                # Create folders if they don't exist
+                dataset_path = base_path / st.session_state.site_name / st.session_state.system_name / st.session_state.sprint_name / st.session_state.model_name / "dataset"
                 dataset_path.mkdir(parents=True, exist_ok=True)
 
-                train_val_out = dataset_path / f"CLEANED-{model_name}-{inclusive_dates}-WITH-OUTLIER.csv"
-                holdout_out = dataset_path / f"{model_name}-{inclusive_dates}-HOLDOUT.csv"
+                train_val_out = dataset_path / f"CLEANED-{st.session_state.model_name}-{st.session_state.inclusive_dates}-WITH-OUTLIER.csv"
+                holdout_out = dataset_path / f"{st.session_state.model_name}-{st.session_state.inclusive_dates}-HOLDOUT.csv"
+                report_out = dataset_path / f"CLEANED-{st.session_state.model_name}-{st.session_state.inclusive_dates}-SPLIT-HOLDOUT-REPORT.pdf"
 
-                # If upload is successful, save the uploaded file to the dataset path and display the file path to the user
-                train_val.to_csv(train_val_out, index=False)
-                holdout.to_csv(holdout_out, index=False)
-                st.success(f"Train/Validation dataset saved to: {train_val_out}")
-                st.success(f"Holdout dataset saved to: {holdout_out}")
-
-            # Display split statistics
-            st.subheader("Split statistics")
-            st.write(f"Split mark used: {split_mark_used}")
-
-            # Prepare data for the plot
-            plot_data = []
-            # Define the keys we *want* to plot, normalized to lowercase
-            sets_to_plot = ["cleaned", "train_val", "holdout"]
-            # Define the desired order for the final plot
-            dataset_order = ["Cleaned", "Train_Val", "Holdout"]
-
-            # Iterate over the stats dictionary directly, like your table code
-            for set_name, stat in stats.items():
-
-                # Normalize the key from the dict to check against our list
-                normalized_set_name = set_name.lower()
-
-                # A more flexible check
-                # This checks if "cleaned" is in "cleaned", or "trainval" is in "train_val"
-                found = False
-                for plot_key in sets_to_plot:
-                    if plot_key in normalized_set_name:
-                        found = True
-                        break
-
-                if found:
-                    if stat.get("size", 0) > 0:
-                        start = stat.get("start")
-                        end = stat.get("end")
-
-                        if start is not None and end is not None:
-                            duration = (end - start)
-                            plot_data.append({
-                                "Dataset": set_name.title(),
-                                "Start": start,
-                                "Duration": duration
-                            })
-
-            if plot_data:
-                plot_df = pd.DataFrame(plot_data)
-
-                fig, ax = plt.subplots(figsize=(10, 3))
-
-                ax.barh(
-                    plot_df["Dataset"],
-                    plot_df["Duration"],
-                    left=plot_df["Start"]
-                )
-
-                ax.xaxis_date()
-                ax.xaxis.set_major_formatter(
-                    mdates.DateFormatter('%Y-%m-%d')
-                )
-
-                ax.set_xlabel("Date")
-                ax.set_ylabel("Dataset")
-                ax.set_title("Dataset Time Spans")
-                ax.grid(axis='x', linestyle='--', alpha=0.7)
-
-                ax.set_yticks(dataset_order)
-
-                fig.autofmt_xdate()
-
-                st.pyplot(fig)
-            else:
-                st.info("No data available to plot time spans.")
-
-            for set_name, stat in stats.items():
-                st.markdown(f"**{set_name.title()}**")
-                if stat["size"] > 0:
-                    # convert datetimes to readable strings
-                    start = stat["start"].strftime("%Y-%m-%d %H:%M:%S") if stat["start"] is not None else None
-                    end = stat["end"].strftime("%Y-%m-%d %H:%M:%S") if stat["end"] is not None else None
-                    st.table({
-                        "Metric": ["Start", "End", "Rows", "Number of days"],
-                        "Value": [start, end, stat["size"], stat["num_days"]],
-                    })
-                else:
-                    st.write("(Empty set)")
-
-            try:
-                report_file_path = dataset_path / f"CLEANED-{model_name}-{inclusive_dates}-SPLIT-HOLDOUT-REPORT.pdf"
-                with st.spinner(f"Generating PDF report..."):
-                    # Call the new utility function
-                    success = generate_split_holdout_report(
+                final_train_val.to_csv(train_val_out, index=False, header=False) 
+                final_holdout.to_csv(holdout_out, index=False, header=False)
+                
+                st.success(f"✅ Train/Validation set saved: `{train_val_out.name}`")
+                st.success(f"✅ Holdout set saved: `{holdout_out.name}`")
+                
+                # --- Generate PDF Report ---
+                # Pass the FIGURE generated above for the report
+                report_success = generate_split_holdout_report(
                     stats,
-                    split_mark_used,
-                    report_file_path,
+                    str(split_mark),
+                    report_out,
                     fig
-                    )
-
-                if success:
-                    st.success(f"Report saved to {report_file_path}")
+                )
+                plt.close(fig)
+                
+                if report_success:
+                    st.success(f"📄 Report generated: `{report_out.name}`")
                 else:
-                    st.error("Failed to generate PDF report. ")
-
-            except Exception as e:
-                st.error(f"PDF generation failed: {e}")
-
-            st.session_state.raw_df = None # free memory
-            st.session_state.cleaned_df = None
-            st.session_state.has_data = False
+                    st.warning("Report generation failed.")
+                    
+    st.markdown("---")
+    st.button("⬅️ Back", on_click=prev_step)
