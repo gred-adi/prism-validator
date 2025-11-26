@@ -4,13 +4,12 @@ import json
 import time
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import seaborn as sns
 from pathlib import Path
 from datetime import datetime, time as dt_time
 
 from utils.app_ui import render_sidebar
-# removed db_utils import as we now use TDT Survey
-# removed get_model_info import as we implement custom inputs in Step 3
 from utils.model_dev_utils import (
     data_cleaning_read_prism_csv, 
     cleaned_dataset_name_split, 
@@ -22,7 +21,6 @@ st.set_page_config(page_title="Data Cleansing", page_icon="1️⃣", layout="wid
 
 # --- Initialize Session State ---
 if 'cleansing_step' not in st.session_state: st.session_state.cleansing_step = 1
-# db state removed
 
 # Data Processing States
 if 'filters_applied' not in st.session_state: st.session_state.filters_applied = False
@@ -343,51 +341,108 @@ elif current_step == 2:
             col_stats = raw_df[num_col].describe()
             st.caption(f"Min: {col_stats['min']:.2f} | Max: {col_stats['max']:.2f} | Mean: {col_stats['mean']:.2f}")
             
-            # Smart Context: Histogram Visualization
-            try:
-                # Create a small histogram using matplotlib
-                fig, ax = plt.subplots(figsize=(5, 1.5))
-                # Use dropna to avoid plotting issues
-                data_to_plot = raw_df[num_col].dropna()
-                sns.histplot(data_to_plot, bins=30, kde=False, ax=ax, color="#3366ff", edgecolor=None)
-                ax.set_title(f"Distribution of {num_col}", fontsize=8)
-                ax.tick_params(axis='both', which='major', labelsize=7)
-                ax.set_xlabel("")
-                ax.set_ylabel("")
-                sns.despine(left=True, bottom=True)
-                ax.grid(axis='x', alpha=0.3)
-                st.pyplot(fig, use_container_width=True)
-                plt.close(fig)
-            except Exception as e:
-                st.caption("Could not generate histogram.")
+            # Smart Context: Visualizations (Histogram + Line Plot)
+            viz_tab1, viz_tab2 = st.tabs(["Histogram", "Time Series"])
+            
+            with viz_tab1:
+                try:
+                    fig_hist, ax_hist = plt.subplots(figsize=(5, 2))
+                    # Use dropna to avoid plotting issues
+                    data_to_plot = raw_df[num_col].dropna()
+                    sns.histplot(data_to_plot, bins=30, kde=False, ax=ax_hist, color="#3366ff", edgecolor=None)
+                    ax_hist.set_title(f"Distribution", fontsize=8)
+                    ax_hist.tick_params(axis='both', which='major', labelsize=7)
+                    ax_hist.set_xlabel("")
+                    ax_hist.set_ylabel("")
+                    sns.despine(left=True, bottom=True)
+                    ax_hist.grid(axis='x', alpha=0.3)
+                    st.pyplot(fig_hist, use_container_width=True)
+                    plt.close(fig_hist)
+                except Exception as e:
+                    st.caption("Could not generate histogram.")
+
+            with viz_tab2:
+                try:
+                    # Downsample for preview speed (max 2000 points)
+                    preview_df = raw_df[['DATETIME', num_col]].dropna()
+                    if len(preview_df) > 2000:
+                        preview_df = preview_df.iloc[::len(preview_df)//2000]
+                    
+                    fig_line, ax_line = plt.subplots(figsize=(5, 2))
+                    ax_line.plot(preview_df['DATETIME'], preview_df[num_col], color="#3366ff", linewidth=0.8)
+                    ax_line.set_title(f"Trend (Sampled)", fontsize=8)
+                    ax_line.tick_params(axis='both', which='major', labelsize=7)
+                    
+                    # Format dates nicely
+                    ax_line.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+                    ax_line.set_xlabel("")
+                    
+                    sns.despine(left=True, bottom=True)
+                    ax_line.grid(alpha=0.3)
+                    st.pyplot(fig_line, use_container_width=True)
+                    plt.close(fig_line)
+                except Exception as e:
+                    st.caption(f"Could not generate line plot: {e}")
 
             num_op = st.selectbox("Operator", ["<", "<=", "==", ">=", ">"], key="filter_op")
             num_val = st.number_input("Value", value=0.0, step=1.0, key="filter_val")
             if st.button("Add Numeric Filter", use_container_width=True):
                 add_filter(num_col, num_op, num_val)
 
-    # Column 2: Date
+    # Column 2: Date (UPDATED UI)
     with filter_col2:
         with st.container(border=True):
             st.subheader("📅 Date Filters")
-            dt_op = st.selectbox("Operator", ["< (remove before)", "> (remove after)", "between"], key="dt_op")
+            st.markdown("Use the slider to select a range, then choose to **Remove** data inside it or **Keep** only that range.")
             
-            dt_val = None
-            if dt_op == "between":
-                c1, c2 = st.columns(2)
-                d1 = c1.date_input("Start", value=pd.Timestamp.now(), key="d1")
-                t1 = c2.time_input("Start Time", value=dt_time(0,0), key="t1")
-                d2 = c1.date_input("End", value=pd.Timestamp.now(), key="d2")
-                t2 = c2.time_input("End Time", value=dt_time(23,59), key="t2")
-                dt_val = (pd.Timestamp.combine(d1, t1), pd.Timestamp.combine(d2, t2))
+            # Get date limits from data
+            min_dt = raw_df['DATETIME'].min().to_pydatetime()
+            max_dt = raw_df['DATETIME'].max().to_pydatetime()
+            
+            if min_dt and max_dt and min_dt < max_dt:
+                # Action Selector
+                filter_mode = st.radio(
+                    "Filter Mode", 
+                    ["Remove Range", "Keep Range"], 
+                    horizontal=True,
+                    help="'Remove Range' deletes data inside the blue slider area. 'Keep Range' deletes everything OUTSIDE."
+                )
+                
+                # Bi-directional Slider
+                # User requested slider for date, manual for time/precision
+                sel_range = st.slider(
+                    "Select Date Range",
+                    min_value=min_dt,
+                    max_value=max_dt,
+                    value=(min_dt, max_dt),
+                    format="MM/DD/YY"
+                )
+                
+                # Manual Time Inputs for precision
+                t_col1, t_col2 = st.columns(2)
+                with t_col1:
+                    start_time = st.time_input("Start Time", value=sel_range[0].time(), key="man_start_time")
+                with t_col2:
+                    end_time = st.time_input("End Time", value=sel_range[1].time(), key="man_end_time")
+                
+                # Combine
+                start_val = datetime.combine(sel_range[0].date(), start_time)
+                end_val = datetime.combine(sel_range[1].date(), end_time)
+                
+                if st.button("Apply Date Filter", use_container_width=True):
+                    if filter_mode == "Remove Range":
+                        # Logic: Remove data between start and end
+                        add_date_filter("between", (start_val, end_val))
+                        st.toast(f"Added: Remove data between {start_val.strftime('%Y-%m-%d %H:%M')} and {end_val.strftime('%Y-%m-%d %H:%M')}", icon="🗑️")
+                        
+                    else: # Keep Range
+                        # Logic: Remove everything BEFORE start AND everything AFTER end
+                        # This effectively "trims" the dataset to the selected window
+                        add_date_filter("< (remove before)", start_val)
+                        add_date_filter("> (remove after)", end_val)
+                        st.toast(f"Added: Keep data only between {start_val.strftime('%Y-%m-%d %H:%M')} and {end_val.strftime('%Y-%m-%d %H:%M')}", icon="✅")
             else:
-                c1, c2 = st.columns(2)
-                d = c1.date_input("Date", value=pd.Timestamp.now(), key="d_s")
-                t = c2.time_input("Time", value=dt_time(0,0), key="t_s")
-                dt_val = pd.Timestamp.combine(d, t)
-
-            if st.button("Add Date Filter", use_container_width=True):
-                add_date_filter(dt_op, dt_val)
+                st.warning("Insufficient date data to render slider.")
 
     # --- Impact Preview & Active Rules ---
     st.markdown("---")
@@ -428,7 +483,11 @@ elif current_step == 2:
                 st.markdown("**Date:**")
                 for i, (op, val) in enumerate(st.session_state.datetime_filters):
                     c1, c2 = st.columns([0.8, 0.2])
-                    val_str = f"{val[0]} to {val[1]}" if isinstance(val, tuple) else str(val)
+                    if isinstance(val, tuple):
+                        val_str = f"{val[0].strftime('%Y-%m-%d %H:%M')} to {val[1].strftime('%Y-%m-%d %H:%M')}"
+                    else:
+                        val_str = val.strftime('%Y-%m-%d %H:%M')
+                    
                     c1.code(f"{op} {val_str}")
                     c2.button("❌", key=f"d_d_{i}", on_click=delete_date_filter, args=(i,))
 
@@ -487,7 +546,10 @@ elif current_step == 3:
             if st.session_state.datetime_filters:
                 st.markdown("**Date:**")
                 for op, val in st.session_state.datetime_filters:
-                    val_str = f"{val[0]} to {val[1]}" if isinstance(val, tuple) else str(val)
+                    if isinstance(val, tuple):
+                        val_str = f"{val[0].strftime('%Y-%m-%d %H:%M')} to {val[1].strftime('%Y-%m-%d %H:%M')}"
+                    else:
+                        val_str = val.strftime('%Y-%m-%d %H:%M')
                     st.code(f"{op} {val_str}")
             else:
                 st.markdown("**Date:** None")
