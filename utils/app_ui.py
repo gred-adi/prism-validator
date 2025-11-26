@@ -1,45 +1,5 @@
 import streamlit as st
 
-def render_sidebar():
-    """
-    Renders a custom sidebar navigation menu.
-    
-    This function should be called in pages that need this specific navigation menu.
-    It links to the pages registered in app.py.
-    """
-    with st.sidebar:
-        st.divider()  # Add a separator from the main app navigation
-        st.subheader("Quick Access")
-        
-        # FIX 1: "main.py" does not exist in st.navigation. 
-        # Changed to "pages/Home.py" which is registered as "Home" in app.py
-        st.page_link("pages/Home.py", label="Home", icon="🏠")
-        
-        st.caption("Model Development")
-        
-        # FIX 2: Updated all filenames below to match the actual files in your 'pages/' folder
-        # and the definitions in your app.py
-        
-        # Was "pages/data_cleaning.py"
-        st.page_link("pages/2_Data_Cleansing.py", label="Data Cleansing", icon="1️⃣")
-        
-        # Was "pages/split_holdout_dataset.py"
-        st.page_link("pages/3_Holdout_Splitting.py", label="Holdout Splitting", icon="2️⃣")
-        
-        # Was "pages/outlier_removal.py"
-        st.page_link("pages/7_Outlier_Removal.py", label="Outlier Removal", icon="3️⃣")
-        
-        # Was "pages/train_validation_split.py"
-        st.page_link("pages/4_Training_Validation_Splitting.py", label="Train Validation Split", icon="4️⃣")
-        
-        st.caption("Model Validation")
-        
-        # Was "pages/calculate_accuracy.py"
-        st.page_link("pages/5_Model_Accuracy.py", label="Calculate Accuracy", icon="🅰️")
-        
-        # Was "pages/model_qa.py"
-        st.page_link("pages/6_Model_FPR.py", label="QA", icon="🅱️")
-
 def get_model_info(auto_site_name="", auto_model_name="", auto_inclusive_dates=""):
     """
     Gets user inputs for site_name, system_name, model_name, sprint_name, inclusive_dates

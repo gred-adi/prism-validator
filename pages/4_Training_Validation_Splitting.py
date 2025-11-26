@@ -5,7 +5,6 @@ from pathlib import Path
 from datetime import datetime
 
 # Import utils
-from utils.app_ui import render_sidebar
 from utils.model_dev_utils import (
     cleaned_dataset_name_split, 
     read_prism_csv, 

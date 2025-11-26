@@ -2,12 +2,10 @@ import streamlit as st
 import pandas as pd
 
 from pathlib import Path
-from utils.app_ui import render_sidebar, get_model_info
+from utils.app_ui import get_model_info
 from utils.model_val_utils import extract_numeric
 
 st.set_page_config(page_title="Calculate Accuracy", page_icon="🅰️")
-
-render_sidebar()
 
 st.header("Calculate Accuracy")
 

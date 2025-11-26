@@ -1,11 +1,8 @@
 import streamlit as st
 from pathlib import Path
-from utils.app_ui import render_sidebar
 from utils.model_val_utils import build_partial_config_table, merge_constraints, generate_report_from_table
 
 st.set_page_config(page_title="Model FPR", page_icon="🅱️")
-
-render_sidebar()
 
 st.header("Model QA")
 # Generate config meta table

@@ -8,7 +8,6 @@ from datetime import datetime
 
 # Import utils
 from utils.model_dev_utils import cleaned_dataset_name_split, split_holdout, generate_split_holdout_report
-from utils.app_ui import render_sidebar
 
 st.set_page_config(page_title="Split Holdout Dataset", page_icon="2️⃣", layout="wide")
 

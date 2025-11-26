@@ -1,5 +1,4 @@
 import streamlit as st
-from utils.app_ui import render_sidebar
 
 st.set_page_config(page_title="Outlier Removal", page_icon="3️⃣")
 
