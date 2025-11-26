@@ -1,44 +1,59 @@
 """
 This script defines the Home page of the Streamlit application.
 
-The Home page serves as the entry point for users, providing the essential
-functionality to upload and process Technical Design Template (TDT) Excel files.
-It uses the `file_generator` module to consolidate the uploaded files into
-standardized DataFrames, which are then stored in the Streamlit session state
-for use by other validation pages.
+The Home page serves as the landing page/dashboard, providing an overview
+of the available modules and their purposes.
 """
 import streamlit as st
-import os
-from file_generator import generate_files_from_uploads, convert_dfs_to_excel_bytes
 
 st.set_page_config(page_title="Home", layout="wide")
 
-st.title("Home")
+st.title("PRISM Dev/QA Toolkit")
 
-st.markdown("Welcome to the PRISM Config Validator and Canary Historian Downloader!")
+st.markdown("""
+Welcome to the **PRISM Development & QA Toolkit**. This application centralizes the workflows for validating Technical Design Templates (TDTs), auditing live PRISM configurations, and preparing data for model development.
 
-# --- Shared TDT Folder Selection ---
-st.header("1. Generate Files from TDT Folder")
+### 👈 Getting Started
+To begin, please **upload your TDT Excel files in the Sidebar**. This will generate the reference data (`survey_df`) required by most modules below.
+""")
 
-uploaded_files = st.file_uploader(
-    "Upload TDT Excel files",
-    type=["xlsx"],
-    accept_multiple_files=True
-)
+st.divider()
 
-if uploaded_files:
-    if st.button("Generate & Load Files"):
-        with st.spinner("Generating reference files..."):
-            try:
-                # Generate DFs
-                s_df, d_df = generate_files_from_uploads(uploaded_files)
-                st.session_state.survey_df = s_df
-                st.session_state.diag_df = d_df
-                # Create overview
-                st.session_state.overview_df = s_df[['TDT', 'Model']].drop_duplicates().sort_values(by=['TDT', 'Model']).reset_index(drop=True)
-                # Convert to bytes for parsers
-                survey_bytes, diag_bytes = convert_dfs_to_excel_bytes(s_df, d_df)
-                st.session_state.uploaded_survey_file = survey_bytes
-                st.session_state.uploaded_diag_file = diag_bytes
-                st.success("Files generated successfully!")
-            except Exception as e: st.error(f"File generation failed: {e}")
+st.header("Available Modules")
+
+col1, col2 = st.columns(2, gap="medium")
+
+with col1:
+    st.subheader("🔍 Validation Tools")
+    with st.container(border=True):
+        st.markdown("#### ✅ PRISM Config Validator")
+        st.markdown("Compares your offline **TDT files** against the live **PRISM Database**. Identifies discrepancies in metric configuration, mappings, filters, and diagnostics.")
+    
+    with st.container(border=True):
+        st.markdown("#### ☑️ TDT Validator")
+        st.markdown("Performs offline integrity checks on the TDT files themselves. Detects duplicates, missing mandatory fields, and logic errors within the Excel templates before you deploy.")
+
+    with st.container(border=True):
+        st.markdown("#### 🎯 Model Accuracy & FPR")
+        st.markdown("Post-deployment validation tools to calculate model accuracy scores and generate False Positive Rate (FPR) reports for QA.")
+
+with col2:
+    st.subheader("🛠️ Development Tools")
+    with st.container(border=True):
+        st.markdown("#### ⬇️ Canary Historian Downloader")
+        st.markdown("Automatically fetches historical time-series data from the Canary Historian using the tag definitions found in your TDTs.")
+
+    with st.container(border=True):
+        st.markdown("#### 1️⃣ Data Cleansing")
+        st.markdown("Interactive wizard to clean raw datasets. Apply numeric and datetime filters to remove bad data or shutdown periods.")
+
+    with st.container(border=True):
+        st.markdown("#### 2️⃣ Holdout Splitting")
+        st.markdown("Splits your cleaned dataset into **Training/Validation** and **Holdout** sets based on a time horizon.")
+
+    with st.container(border=True):
+        st.markdown("#### 4️⃣ Train-Val Splitting")
+        st.markdown("Performs stratified splitting of your training data to ensure balanced coverage of operational states.")
+
+st.markdown("---")
+st.caption("PRISM Dev/QA Toolkit | v1.0")
