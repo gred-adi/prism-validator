@@ -12,8 +12,6 @@ from utils.app_ui import render_sidebar
 
 st.set_page_config(page_title="Split Holdout Dataset", page_icon="2️⃣", layout="wide")
 
-render_sidebar()
-
 # --- Initialize Session State ---
 if 'holdout_step' not in st.session_state: st.session_state.holdout_step = 1
 
@@ -115,7 +113,7 @@ def load_data(raw_file, cleaned_file):
         return False
 
 # --- Page Layout ---
-st.title("Holdout Splitting Wizard")
+st.title("🔀 Holdout Splitting Wizard")
 
 steps = ["1. Upload Data", "2. Configure Split", "3. Export & Report"]
 current_step = st.session_state.holdout_step

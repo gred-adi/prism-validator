@@ -45,8 +45,6 @@ if 'model_name' not in st.session_state: st.session_state.model_name = ""
 if 'sprint_name' not in st.session_state: st.session_state.sprint_name = ""
 if 'inclusive_dates' not in st.session_state: st.session_state.inclusive_dates = ""
 
-render_sidebar()
-
 # --- Sidebar: Database Connection ---
 with st.sidebar:
     if st.session_state.db is None:
@@ -247,7 +245,7 @@ def read_process_cache_files(raw_file, point_list_df):
 
 # --- Main Page Layout ---
 
-st.title("Data Cleansing Wizard")
+st.title("🪄 Data Cleansing Wizard")
 
 # Progress Indicator
 steps = ["1. Data Ingestion", "2. Interactive Cleansing", "3. Review & Export"]

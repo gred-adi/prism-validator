@@ -15,9 +15,7 @@ DEFAULT_OPERATIONAL_STATE = 'AP-TVI-GROSS LOAD' # Default value might have to ch
 
 st.set_page_config(page_title="Train Validation Split", page_icon="4️⃣")
 
-render_sidebar()
-
-st.header("Split Training and Validation Sets")
+st.title("🔀 Train-Validation Splitting Wizard")
 
 st.write(
     "This page is for splitting the cleaned datasets with and without outliers into training and validation sets. To begin, please upload the datasets below."
