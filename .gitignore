@@ -3,6 +3,8 @@ TVI/
 TSI/
 *.pdf
 *.csv
+*.png
+data_splitting/
 
 # Virtual Environment
 venv/
