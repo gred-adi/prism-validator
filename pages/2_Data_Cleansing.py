@@ -9,7 +9,7 @@ from pathlib import Path
 from datetime import datetime, time as dt_time
 
 from utils.app_ui import render_sidebar
-from db_utils import PrismDB
+# removed db_utils import as we now use TDT Survey
 # removed get_model_info import as we implement custom inputs in Step 3
 from utils.model_dev_utils import (
     data_cleaning_read_prism_csv, 
@@ -22,7 +22,7 @@ st.set_page_config(page_title="Data Cleansing", page_icon="1️⃣", layout="wid
 
 # --- Initialize Session State ---
 if 'cleansing_step' not in st.session_state: st.session_state.cleansing_step = 1
-if 'db' not in st.session_state: st.session_state.db = None
+# db state removed
 
 # Data Processing States
 if 'filters_applied' not in st.session_state: st.session_state.filters_applied = False
@@ -38,39 +38,15 @@ if 'raw_df' not in st.session_state: st.session_state.raw_df = None
 if 'raw_df_header' not in st.session_state: st.session_state.raw_df_header = None
 if 'cleaned_df' not in st.session_state: st.session_state.cleaned_df = None
 
+# TDT Data State (Ensure it exists)
+if 'survey_df' not in st.session_state: st.session_state.survey_df = None
+
 # Model Metadata States
 if 'site_name' not in st.session_state: st.session_state.site_name = ""
 if 'system_name' not in st.session_state: st.session_state.system_name = ""
 if 'model_name' not in st.session_state: st.session_state.model_name = ""
 if 'sprint_name' not in st.session_state: st.session_state.sprint_name = ""
 if 'inclusive_dates' not in st.session_state: st.session_state.inclusive_dates = ""
-
-# --- Sidebar: Database Connection ---
-with st.sidebar:
-    if st.session_state.db is None:
-        st.divider()
-        st.subheader("Database Connection")
-        st.info("Connect to PRISM DB to fetch point lists.")
-        db_host = st.text_input("Host", value=st.secrets.get("db", {}).get("host", ""))
-        db_name = st.text_input("Database", value=st.secrets.get("db", {}).get("database", ""))
-        db_user = st.text_input("User", value=st.secrets.get("db", {}).get("user", ""))
-        db_pass = st.text_input("Password", type="password", value=st.secrets.get("db", {}).get("password", ""))
-        
-        if st.button("Connect"):
-            with st.spinner("Connecting..."):
-                try:
-                    st.session_state.db = PrismDB(db_host, db_name, db_user, db_pass)
-                    st.session_state.db.test_connection()
-                    st.success("Connected!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Connection failed: {e}")
-    else:
-        st.divider()
-        st.success("✅ Database Connected")
-        if st.button("Disconnect"):
-            st.session_state.db = None
-            st.rerun()
 
 # --- Helper Functions for State Management ---
 
@@ -178,29 +154,6 @@ def load_filters_from_json(json_data):
     except Exception as e:
         st.error(f"Failed to load filters: {e}")
 
-def get_point_list_query(model_name):
-    """Constructs the SQL query to fetch point list for a specific model."""
-    return f"""
-    SELECT
-        PROJECTS.Name AS [Project Name],
-        METRICS.Description AS [Metric],
-        CASE 
-            WHEN RTS.RealTimeServiceTypeID = 5 THEN 'Historian'
-            WHEN RTS.RealTimeServiceTypeID = 314 THEN 'Calculation'
-            ELSE NULL
-        END AS [Point Type],
-        POINTS.Name AS [Name]
-    FROM
-        prismdb.dbo.ProjectPoints POINTS
-        LEFT JOIN prismdb.dbo.PointTypeMetric METRICS ON POINTS.PointTypeMetricID = METRICS.PointTypeMetricID
-        LEFT JOIN prismdb.dbo.RealTimeService RTS ON POINTS.RealTimeServiceID = RTS.RealTimeServiceID
-        LEFT JOIN prismdb.dbo.Projects PROJECTS ON POINTS.ProjectID = PROJECTS.ProjectID 
-    WHERE
-        POINTS.PointTypeID = 1
-        AND RTS.RealTimeServiceTypeID IN (5, 314)
-        AND PROJECTS.Name = '{model_name}'
-    """
-
 def read_process_cache_files(raw_file, point_list_df):
     """
     Processes the raw file and the fetched point list dataframe.
@@ -257,7 +210,7 @@ st.progress(current_step / len(steps), text=f"Step {current_step}: {steps[curren
 # ==========================================
 if current_step == 1:
     st.header("Step 1: Data Ingestion")
-    st.markdown("Upload your Raw Dataset. The Point List will be fetched automatically from the database based on the model name in your file.")
+    st.markdown("Upload your Raw Dataset. The Point List mapping will be retrieved automatically from the **TDT Survey** (loaded on Home) based on the model name in your file.")
 
     raw_file = st.file_uploader("Upload RAW dataset (.csv)", type=["csv"], accept_multiple_files=False)
     
@@ -275,34 +228,39 @@ if current_step == 1:
             
         point_list_df = None
         
-        # 2. Fetch Point List logic
+        # 2. Fetch Point List from TDT Survey (Replaces DB Logic)
         with point_list_container:
-            if st.session_state.db is None:
-                st.warning("⚠️ Database not connected. Please connect in the sidebar to fetch the Point List.")
-            else:
-                if auto_model_name != "Unknown":
-                    # Fetch only if we haven't fetched for this specific model/file combination yet
-                    # OR if we want to refresh
+            # Ensure survey_df is initialized before checking it
+            if st.session_state.survey_df is None:
+                st.error("❌ TDT Data not found. Please go to the **Home** page and load your TDT files first.")
+                st.stop()
+            
+            survey_df = st.session_state.survey_df
+            
+            if auto_model_name != "Unknown":
+                # Filter for the specific model
+                model_survey = survey_df[survey_df['Model'] == auto_model_name]
+                
+                if not model_survey.empty:
+                    # Identify the correct column for point name
+                    point_col = 'Canary Point Name' if 'Canary Point Name' in model_survey.columns else 'Point Name'
                     
-                    # Logic: Try to fetch
-                    with st.spinner(f"Fetching Point List for model: {auto_model_name}..."):
-                        try:
-                            query = get_point_list_query(auto_model_name)
-                            point_list_df = st.session_state.db.run_query(query)
-                            
-                            if not point_list_df.empty:
-                                st.success(f"✅ Point List fetched! Found {len(point_list_df)} metrics for `{auto_model_name}`.")
-                                with st.expander("View Fetched Point List"):
-                                    st.dataframe(point_list_df)
-                            else:
-                                st.error(f"❌ No metrics found for model `{auto_model_name}`. Please check if the model name in the file matches the PRISM Project Name.")
-                                st.stop()
-                        except Exception as e:
-                            st.error(f"Error fetching point list: {e}")
-                            st.stop()
+                    if point_col in model_survey.columns:
+                        # Create a simple dataframe with 'Metric' and 'Name' cols for the utils function
+                        point_list_df = model_survey[['Metric', point_col]].rename(columns={point_col: 'Name'})
+                        
+                        st.success(f"✅ Point List found in TDT! {len(point_list_df)} metrics loaded for `{auto_model_name}`.")
+                        with st.expander("View Mapped Points"):
+                            st.dataframe(point_list_df)
+                    else:
+                        st.error(f"❌ Could not find '{point_col}' column in TDT Survey data.")
+                        st.stop()
                 else:
-                    st.error("Could not parse Model Name from filename. Please ensure file follows format: `CLEANED-{ModelName}-{Dates}-RAW.csv`")
+                    st.error(f"❌ Model `{auto_model_name}` not found in the loaded TDT Survey data. Please ensure the correct TDT file is loaded on the Home page.")
                     st.stop()
+            else:
+                st.error("Could not parse Model Name from filename. Please ensure file follows format: `CLEANED-{ModelName}-{Dates}-RAW.csv`")
+                st.stop()
 
         # 3. Process Files (Only if point list was successfully fetched)
         if point_list_df is not None:
