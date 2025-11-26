@@ -361,7 +361,7 @@ elif current_step == 3:
 
                 train_val_out = dataset_path / f"CLEANED-{st.session_state.model_name}-{st.session_state.inclusive_dates}-WITH-OUTLIER.csv"
                 holdout_out = dataset_path / f"{st.session_state.model_name}-{st.session_state.inclusive_dates}-HOLDOUT.csv"
-                report_out = dataset_path / f"CLEANED-{st.session_state.model_name}-{st.session_state.inclusive_dates}-SPLIT-HOLDOUT-REPORT.pdf"
+                report_out = dataset_path / f"{st.session_state.model_name}-{st.session_state.inclusive_dates}-SPLIT-HOLDOUT-REPORT.pdf"
 
                 final_train_val.to_csv(train_val_out, index=False, header=False) 
                 final_holdout.to_csv(holdout_out, index=False, header=False)

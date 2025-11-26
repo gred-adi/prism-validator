@@ -617,7 +617,7 @@ elif current_step == 3:
              # Re-construct path for report
              base_path = Path.cwd()
              dataset_path = base_path / st.session_state.site_name / st.session_state.system_name / st.session_state.sprint_name / st.session_state.model_name / "dataset"
-             report_file_path = dataset_path / f"CLEANED-{st.session_state.model_name}-{st.session_state.inclusive_dates}-DATA-CLEANING-REPORT.pdf"
+             report_file_path = dataset_path / f"{st.session_state.model_name}-{st.session_state.inclusive_dates}-DATA-CLEANING-REPORT.pdf"
              
              if st.session_state.generate_report and not st.session_state.show_visuals:
                  generate_simple_report(raw_df, st.session_state.filters, st.session_state.datetime_filters, report_file_path)

@@ -364,14 +364,19 @@ elif current == 3:
     selected_viz_metrics = st.multiselect(
         "Select metrics to visualize (Line Plot + Histogram)", 
         numeric_cols,
-        default=numeric_cols[:3] if len(numeric_cols) > 0 else []
+        default=numeric_cols
     )
     
     show_viz = st.checkbox("Show Plots in App", value=False)
     
     if show_viz and selected_viz_metrics:
         st.markdown("---")
-        generate_tvs_visualizations(train_df, selected_viz_metrics)
+        # Pass the validation set (without outliers) for comparison plotting
+        generate_tvs_visualizations(
+            train_df, 
+            selected_viz_metrics, 
+            df_val=st.session_state.ds_result_val_wo
+        )
         st.markdown("---")
 
     # 3. Export Action
@@ -390,7 +395,7 @@ elif current == 3:
                 f_train = folder_path / f"TRAINING-{prefix}-WITHOUT-OUTLIER.csv"
                 f_val_w = folder_path / f"VALIDATION-{prefix}-WITH-OUTLIER.csv"
                 f_val_wo = folder_path / f"VALIDATION-{prefix}-WITHOUT-OUTLIER.csv"
-                f_report = folder_path / f"TRAIN-VAL-SPLIT-REPORT.pdf"
+                f_report = folder_path / f"{prefix}-TRAIN-VAL-SPLIT-REPORT.pdf"
 
                 # Prepare Data (Attach Header)
                 header = st.session_state.tvs_header
@@ -413,7 +418,12 @@ elif current == 3:
                 metrics_for_report = selected_viz_metrics if selected_viz_metrics else numeric_cols[:10]
                 
                 # Generate images in memory
-                plot_images = generate_tvs_visualizations(train_df, metrics_for_report)
+                # Include the validation set here as well for the PDF report
+                plot_images = generate_tvs_visualizations(
+                    train_df, 
+                    metrics_for_report, 
+                    df_val=st.session_state.ds_result_val_wo
+                )
                 
                 # Stats for report
                 stats = {
