@@ -3,6 +3,13 @@ import pandas as pd
 import os
 from pathlib import Path
 import time
+from playwright.sync_api import sync_playwright
+from jinja2 import Environment
+import io
+import zipfile
+from datetime import datetime
+import sys
+import asyncio
 
 from utils.model_val_utils import extract_numeric
 from db_utils import PrismDB
@@ -14,6 +21,7 @@ st.set_page_config(page_title="Calculate Accuracy", page_icon="🎯", layout="wi
 if 'acc_step' not in st.session_state: st.session_state.acc_step = 1
 if 'scanned_models_df' not in st.session_state: st.session_state.scanned_models_df = None
 if 'accuracy_results' not in st.session_state: st.session_state.accuracy_results = None
+if 'accuracy_details' not in st.session_state: st.session_state.accuracy_details = {} # Store detailed DF for reports
 if 'db' not in st.session_state: st.session_state.db = None
 
 # --- Sidebar: Database Connection ---
@@ -44,6 +52,159 @@ with st.sidebar:
         st.warning("Database Disconnected")
 
 # --- Helper Functions ---
+
+def generate_accuracy_report(system_name, system_data):
+    """
+    Generates a PDF report for a specific System using Playwright/HTML.
+    system_data is a list of dicts: {'Sprint':, 'Model':, 'Avg Accuracy':, 'Data': DataFrame}
+    """
+    # 1. Structure Data for Template
+    # Group by Sprint
+    system_data.sort(key=lambda x: (x['Sprint'], x['Model']))
+    
+    sprints_data = {}
+    for item in system_data:
+        s_name = item['Sprint']
+        if s_name not in sprints_data:
+            sprints_data[s_name] = []
+        sprints_data[s_name].append(item)
+
+    # 2. Define HTML Template
+    template_str = """
+    <html>
+    <head>
+        <style>
+            body { font-family: "Helvetica", "Arial", sans-serif; margin: 40px; color: #333; }
+            h1 { text-align: center; color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; }
+            .meta { text-align: center; color: #7f8c8d; font-size: 0.9em; margin-bottom: 40px; font-style: italic; }
+            
+            .sprint-header { 
+                background-color: #2980b9; 
+                color: white; 
+                padding: 8px 15px; 
+                border-radius: 4px; 
+                margin-top: 30px; 
+                font-size: 1.2em;
+                page-break-after: avoid; 
+            }
+            
+            .model-section { 
+                margin-left: 10px; 
+                margin-top: 20px; 
+                page-break-inside: avoid; 
+                border: 1px solid #eee;
+                padding: 15px;
+                border-radius: 5px;
+                background-color: #fcfcfc;
+            }
+            
+            .model-title { 
+                font-size: 1.1em; 
+                font-weight: bold; 
+                color: #2c3e50; 
+                margin-bottom: 5px; 
+            }
+            
+            .accuracy-score {
+                font-weight: bold;
+                color: #27ae60;
+                margin-bottom: 10px;
+                display: block;
+            }
+
+            table { 
+                width: 100%; 
+                border-collapse: collapse; 
+                font-size: 0.85em; 
+                margin-top: 10px;
+                background-color: white;
+            }
+            
+            th, td { 
+                border: 1px solid #bdc3c7; 
+                padding: 6px 8px; 
+                text-align: left; 
+            }
+            
+            th { 
+                background-color: #ecf0f1; 
+                font-weight: bold; 
+                text-align: center; 
+                color: #2c3e50;
+            }
+            
+            td.num { text-align: center; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+        </style>
+    </head>
+    <body>
+        <h1>Model Accuracy Report: {{ system_name }}</h1>
+        <div class="meta">Generated on: {{ generation_date }}</div>
+
+        {% for sprint_name, models in sprints_data.items() %}
+            <div class="sprint-container">
+                <h2 class="sprint-header">Sprint: {{ sprint_name }}</h2>
+                
+                {% for model in models %}
+                    <div class="model-section">
+                        <div class="model-title">Model: {{ model['Model'] }}</div>
+                        <span class="accuracy-score">Average Accuracy: {{ model['Avg Accuracy'] }}</span>
+                        
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="width: 60%;">Metric</th>
+                                    <th style="width: 20%;">Avg Rel Dev (%)</th>
+                                    <th style="width: 20%;">Accuracy (%)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for index, row in model['Data'].iterrows() %}
+                                <tr>
+                                    <td>{{ row['Metrics'] }}</td>
+                                    <td class="num">{{ row['Average - Relative Deviation (%)'] }}</td>
+                                    <td class="num">{{ row['Accuracy (%)'] }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endfor %}
+    </body>
+    </html>
+    """
+    
+    # 3. Render HTML
+    env = Environment()
+    template = env.from_string(template_str)
+    html_content = template.render(
+        system_name=system_name,
+        generation_date=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        sprints_data=sprints_data
+    )
+    
+    # 4. Generate PDF via Playwright
+    # Windows fix for asyncio loop
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.set_content(html_content)
+            pdf_bytes = page.pdf(
+                format="A4",
+                margin={'top': '20mm', 'bottom': '20mm', 'left': '20mm', 'right': '20mm'},
+                print_background=True
+            )
+            browser.close()
+            return pdf_bytes
+    except Exception as e:
+        print(f"Error generating PDF: {e}")
+        return None
 
 def scan_folders(root_path):
     """
@@ -100,6 +261,7 @@ def scan_folders(root_path):
 def calculate_model_accuracy(row, prism_metrics_df):
     """
     Calculates accuracy for a single model row using PRISM DB 'Included in Profile' status.
+    Returns: (Avg Accuracy, Message, Detailed DataFrame)
     """
     model_name = row['Model']
     dat_path = row['Dat Path']
@@ -107,13 +269,13 @@ def calculate_model_accuracy(row, prism_metrics_df):
     # 1. Get Metrics from PRISM Query Result
     # Filter for this model
     if prism_metrics_df is None or prism_metrics_df.empty:
-        return None, "PRISM metrics data is empty."
+        return None, "PRISM metrics data is empty.", None
 
     # Column names match the query output: [FORM NAME], [METRIC NAME], [INCLUDED IN PROFILE]
     model_metrics_df = prism_metrics_df[prism_metrics_df['FORM NAME'] == model_name]
     
     if model_metrics_df.empty:
-        return None, f"Model '{model_name}' not found in PRISM database."
+        return None, f"Model '{model_name}' not found in PRISM database.", None
 
     # Filter: INCLUDED IN PROFILE = 'YES'
     target_metrics = model_metrics_df[
@@ -121,14 +283,14 @@ def calculate_model_accuracy(row, prism_metrics_df):
     ]['METRIC NAME'].unique().tolist()
     
     if not target_metrics:
-        return None, "No metrics found with [INCLUDED IN PROFILE] = 'YES'."
+        return None, "No metrics found with [INCLUDED IN PROFILE] = 'YES'.", None
 
     # 2. Read .dat file
     try:
         # Based on original logic: encoding UTF-16, tab delimiter
         df_data = pd.read_csv(dat_path, encoding="UTF-16", delimiter='\t')
     except Exception as e:
-        return None, f"Error reading .dat file: {e}"
+        return None, f"Error reading .dat file: {e}", None
 
     # 3. Clean Column Names (Mapping Logic from original script)
     # This aligns the .dat file headers (e.g., "TI-101 (Temp)") with PRISM Metric Names ("TI-101")
@@ -149,7 +311,7 @@ def calculate_model_accuracy(row, prism_metrics_df):
     available_metrics = [m for m in target_metrics if m in df_data.columns]
     
     if not available_metrics:
-        return None, f"None of the {len(target_metrics)} active profile metrics found in .dat file."
+        return None, f"None of the {len(target_metrics)} active profile metrics found in .dat file.", None
 
     # 5. Calculate Accuracy
     try:
@@ -171,7 +333,7 @@ def calculate_model_accuracy(row, prism_metrics_df):
                 })
         
         if not results:
-             return None, "No valid numeric data could be extracted for accuracy calculation."
+             return None, "No valid numeric data could be extracted for accuracy calculation.", None
 
         df_scores = pd.DataFrame(results)
         
@@ -183,10 +345,10 @@ def calculate_model_accuracy(row, prism_metrics_df):
         
         avg_model_acc = df_scores['Accuracy (%)'].mean()
         
-        return avg_model_acc, f"Saved to {save_path.name}"
+        return avg_model_acc, f"Saved to {save_path.name}", df_scores
 
     except Exception as e:
-        return None, f"Calculation Error: {e}"
+        return None, f"Calculation Error: {e}", None
 
 # --- Page Layout ---
 
@@ -339,13 +501,17 @@ elif current_step == 2:
         
         # --- B. Processing Loop ---
         results_log = []
+        # We also need to store the detailed data for the report
+        accuracy_details_store = [] # List of dicts: {System, Sprint, Model, Data(df), AvgAcc}
+        
         progress_bar = st.progress(0, text="Starting...")
         
         for i, (index, row) in enumerate(to_process.iterrows()):
             model_name = row['Model']
             progress_bar.progress((i) / len(to_process), text=f"Processing {model_name}...")
             
-            acc_val, msg = calculate_model_accuracy(row, prism_metrics_df)
+            # calculate_model_accuracy now returns 3 values
+            acc_val, msg, detailed_df = calculate_model_accuracy(row, prism_metrics_df)
             
             status = "✅ Success" if acc_val is not None else "❌ Failed"
             
@@ -359,8 +525,18 @@ elif current_step == 2:
                 "Details": msg
             })
             
+            if detailed_df is not None:
+                accuracy_details_store.append({
+                    "System": row['System'],
+                    "Sprint": row['Sprint'],
+                    "Model": model_name,
+                    "Avg Accuracy": f"{acc_val:.2f}%",
+                    "Data": detailed_df
+                })
+            
         progress_bar.progress(1.0, text="Complete!")
         st.session_state.accuracy_results = pd.DataFrame(results_log)
+        st.session_state.accuracy_details = accuracy_details_store
         st.balloons()
         
     # Display Results
@@ -369,6 +545,7 @@ elif current_step == 2:
         st.subheader("Processing Summary")
         
         res_df = st.session_state.accuracy_results
+        details_store = st.session_state.accuracy_details
         
         # Metrics
         success_count = len(res_df[res_df['Status'].str.contains("Success")])
@@ -380,8 +557,53 @@ elif current_step == 2:
         
         st.dataframe(res_df, use_container_width=True)
         
+        # Report Generation
+        if details_store:
+            st.divider()
+            st.subheader("📄 Report Generation")
+            
+            # Group by System
+            systems = list(set(d['System'] for d in details_store))
+            
+            # Generate PDFs
+            pdfs_to_zip = []
+            
+            with st.spinner("Generating PDF reports..."):
+                for sys_name in systems:
+                    sys_data = [d for d in details_store if d['System'] == sys_name]
+                    pdf_bytes = generate_accuracy_report(sys_name, sys_data)
+                    
+                    if pdf_bytes:
+                        pdfs_to_zip.append({
+                            "name": f"{sys_name}_Accuracy_Report.pdf",
+                            "data": pdf_bytes
+                        })
+            
+            # Download Logic
+            if len(pdfs_to_zip) == 1:
+                st.download_button(
+                    label=f"📥 Download PDF ({systems[0]})",
+                    data=pdfs_to_zip[0]['data'],
+                    file_name=pdfs_to_zip[0]['name'],
+                    mime="application/pdf"
+                )
+            elif len(pdfs_to_zip) > 1:
+                # Zip multiple PDFs
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for p in pdfs_to_zip:
+                        zf.writestr(p['name'], p['data'])
+                
+                st.download_button(
+                    label="📥 Download All Reports (.zip)",
+                    data=zip_buffer.getvalue(),
+                    file_name="Model_Accuracy_Reports.zip",
+                    mime="application/zip"
+                )
+        
     st.markdown("---")
     if st.button("⬅️ Back to Selection"):
         st.session_state.acc_step = 1
         st.session_state.accuracy_results = None
+        st.session_state.accuracy_details = {}
         st.rerun()
