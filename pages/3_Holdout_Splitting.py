@@ -354,7 +354,8 @@ elif current_step == 3:
                 final_holdout = pd.concat([header_df, holdout], ignore_index=True)
                 
                 # --- Save Files ---
-                base_path = Path.cwd()
+                # USE GLOBAL BASE PATH
+                base_path = Path(st.session_state.get('base_path', Path.cwd()))
                 dataset_path = base_path / st.session_state.site_name / st.session_state.system_name / st.session_state.sprint_name / st.session_state.model_name / "dataset"
                 dataset_path.mkdir(parents=True, exist_ok=True)
 

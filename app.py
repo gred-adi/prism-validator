@@ -9,11 +9,36 @@ It also hosts the global Sidebar logic for generating TDT reference files,
 ensuring that `survey_df` and `diag_df` are available to all modules.
 """
 import streamlit as st
+import os
 from file_generator import generate_files_from_uploads, convert_dfs_to_excel_bytes
 
 # --- Global Sidebar Logic ---
 with st.sidebar:
     st.title("Global Settings")
+
+    # --- 1. Root Folder Configuration ---
+    st.header("📂 Output Configuration")
+    
+    # Initialize base_path in session state if not present
+    if 'base_path' not in st.session_state:
+        st.session_state.base_path = os.getcwd()
+
+    # Text input for root folder
+    st.session_state.base_path = st.text_input(
+        "Root Output Folder", 
+        value=st.session_state.base_path,
+        help="All generated datasets and reports will be saved within this folder."
+    )
+    
+    # Optional: Display current status
+    if os.path.exists(st.session_state.base_path):
+        st.caption(f"✅ Path exists")
+    else:
+        st.caption(f"⚠️ Path does not exist (will be created)")
+
+    st.divider()
+
+    # --- 2. TDT File Upload ---
     st.header("📤 Upload TDT Files")
     st.info("Upload your TDT files here to make the data available to all modules in the toolkit.")
 

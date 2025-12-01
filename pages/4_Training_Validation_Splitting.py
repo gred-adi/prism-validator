@@ -383,7 +383,8 @@ elif current == 3:
         else:
             with st.spinner("Saving files and generating report..."):
                 # Paths
-                base_path = Path.cwd()
+                # USE GLOBAL BASE PATH
+                base_path = Path(st.session_state.get('base_path', Path.cwd()))
                 folder_path = base_path / st.session_state.site_name / st.session_state.system_name / st.session_state.sprint_name / st.session_state.model_name / "data_splitting"
                 folder_path.mkdir(parents=True, exist_ok=True)
                 

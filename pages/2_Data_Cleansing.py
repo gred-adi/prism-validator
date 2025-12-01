@@ -526,11 +526,11 @@ elif current_step == 3:
         meta_col1, meta_col2 = st.columns(2)
         with meta_col1:
             st.session_state.site_name = st.text_input("Site Name", value=st.session_state.site_name, help="e.g., TVI, TSI")
-            st.session_state.system_name = st.text_input("System Name", value=st.session_state.system_name, help="e.g., BOP, U1")
+            st.session_state.system_name = st.text_input("System Name", value=st.session_state.system_name, help="e.g., BOP, STG, BOILER_FAN, BOILER")
             st.session_state.model_name = st.text_input("Model Name", value=st.session_state.model_name)
         with meta_col2:
-            st.session_state.sprint_name = st.text_input("Sprint Name", value=st.session_state.sprint_name, help="e.g., Sprint_1")
-            st.session_state.inclusive_dates = st.text_input("Inclusive Dates (YYYYMMDD)", value=st.session_state.inclusive_dates, help="e.g., 20240101-20240601")
+            st.session_state.sprint_name = st.text_input("Sprint Name", value=st.session_state.sprint_name, help="e.g., Sprint_1, Sprint_2")
+            st.session_state.inclusive_dates = st.text_input("Inclusive Dates (YYYYMMDD-YYYYMMDD)", value=st.session_state.inclusive_dates, help="e.g., 20240101-20240601")
 
     st.divider()
 
@@ -596,7 +596,8 @@ elif current_step == 3:
             filtered_df.columns = raw_df_header.columns
             export_filtered_df = pd.concat([raw_df_header, filtered_df])
 
-            base_path = Path.cwd()
+            # --- USE GLOBAL BASE PATH ---
+            base_path = Path(st.session_state.get('base_path', Path.cwd()))
             dataset_path = base_path / st.session_state.site_name / st.session_state.system_name / st.session_state.sprint_name / st.session_state.model_name / "dataset"
             dataset_path.mkdir(parents=True, exist_ok=True)
             
@@ -639,8 +640,8 @@ elif current_step == 3:
 
         # Execution Logic (Outside the columns to ensure full width)
         if gen_button_clicked:
-             # Re-construct path for report
-             base_path = Path.cwd()
+             # Re-construct path for report using GLOBAL BASE PATH
+             base_path = Path(st.session_state.get('base_path', Path.cwd()))
              dataset_path = base_path / st.session_state.site_name / st.session_state.system_name / st.session_state.sprint_name / st.session_state.model_name / "dataset"
              report_file_path = dataset_path / f"{st.session_state.model_name}-{st.session_state.inclusive_dates}-DATA-CLEANING-REPORT.pdf"
              
