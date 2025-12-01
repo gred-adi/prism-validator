@@ -29,7 +29,7 @@ import os
 from datetime import datetime
 import io
 import zipfile
-from report_generator import generate_pdf_report, display_report_generation_tab
+from report_generator import generate_pdf_report, display_report_generation_tab, generate_deployment_report
 from style_utils import highlight_diff
 
 # --- Import validation-specific modules ---
@@ -61,7 +61,7 @@ from validations.prism_validations.model_deployment_config.query import get_quer
 # from file_generator import generate_files_from_folder
 
 # --- Page Configuration ---
-st.set_page_config(page_title="PRISM Config Validator", layout="wide")
+st.set_page_config(page_title="PRISM Validator", layout="wide")
 
 # --- Initialize Session State ---
 if 'db' not in st.session_state: st.session_state.db = None
@@ -198,7 +198,7 @@ def display_results(results, key_prefix, filter_column_name):
 
 # --- Sidebar UI ---
 with st.sidebar:
-    st.header("1. Database Connection")
+    st.header("🌍 Database Connection")
     db_host = st.text_input("Host", value=st.secrets.get("db", {}).get("host", ""))
     db_name = st.text_input("Database", value=st.secrets.get("db", {}).get("database", ""))
     db_user = st.text_input("User", value=st.secrets.get("db", {}).get("user", ""))
@@ -218,13 +218,13 @@ with st.sidebar:
 
     st.markdown("---")
 
-    st.header("2. Upload Statistics File")
+    st.header("📤 Upload Statistics File")
     uploaded_stats = st.file_uploader("Upload Consolidated Statistics File", type=["xlsx"], key="stats_uploader")
     if uploaded_stats: st.session_state.uploaded_stats_file = uploaded_stats
 
     # --- UPDATED: Optional Downloads Section ---
     st.markdown("---")
-    st.header("Download Generated Files")
+    st.header("⬇️ Download Generated Files")
     st.download_button(
         label="Download Survey File",
         data=st.session_state.uploaded_survey_file or b"",
@@ -241,7 +241,7 @@ with st.sidebar:
     )
 
 # --- Main Page UI ---
-st.title("PRISM Config Validator")
+st.title("✅ PRISM Configuration Validator")
 st.markdown("""
 This tool validates the alignment between your offline **TDT (Template Design Tool)** files and the live **PRISM Database** configuration. 
 It helps identify discrepancies in metrics, mappings, filters, and diagnostics before or after deployment.
@@ -469,7 +469,19 @@ with tabs[6]:
                 except Exception as e: st.error(f"An error occurred: {e}")
     st.subheader("2. Deployment Configuration Results")
     results_df = st.session_state.validation_states["model_deployment_config"]["results"]
-    if results_df is not None: st.dataframe(results_df, use_container_width=True)
+    if results_df is not None: 
+        st.dataframe(results_df, use_container_width=True)
+        
+        if st.button("📄 Generate Report (PDF)", key="gen_deployment_pdf"):
+             with st.spinner("Generating PDF..."):
+                 pdf_bytes = generate_deployment_report(results_df)
+                 if pdf_bytes:
+                    st.download_button(
+                        label="📥 Download PDF",
+                        data=pdf_bytes,
+                        file_name=f"Deployment_Config_Report_{datetime.now().strftime('%Y%m%d')}.pdf",
+                        mime="application/pdf"
+                    )
     else: st.info("Enter Asset Descriptions and click 'Fetch Configuration' to see results.")
 
 with tabs[7]:

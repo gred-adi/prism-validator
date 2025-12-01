@@ -64,7 +64,7 @@ def generate_pdf_report(browser, report_data, tdt_model_name, selected_submodule
             A list of submodule names to be included in the report and the
             table of contents.
         report_type (str):
-            The type of the report (e.g., "TDT", "PRISM").
+            The type of report (e.g., "TDT", "PRISM").
         page_size (str, optional):
             The page size for the PDF. Defaults to "A3".
         orientation (str, optional):
@@ -230,7 +230,7 @@ def display_report_generation_tab(st, session_state, report_type, validation_fil
             The Streamlit session state object, used to access loaded data and
             validation results.
         report_type (str):
-            The type of report being generated (e.g., "TDT", "PRISM").
+            The type of report (e.g., "TDT", "PRISM").
         validation_filter_cols (dict):
             A dictionary mapping submodule keys to the column name used for
             filtering (e.g., 'TDT' or 'Model').
@@ -504,3 +504,50 @@ def display_report_generation_tab(st, session_state, report_type, validation_fil
                 file_name=f"{report_type}_Reports_{datetime.now().strftime('%Y%m%d')}.zip",
                 mime="application/zip"
             )
+
+def generate_deployment_report(df):
+    """Generates a standalone PDF report for Model Deployment Configuration."""
+    
+    # 1. Apply Styling for the HTML representation
+    def highlight_x(val):
+        if isinstance(val, str) and '❌' in val:
+            return 'background-color: #FFCCCB'
+        return ''
+
+    # Use map if available (pandas >= 1.3.0), otherwise applymap
+    if hasattr(df.style, 'map'):
+        styler = df.style.map(highlight_x)
+    else:
+        styler = df.style.applymap(highlight_x)
+        
+    html_content = styler.to_html()
+    
+    # 2. Prepare Data for the Generator
+    report_data = {
+        "Deployment Configuration Table": html_content
+    }
+    selected_submodules = ["Deployment Configuration Table"]
+    
+    # 3. Setup Playwright (Windows fix included)
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+        
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            
+            # Reuse existing generation logic
+            pdf_bytes = generate_pdf_report(
+                browser=browser,
+                report_data=report_data,
+                tdt_model_name="Deployment Configuration Audit",
+                selected_submodules=selected_submodules,
+                report_type="PRISM",
+                page_size="A3",
+                orientation="landscape"
+            )
+            browser.close()
+            return pdf_bytes
+    except Exception as e:
+        st.error(f"Failed to generate report: {e}")
+        return None
