@@ -29,7 +29,7 @@ import os
 from datetime import datetime
 import io
 import zipfile
-from report_generator import generate_pdf_report, display_report_generation_tab
+from report_generator import generate_pdf_report, display_report_generation_tab, generate_deployment_report
 from style_utils import highlight_diff
 
 # --- Import validation-specific modules ---
@@ -469,7 +469,19 @@ with tabs[6]:
                 except Exception as e: st.error(f"An error occurred: {e}")
     st.subheader("2. Deployment Configuration Results")
     results_df = st.session_state.validation_states["model_deployment_config"]["results"]
-    if results_df is not None: st.dataframe(results_df, use_container_width=True)
+    if results_df is not None: 
+        st.dataframe(results_df, use_container_width=True)
+        
+        if st.button("📄 Generate Report (PDF)", key="gen_deployment_pdf"):
+             with st.spinner("Generating PDF..."):
+                 pdf_bytes = generate_deployment_report(results_df)
+                 if pdf_bytes:
+                    st.download_button(
+                        label="📥 Download PDF",
+                        data=pdf_bytes,
+                        file_name=f"Deployment_Config_Report_{datetime.now().strftime('%Y%m%d')}.pdf",
+                        mime="application/pdf"
+                    )
     else: st.info("Enter Asset Descriptions and click 'Fetch Configuration' to see results.")
 
 with tabs[7]:
