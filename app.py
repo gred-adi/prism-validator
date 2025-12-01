@@ -48,7 +48,9 @@ with st.sidebar:
     # Show status if loaded
     if st.session_state.get('survey_df') is not None:
         st.divider()
-        st.success(f"✅ TDT Data Loaded\n\n**Models:** {len(st.session_state.overview_df)}")
+        num_tdts = st.session_state.overview_df['TDT'].nunique()
+        num_models = len(st.session_state.overview_df)
+        st.success(f"✅ TDT Data Loaded\n\n**TDTs:** {num_tdts}\n\n**Models:** {num_models}")
     
     st.markdown("---")
 
