@@ -320,7 +320,13 @@ elif current_step == 2:
                 "datetime": st.session_state.datetime_filters
             }
             json_str = json.dumps(current_config, default=json_serial, indent=2)
-            st.download_button("💾 Download Preset", json_str, "filters.json", "application/json", use_container_width=True)
+            
+            # --- UPDATED FILENAME LOGIC ---
+            export_fname = "filters.json"
+            if st.session_state.model_name and st.session_state.inclusive_dates:
+                export_fname = f"filter-{st.session_state.model_name}-{st.session_state.inclusive_dates}.json"
+            
+            st.download_button("💾 Download Preset", json_str, export_fname, "application/json", use_container_width=True)
         with col_import:
             uploaded_preset = st.file_uploader("Upload .json preset", type=["json"], label_visibility="collapsed")
             if uploaded_preset and st.button("Load Preset", use_container_width=True):
