@@ -40,8 +40,6 @@ if 'inclusive_dates' not in st.session_state: st.session_state.inclusive_dates =
 if 'selected_tdt' not in st.session_state: st.session_state.selected_tdt = None
 if 'selected_model_survey' not in st.session_state: st.session_state.selected_model_survey = None
 
-render_sidebar()
-
 # --- Helper Functions ---
 def next_step(): st.session_state.tvs_step += 1
 def prev_step(): st.session_state.tvs_step -= 1
@@ -114,7 +112,7 @@ def load_and_map_data(w_outlier_file, wo_outlier_file, survey_df, model_name):
         return False
 
 # --- Page Layout ---
-st.title("🧱 Training-Validation Split Wizard")
+st.title("🔀 Training-Validation Split Wizard")
 
 steps = ["1. Upload & Map Data", "2. Configure & Split", "3. Visualize & Export"]
 current = st.session_state.tvs_step

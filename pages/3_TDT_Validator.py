@@ -170,7 +170,7 @@ def display_simple_results(summary_df, details_df, columns_to_show, show_summary
 
 
 # --- Main Page UI ---
-st.title("TDT Configuration Validator")
+st.title("☑️ TDT Configuration Validator")
 st.markdown("""
 This tool performs **offline integrity checks** on your TDT Excel files. It is designed to catch errors, duplicates, and missing mandatory fields within the spreadsheets themselves, ensuring data quality before deployment to PRISM.
 

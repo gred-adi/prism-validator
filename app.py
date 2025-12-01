@@ -14,8 +14,8 @@ from file_generator import generate_files_from_uploads, convert_dfs_to_excel_byt
 # --- Global Sidebar Logic ---
 with st.sidebar:
     st.title("Global Settings")
-    st.header("1. Generate Files from TDT Folder")
-    st.info("Upload your TDT folder here to make the data available to all modules in the toolkit.")
+    st.header("📤 Upload TDT Files")
+    st.info("Upload your TDT files here to make the data available to all modules in the toolkit.")
 
     uploaded_files = st.file_uploader(
         "Upload TDT Excel files",
@@ -49,11 +49,13 @@ with st.sidebar:
     if st.session_state.get('survey_df') is not None:
         st.divider()
         st.success(f"✅ TDT Data Loaded\n\n**Models:** {len(st.session_state.overview_df)}")
+    
+    st.markdown("---")
 
 # --- Navigation Setup ---
 pages = {
     "Home": [st.Page("pages/Home.py", title="Home", icon="🏠")],
-    "TDT Validator": [st.Page("pages/3_TDT_Validator.py", title="TDT Validator", icon="☑️")],
+    "TDT Config Validator": [st.Page("pages/3_TDT_Validator.py", title="TDT Config Validator", icon="☑️")],
     "PRISM Config Validator": [st.Page("pages/1_PRISM_Config_Validator.py", title="PRISM Config Validator", icon="✅")],
     "Canary Historian Downloader": [st.Page("pages/2_Canary_Historian_Downloader.py", title="Canary Historian Downloader", icon="⬇️")],
     "Model Development Tools": [
