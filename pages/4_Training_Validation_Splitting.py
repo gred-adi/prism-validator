@@ -314,17 +314,30 @@ elif current == 2:
                 
                 st.success("Split Complete!")
                 
-                # Show quick stats
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Training Set", f"{len(final_train):,}")
-                c2.metric("Val (No Outlier)", f"{len(final_val_wo):,}")
-                c3.metric("Val (W/ Outlier)", f"{len(final_val_w):,}")
-                
-                next_step()
-                st.rerun()
+                # We deliberately do not proceed automatically.
+                # The results will be shown in the persistent block below.
 
             except Exception as e:
                 st.error(f"Split failed: {e}")
+
+    # --- Persistent Result View & Proceed Button ---
+    if st.session_state.ds_result_train is not None:
+        st.divider()
+        st.subheader("Split Results")
+        
+        final_train = st.session_state.ds_result_train
+        final_val_wo = st.session_state.ds_result_val_wo
+        final_val_w = st.session_state.ds_result_val_w
+        
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Training Set", f"{len(final_train):,}")
+        c2.metric("Validation Set (w/o Outlier)", f"{len(final_val_wo):,}")
+        c3.metric("Validation Set (w/ Outlier)", f"{len(final_val_w):,}")
+        
+        # Proceed Button
+        if st.button("Proceed to Visualize & Export ➡️", type="primary"):
+            next_step()
+            st.rerun()
 
     st.button("Back", on_click=prev_step)
 
