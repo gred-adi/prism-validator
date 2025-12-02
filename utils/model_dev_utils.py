@@ -966,7 +966,7 @@ def generate_tvs_report(stats: Dict[str, Any], plot_images: list, pdf_file_path:
         print(f"Failed to generate TVS PDF: {e}")
         return False
 
-def generate_tvs_visualizations(df_train: pd.DataFrame, selected_metrics: list, df_val: pd.DataFrame = None):
+def generate_tvs_visualizations(df_train: pd.DataFrame, selected_metrics: list, df_val: pd.DataFrame = None, display_plot: bool = True):
     """
     Generates side-by-side plots for selected metrics.
     Plot 1: Time Series (Train)
@@ -1019,7 +1019,9 @@ def generate_tvs_visualizations(df_train: pd.DataFrame, selected_metrics: list, 
         ax2.grid(True, alpha=0.3)
         
         plt.tight_layout()
-        st.pyplot(fig) # Render in Streamlit
+        
+        if display_plot:
+            st.pyplot(fig) # Render in Streamlit
         
         # Save for Report
         buf = BytesIO()

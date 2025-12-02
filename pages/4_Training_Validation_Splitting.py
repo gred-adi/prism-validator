@@ -433,7 +433,8 @@ elif current == 3:
                 plot_images = generate_tvs_visualizations(
                     train_df, 
                     metrics_for_report, 
-                    df_val=st.session_state.ds_result_val_wo
+                    df_val=st.session_state.ds_result_val_wo,
+                    display_plot=False
                 )
                 
                 # Stats for report
