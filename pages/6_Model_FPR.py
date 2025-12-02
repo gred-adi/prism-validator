@@ -52,6 +52,17 @@ def next_step(): st.session_state.fpr_step += 1
 def prev_step(): st.session_state.fpr_step -= 1
 
 st.title("🔎 Model FPR Wizard")
+st.markdown("""
+Generates comprehensive False Positive Rate (FPR) and Kolmogorov-Smirnov (KS) consistency reports for your models.
+This tool analyzes the model's behavior on holdout data and validates the consistency between training/validation and holdout datasets.
+
+**How to Use:**
+1.  **Connect Database:** Connect to the PRISM database in the sidebar to automatically fetch active model constraints (filters).
+2.  **Scan Directory:** Enter the path to your model's root folder. The tool will identify models with the required datasets (Raw, Holdout, and OMR files).
+3.  **Select Model:** Choose a valid model from the list to proceed.
+4.  **Configure Constraints:** Review the active constraints fetched from the database or add manual "Model OFF" conditions.
+5.  **Generate:** The tool will calculate FPR statistics, generate distribution plots, and produce a detailed PDF QA report.
+""")
 
 steps = ["Select Model", "Configure Constraints", "Generate Report"]
 current = st.session_state.fpr_step
