@@ -370,9 +370,313 @@ def generate_data_cleaning_visualizations(raw_df: pd.DataFrame,
                                           selected_metrics: list,
                                           generate_report: bool,
                                           pdf_file_path: Path = None):
-    # (Keeping the original implementation from previous step, assuming it is preserved in the file)
-    # Just need to make sure scan_folders_structure is added to this file and exported.
-    pass
+    """
+    Generates and displays all data cleaning visualizations.
+    Uses Playwright for PDF generation.
+    """
+    plot_images = [] # List to store (title, base64_string) for PDF
+
+    # FIX: Define total_rows explicitly from len(raw_df)
+    total_rows = len(raw_df)
+    if total_rows == 0:
+        st.info("No data to visualize.")
+        return
+
+    # --- OPTIMIZATION: Downsampling ---
+    MAX_PLOT_POINTS = 15000
+    use_downsampling = total_rows > MAX_PLOT_POINTS
+
+    if use_downsampling:
+        step = total_rows // MAX_PLOT_POINTS
+        plot_raw_df = raw_df.iloc[::step].copy()
+        plot_cleaned_df = cleaned_df.iloc[::step].copy()
+        st.toast(f"⚡ Data downsampled for visualization (displaying ~{len(plot_raw_df)} points)", icon="ℹ️")
+    else:
+        plot_raw_df = raw_df
+        plot_cleaned_df = cleaned_df
+
+    # --- STATISTICS (Use FULL Data to match Preview Impact) ---
+    # 1. Numeric Mask
+    numeric_mask = pd.Series(True, index=raw_df.index)
+    for col, op, val in numeric_filters:
+        if col in raw_df.columns:
+            if op == "<": numeric_mask &= ~(raw_df[col] < val)
+            elif op == "<=": numeric_mask &= ~(raw_df[col] <= val)
+            elif op == "==": numeric_mask &= ~(raw_df[col] == val)
+            elif op == ">=": numeric_mask &= ~(raw_df[col] >= val)
+            elif op == ">": numeric_mask &= ~(raw_df[col] > val)
+    numeric_removed_count = (~numeric_mask).sum()
+
+    # 2. Date Mask
+    date_mask = pd.Series(True, index=raw_df.index)
+    if 'DATETIME' in raw_df.columns:
+        for op, val in datetime_filters:
+            if op == "< (remove before)":
+                date_mask &= ~(raw_df['DATETIME'] < pd.to_datetime(val))
+            elif op == "> (remove after)":
+                date_mask &= ~(raw_df['DATETIME'] > pd.to_datetime(val))
+            elif op in ["between", "between (includes edge values)"]:
+                start = pd.to_datetime(val[0])
+                end = pd.to_datetime(val[1])
+                date_mask &= ~((raw_df['DATETIME'] >= start) & (raw_df['DATETIME'] <= end))
+    date_removed_count = (~date_mask).sum()
+
+    final_mask = numeric_mask & date_mask
+    remaining_count = final_mask.sum()
+    total_removed = total_rows - remaining_count
+
+    # Calculate percentages (formatted to 2 decimals)
+    # FIX: total_rows variable is now properly defined in scope
+    retention_pct = (remaining_count / total_rows * 100) if total_rows > 0 else 0
+    numeric_pct = (numeric_removed_count / total_rows * 100) if total_rows > 0 else 0
+    date_pct = (date_removed_count / total_rows * 100) if total_rows > 0 else 0
+    removed_pct = (total_removed / total_rows * 100) if total_rows > 0 else 0
+
+    stats_payload = {
+        "total_rows": total_rows,
+        "remaining_rows": remaining_count,
+        "numeric_removed": numeric_removed_count,
+        "date_removed": date_removed_count,
+        "total_removed": total_removed,
+        "retention_pct": retention_pct,
+        "numeric_pct": numeric_pct,
+        "date_pct": date_pct,
+        "removed_pct": removed_pct
+    }
+
+    # --- Display Stats (Aligned with Preview Impact) ---
+    st.markdown("### Filter Impact Statistics")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Rows", f"{total_rows:,}")
+    m2.metric("Remaining", f"{remaining_count:,}", delta=f"-{removed_pct:.2f}% removed", delta_color="inverse")
+    m3.metric("Numeric Removed", f"{numeric_removed_count:,}", delta=f"-{numeric_pct:.2f}% removed", delta_color="inverse")
+    m4.metric("Date Removed", f"{date_removed_count:,}", delta=f"-{date_pct:.2f}% removed", delta_color="inverse")
+
+    # --- Generate Timeline Graph (using fill_between) ---
+    st.markdown("### Filter Timeline")
+
+    # We need boolean arrays for fill_between. 
+    # If downsampling, re-calculate masks on the small DF for plotting.
+    if use_downsampling:
+        timeline_df = plot_raw_df
+        t_date_mask = pd.Series(False, index=timeline_df.index)
+        if 'DATETIME' in timeline_df.columns:
+            for op, val in datetime_filters:
+                if op == "< (remove before)": t_date_mask |= (timeline_df['DATETIME'] < pd.to_datetime(val))
+                elif op == "> (remove after)": t_date_mask |= (timeline_df['DATETIME'] > pd.to_datetime(val))
+                elif op in ["between", "between (includes edge values)"]:
+                    t_date_mask |= ((timeline_df['DATETIME'] >= pd.to_datetime(val[0])) & (timeline_df['DATETIME'] <= pd.to_datetime(val[1])))
+
+        t_num_mask = pd.Series(False, index=timeline_df.index)
+        for col, op, val in numeric_filters:
+            if col in timeline_df.columns:
+                if op == "<": t_num_mask |= (timeline_df[col] < val)
+                elif op == "<=": t_num_mask |= (timeline_df[col] <= val)
+                elif op == "==": t_num_mask |= (timeline_df[col] == val)
+                elif op == ">=": t_num_mask |= (timeline_df[col] >= val)
+                elif op == ">": t_num_mask |= (timeline_df[col] > val)
+    else:
+        timeline_df = raw_df
+        # Invert original KEEP masks to get REMOVE masks
+        t_date_mask = ~date_mask 
+        t_num_mask = ~numeric_mask
+
+    fig_timeline, ax_timeline = plt.subplots(figsize=(12, 3))
+
+    # Fill 1: Removed by Numeric (Gray)
+    # MODIFIED: Added linewidth=0
+    ax_timeline.fill_between(
+        timeline_df['DATETIME'], 0, 1,
+        where=t_num_mask,
+        color='gray', alpha=0.3, label='Numeric Removed', step='mid', edgecolor='none', linewidth=0
+    )
+
+    # Fill 2: Removed by Date (Purple) - Prioritize if overlapping
+    # MODIFIED: Added linewidth=0
+    ax_timeline.fill_between(
+        timeline_df['DATETIME'], 0, 1,
+        where=t_date_mask,
+        color='purple', alpha=0.3, label='Date Removed', step='mid', edgecolor='none', linewidth=0
+    )
+
+    ax_timeline.get_yaxis().set_visible(False)
+    ax_timeline.set_ylim(0, 1)
+    ax_timeline.set_xlabel('DATETIME')
+    ax_timeline.legend(loc='upper right')
+    ax_timeline.set_title("Data Removal Timeline")
+
+    st.pyplot(fig_timeline)
+
+    if generate_report:
+        buf = BytesIO()
+        fig_timeline.savefig(buf, format="png", bbox_inches='tight', dpi=100)
+        buf.seek(0)
+        plot_images.append(("Filter Timeline", base64.b64encode(buf.read()).decode('utf-8')))
+        buf.close()
+
+    plt.close(fig_timeline)
+
+    # --- Metric Plots ---
+    st.markdown("### Filtered Metric Plots")
+
+    for metric in selected_metrics:
+        st.subheader(f"Plot for: {metric}")
+
+        # Calculate metric-specific masks for highlighting
+        # Using plot_raw_df (downsampled or full)
+        m_spec_mask = pd.Series(False, index=plot_raw_df.index)
+        m_other_mask = pd.Series(False, index=plot_raw_df.index)
+        m_date_mask = pd.Series(False, index=plot_raw_df.index)
+
+        metric_filters_list = []
+
+        # 1. Date Mask for Plotting
+        if 'DATETIME' in plot_raw_df.columns:
+            for op, val in datetime_filters:
+                if op == "< (remove before)": m_date_mask |= (plot_raw_df['DATETIME'] < pd.to_datetime(val))
+                elif op == "> (remove after)": m_date_mask |= (plot_raw_df['DATETIME'] > pd.to_datetime(val))
+                elif op in ["between", "between (includes edge values)"]: m_date_mask |= ((plot_raw_df['DATETIME'] >= pd.to_datetime(val[0])) & (plot_raw_df['DATETIME'] <= pd.to_datetime(val[1])))
+
+        # 2. Numeric Masks for Plotting
+        for col, op, val in numeric_filters:
+            if col not in plot_raw_df.columns: continue
+
+            if op == "<": mask = (plot_raw_df[col] < val)
+            elif op == "<=": mask = (plot_raw_df[col] <= val)
+            elif op == "==": mask = (plot_raw_df[col] == val)
+            elif op == ">=": mask = (plot_raw_df[col] >= val)
+            elif op == ">": mask = (plot_raw_df[col] > val)
+            else: continue
+
+            if col == metric:
+                m_spec_mask |= mask
+                metric_filters_list.append((op, val))
+            else:
+                m_other_mask |= mask
+
+        # Conditions for coloring
+        cond_date = m_date_mask
+        cond_spec = m_spec_mask & ~m_date_mask
+        cond_other = m_other_mask & ~m_date_mask & ~m_spec_mask
+
+        # Graph 2 (Raw with Highlights)
+        fig_metric, ax_metric = plt.subplots(figsize=(12, 5))
+        sns.lineplot(data=plot_raw_df, x='DATETIME', y=metric, ax=ax_metric, label='Raw Data', color="green", linewidth=0.5)
+
+        # Get limits
+        if not plot_raw_df.empty:
+            ymin, ymax = plot_raw_df[metric].min(), plot_raw_df[metric].max()
+        else:
+            ymin, ymax = 0, 1
+
+        # MODIFIED: Added linewidth=0 to all fill_between calls
+        ax_metric.fill_between(plot_raw_df['DATETIME'], ymin, ymax, where=cond_date, color='purple', alpha=0.3, label='Datetime Filter', linewidth=0)
+        ax_metric.fill_between(plot_raw_df['DATETIME'], ymin, ymax, where=cond_other, color='gray', alpha=0.3, label='Other Numeric Filter', linewidth=0)
+        ax_metric.fill_between(plot_raw_df['DATETIME'], ymin, ymax, where=cond_spec, color='blue', alpha=0.3, label=f'{metric} Filter', linewidth=0)
+
+        ax_metric.set_title(f"{metric} - Raw Data & Filters")
+        ax_metric.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=4)
+
+        # Graph 3 (Cleaned)
+        fig_cleaned, ax_cleaned = plt.subplots(figsize=(12, 5))
+        sns.lineplot(data=plot_cleaned_df, x='DATETIME', y=metric, ax=ax_cleaned, color="green", linewidth=0.5, legend=False)
+
+        # Add threshold lines
+        x_pos = plot_cleaned_df['DATETIME'].min() if not plot_cleaned_df.empty else None
+        if x_pos:
+            for op, val in metric_filters_list:
+                ax_cleaned.axhline(y=val, color='red', linestyle='--', linewidth=1)
+                ax_cleaned.text(x=x_pos, y=val, s=f" {op} {val}", color='red', verticalalignment='bottom')
+
+        ax_cleaned.set_ylim(ymin, ymax)
+        ax_cleaned.set_title(f"{metric} - Cleaned Result")
+
+        c1, c2 = st.columns(2)
+        with c1: st.pyplot(fig_metric)
+        with c2: st.pyplot(fig_cleaned)
+
+        if generate_report:
+            # Save Raw Plot
+            buf1 = BytesIO()
+            fig_metric.savefig(buf1, format="png", bbox_inches='tight', dpi=100)
+            buf1.seek(0)
+            plot_images.append((f"{metric} (Raw)", base64.b64encode(buf1.read()).decode('utf-8')))
+            buf1.close()
+
+            # Save Cleaned Plot
+            buf2 = BytesIO()
+            fig_cleaned.savefig(buf2, format="png", bbox_inches='tight', dpi=100)
+            buf2.seek(0)
+            plot_images.append((f"{metric} (Cleaned)", base64.b64encode(buf2.read()).decode('utf-8')))
+            buf2.close()
+
+        plt.close(fig_metric)
+        plt.close(fig_cleaned)
+
+    if generate_report:
+        html_content = _generate_html_report(stats_payload, numeric_filters, datetime_filters, plot_images)
+
+        # --- FIX: Enforce ProactorEventLoop for Windows (Critical for Playwright) ---
+        if sys.platform == "win32":
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page()
+                page.set_content(html_content)
+                page.pdf(path=str(pdf_file_path), format="A4", margin={'top': '1cm', 'bottom': '1cm', 'left': '1cm', 'right': '1cm'})
+                browser.close()
+        except Exception as e:
+            st.error(f"Failed to save PDF: {e}")
+
+def split_holdout(raw_df: pd.DataFrame, cleaned_df: pd.DataFrame, split_mark: Union[float, str, pd.Timestamp], date_col: str = "Point Name", verbose: bool = False, remove_header_rows: int = 4) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Timestamp, Dict[str, Dict[str, Any]]]:
+    """Split cleaned_df into train/validation and holdout sets."""
+    df_header = None
+    if remove_header_rows > 0:
+        df_header = cleaned_df.iloc[:remove_header_rows].reset_index(drop=True)
+        raw_df = raw_df.iloc[remove_header_rows:, :].reset_index(drop=True)
+        cleaned_df = cleaned_df.iloc[remove_header_rows:, :].reset_index(drop=True)
+
+    raw_df[date_col] = pd.to_datetime(raw_df[date_col])
+    cleaned_df[date_col] = pd.to_datetime(cleaned_df[date_col])
+
+    raw_df_sorted = raw_df.sort_values(date_col).reset_index(drop=True)
+    cleaned_df_sorted = cleaned_df.sort_values(date_col).reset_index(drop=True)
+
+    if not isinstance(split_mark, float):
+        if not isinstance(split_mark, pd.Timestamp):
+            split_mark = pd.to_datetime(split_mark)
+    else:
+        n = len(raw_df_sorted)
+        h_raw = int(round(n * split_mark))
+        split_idx = n - h_raw - 1 if h_raw < n else n - 1
+        split_mark = raw_df_sorted.iloc[split_idx][date_col]
+
+    train_val_df = cleaned_df_sorted[cleaned_df_sorted[date_col] <= split_mark].reset_index(drop=True)
+    holdout_df = cleaned_df_sorted[cleaned_df_sorted[date_col] > split_mark].reset_index(drop=True)
+
+    def get_stats(df):
+        if len(df) > 0:
+            start = df[date_col].iloc[0]
+            end = df[date_col].iloc[-1]
+            num_days = (end - start).days + 1
+            return {"start": start, "end": end, "size": len(df), "num_days": num_days}
+        else:
+            return {"start": None, "end": None, "size": 0, "num_days": 0}
+
+    stats = {
+        "raw": get_stats(raw_df_sorted),
+        "cleaned": get_stats(cleaned_df_sorted),
+        "train_val": get_stats(train_val_df),
+        "holdout": get_stats(holdout_df),
+    }
+
+    if df_header is not None:
+        train_val_df = pd.concat([df_header, train_val_df], ignore_index=True)
+        holdout_df = pd.concat([df_header, holdout_df], ignore_index=True)
+
+    return train_val_df, holdout_df, split_mark, stats
 
 def split_holdout(raw_df: pd.DataFrame, cleaned_df: pd.DataFrame, split_mark: Union[float, str, pd.Timestamp], date_col: str = "Point Name", verbose: bool = False, remove_header_rows: int = 4) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Timestamp, Dict[str, Dict[str, Any]]]:
     """Split cleaned_df into train/validation and holdout sets."""
