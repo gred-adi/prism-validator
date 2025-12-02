@@ -353,7 +353,16 @@ def calculate_model_accuracy(row, prism_metrics_df):
 # --- Page Layout ---
 
 st.title("🎯 Model Accuracy Wizard")
+st.markdown("""
+This tool calculates the accuracy of deployed models by comparing their predictions against actual values from `.dat` files.
+It uses the **PRISM database** to identify which metrics are actively included in a model's profile for the calculation.
 
+**How to use:**
+1.  **Connect to Database:** Use the sidebar to establish a connection to the PRISM database. This is required to fetch the 'Included in Profile' status for each metric.
+2.  **Scan Directory (Step 1):** Provide the root path to your model folders. The tool will scan for models and check for the required `.dat` files. Select the models you wish to process.
+3.  **Process & Review (Step 2):** Run the accuracy calculation. The tool will read the `.dat` files, query PRISM for active metrics, calculate the accuracy for each, and save a detailed CSV in the model's `relative_deviation` folder.
+4.  **Download Reports:** Once processing is complete, you can download a consolidated PDF report summarizing the accuracy scores for each system.
+""")
 # Progress Indicator
 steps = ["Scan & Select Models", "Process & Results"]
 current_step = st.session_state.acc_step

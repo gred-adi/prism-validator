@@ -196,7 +196,16 @@ def read_process_cache_files(raw_file, point_list_df):
 # --- Main Page Layout ---
 
 st.title("🪄 Data Cleansing Wizard")
+st.markdown("""
+This tool provides an interactive way to clean raw, time-series datasets by applying numeric and date-based filters.
+It's designed to help you remove outliers, bad data, or specific operational periods (like shutdowns) before model development.
 
+**How to use:**
+1.  **Prerequisites:** Ensure TDT files are loaded via the **Global Settings** sidebar. This is required to automatically map the columns in your raw dataset.
+2.  **Upload Data (Step 1):** Upload your raw CSV dataset. The tool will use the filename to find the corresponding model in the TDT data and map the point names to metric names.
+3.  **Configure Filters (Step 2):** Use the interactive controls to define numeric and date-based rules for data removal. You can visualize the impact of your filters in real-time.
+4.  **Review & Export (Step 3):** Once you're satisfied with the filters, apply them to the dataset, configure the output metadata, and save the cleaned CSV. You can also generate a PDF report summarizing the cleansing process.
+""")
 # Progress Indicator
 steps = ["Data Ingestion", "Interactive Cleansing", "Review & Export"]
 current_step = st.session_state.cleansing_step
@@ -229,7 +238,7 @@ if current_step == 1:
         with point_list_container:
             # Ensure survey_df is initialized before checking it
             if st.session_state.survey_df is None:
-                st.error("❌ TDT Data not found. Please go to the **Home** page and load your TDT files first.")
+                st.error("❌ TDT Data not found. Please go to the **Global Settings** sidebar and load your TDT files first.")
                 st.stop()
             
             survey_df = st.session_state.survey_df
@@ -253,7 +262,7 @@ if current_step == 1:
                         st.error(f"❌ Could not find '{point_col}' column in TDT Survey data.")
                         st.stop()
                 else:
-                    st.error(f"❌ Model `{auto_model_name}` not found in the loaded TDT Survey data. Please ensure the correct TDT file is loaded on the Home page.")
+                    st.error(f"❌ Model `{auto_model_name}` not found in the loaded TDT Survey data. Please ensure the correct TDT file is loaded on the **Global Settings** sidebar.")
                     st.stop()
             else:
                 st.error("Could not parse Model Name from filename. Please ensure file follows format: `CLEANED-{ModelName}-{Dates}-RAW.csv`")

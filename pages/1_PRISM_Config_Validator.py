@@ -248,7 +248,7 @@ It helps identify discrepancies in metrics, mappings, filters, and diagnostics b
 
 **How to use:**
 1.  **Connect to Database:** Use the sidebar to enter your PRISM database credentials and click "Connect".
-2.  **Load Data:** Ensure your TDT files are processed on the **Home** page. Optionally, upload a specific "Consolidated Statistics File" in the sidebar if running Absolute Deviation checks.
+2.  **Load Data:** Ensure your TDT files are processed on the **Global Settings** sidebar. Optionally, upload a specific "Consolidated Statistics File" in the sidebar if running Absolute Deviation checks.
 3.  **Select Validation:** Choose a tab below corresponding to the type of check you wish to perform (e.g., *Metric Validation* or *Failure Diagnostics*).
 4.  **Run & Review:** Click the **Run Validation** button within the tab and review the Summary and Mismatches tables.
 """)
@@ -268,7 +268,7 @@ tabs = st.tabs(tab_list)
 # --- NEW Tab 0: Consolidation Overview ---
 with tabs[0]:
     st.header("TDT Consolidation Overview")
-    st.markdown("This tab shows the consolidated TDT, Survey, and Diagnostic data loaded from the files generated on the **Home** page. No validation is performed here.")
+    st.markdown("This tab shows the consolidated TDT, Survey, and Diagnostic data loaded from the files generated on the **Global Settings** sidebar. No validation is performed here.")
     
     if st.session_state.overview_df is None:
         st.info("Select a TDT folder and click 'Generate & Load Files' in the sidebar to see the consolidation overview.")

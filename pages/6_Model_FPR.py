@@ -52,7 +52,16 @@ def next_step(): st.session_state.fpr_step += 1
 def prev_step(): st.session_state.fpr_step -= 1
 
 st.title("🔎 Model FPR Wizard")
+st.markdown("""
+This tool generates a **False Positive Rate (FPR) Report** for a selected model.
+It analyzes model performance by comparing its predictions against defined constraints (filters) to identify false positives, and also visualizes data distributions.
 
+**How to use:**
+1.  **Connect to Database:** Use the sidebar to connect to the PRISM database. This is necessary to fetch the model's active constraints (filters).
+2.  **Select Model (Step 1):** Scan the root directory to find all available models. The tool will validate the required files (`Raw`, `Holdout`, `OMR`, etc.) and allow you to select a valid model.
+3.  **Configure Constraints (Step 2):** Fetch the model's constraints from the database. You can review, add, or modify these constraints before proceeding.
+4.  **Generate Report (Step 3):** Set the thresholds and other parameters, then run the report generation. The tool will create FPR plots, KS distribution plots, and compile them into a downloadable PDF report.
+""")
 steps = ["Select Model", "Configure Constraints", "Generate Report"]
 current = st.session_state.fpr_step
 st.progress(current / len(steps), text=f"Step {current}: {steps[current-1]}")

@@ -33,7 +33,7 @@ This tool facilitates the extraction of historical time-series data from the **C
 It is designed to help you quickly gather training or analysis data for specific models.
 
 **How to use:**
-1.  **Prerequisites:** Ensure TDT files are loaded via the **Home** page.
+1.  **Prerequisites:** Ensure TDT files are loaded via the **Global Settings** sidebar.
 2.  **Filter Metrics (Step 2):** Select the specific TDT and Model you wish to query. This will load the relevant tags.
 3.  **Configure Query (Step 3):** * Select the specific metrics you want to download.
     * Define the **Start/End Date** and **Aggregate** settings (e.g., 1-minute snapshots).
@@ -266,11 +266,11 @@ df_survey = None
 data_source_selected = False
 
 if 'survey_df' in st.session_state:
-    st.info("Using the TDT data from the Home page.")
+    st.info("Using the TDT data from the Global Settings sidebar.")
     df_survey = st.session_state.survey_df
     data_source_selected = True
 else:
-    st.warning("Please generate the TDT files on the Home page first.")
+    st.warning("Please generate the TDT files on the Global Settings sidebar first.")
     st.stop()
 
 # --- Step 2: Filter & Load Metrics ---

@@ -113,7 +113,16 @@ def load_and_map_data(w_outlier_file, wo_outlier_file, survey_df, model_name):
 
 # --- Page Layout ---
 st.title("🔀 Training-Validation Split Wizard")
+st.markdown("""
+This tool performs a **stratified continuous split** on your dataset to create `Training` and `Validation` sets.
+This method ensures that both sets have a similar distribution of values for a key variable (like `Operational State`), which is crucial for training robust models.
 
+**How to use:**
+1.  **Prerequisites:** Ensure your TDT files are loaded via the **Global Settings** sidebar. This is needed to map data columns and identify the `Operational State` metric.
+2.  **Upload & Map Data (Step 1):** Select the TDT and Model, then upload the `WITH OUTLIERS` and `WITHOUT OUTLIERS` versions of your cleaned dataset. The tool will map the column names based on the TDT.
+3.  **Configure & Split (Step 2):** Confirm the `Operational State` variable and set the training/validation split ratio. The tool will then perform the stratified split.
+4.  **Visualize & Export (Step 3):** Review the distributions of key metrics in the resulting datasets, confirm output metadata, and save the final `Training` and `Validation` CSV files and a summary report.
+""")
 steps = ["Upload & Map Data", "Configure & Split", "Visualize & Export"]
 current = st.session_state.tvs_step
 st.progress(current / len(steps), text=f"Step {current}: {steps[current-1]}")
@@ -123,11 +132,11 @@ st.progress(current / len(steps), text=f"Step {current}: {steps[current-1]}")
 # ==========================================
 if current == 1:
     st.header("Step 1: Upload Data & Select TDT")
-    st.info("Upload the cleaned datasets. We will use the **TDT Survey Data** (loaded on Home) to map point names to metrics and identify the Operational State.")
+    st.info("Upload the cleaned datasets. We will use the **TDT Survey Data** (loaded on **Global Settings** sidebar) to map point names to metrics and identify the Operational State.")
 
     # 1. TDT/Model Selection
     if st.session_state.survey_df is None:
-        st.error("❌ TDT Data not found. Please go to the **Home** page and load your TDT files first.")
+        st.error("❌ TDT Data not found. Please go to the **Global Settings** sidebar and load your TDT files first.")
         st.stop()
     
     survey_df = st.session_state.survey_df

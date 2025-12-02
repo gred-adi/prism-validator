@@ -175,7 +175,7 @@ st.markdown("""
 This tool performs **offline integrity checks** on your TDT Excel files. It is designed to catch errors, duplicates, and missing mandatory fields within the spreadsheets themselves, ensuring data quality before deployment to PRISM.
 
 **How to use:**
-1.  **Load Data:** Go to the **Home** page, upload your folder of TDT Excel files, and click "Generate & Load Files".
+1.  **Load Data:** Go to the **Global Settings** sidebar, upload your folder of TDT Excel files, and click "Generate & Load Files".
 2.  **Select Audit:** Click on the tabs below to inspect different sections of the TDT (e.g., *Point Survey*, *Calculations*, *Attributes*).
 3.  **Run Validation:** Click the button inside the tab to execute the check.
 4.  **Review Issues:** The results will highlight specific rows or cells containing errors (marked in red) or confirm if the section is valid (✅).
@@ -195,10 +195,10 @@ tabs = st.tabs(tab_list)
 # --- Tab 0: TDT Consolidation Overview ---
 with tabs[0]:
     st.header("TDT Consolidation Overview")
-    st.markdown("This tab shows the consolidated data loaded from the TDT files on the **Home** page.")
+    st.markdown("This tab shows the consolidated data loaded from the TDT files on the **Global Settings** sidebar.")
     
     if 'overview_df' not in st.session_state or st.session_state.overview_df is None:
-        st.warning("Please go to the **Home** page, upload your TDT files, and click 'Generate & Load Files' to see the overview.")
+        st.warning("Please go to the **Global Settings** sidebar, upload your TDT files, and click 'Generate & Load Files' to see the overview.")
     else:
         st.subheader("Consolidated TDTs and Models")
         st.dataframe(st.session_state.overview_df, use_container_width=True)
@@ -216,7 +216,7 @@ with tabs[1]:
     
     prerequisites_met = st.session_state.get('survey_df') is not None
     if not prerequisites_met:
-        st.warning("Please load TDT files on the **Home** page first.")
+        st.warning("Please load TDT files on the **Global Settings** sidebar first.")
     
     if st.button("Run Point Survey Validation", key="run_point_survey_val", disabled=not prerequisites_met):
         with st.spinner('Running...'):
@@ -308,7 +308,7 @@ with tabs[2]:
     
     prerequisites_met = st.session_state.get('survey_df') is not None
     if not prerequisites_met:
-        st.warning("Please load TDT files on the **Home** page first.")
+        st.warning("Please load TDT files on the **Global Settings** sidebar first.")
     
     if st.button("Run Calculation Validation", key="run_calc_val", disabled=not prerequisites_met):
         with st.spinner('Running...'):
@@ -382,7 +382,7 @@ with tabs[3]:
     
     prerequisites_met = (st.session_state.get('survey_df') is not None) and (st.session_state.get('diag_df') is not None)
     if not prerequisites_met:
-        st.warning("Please load TDT files on the **Home** page first (this check requires both Survey and Diagnostic data).")
+        st.warning("Please load TDT files on the **Global Settings** sidebar first (this check requires both Survey and Diagnostic data).")
     
     if st.button("Run Attribute Validation", key="run_attr_val", disabled=not prerequisites_met):
         with st.spinner('Running...'):
@@ -492,7 +492,7 @@ with tabs[4]:
     
     prerequisites_met = st.session_state.get('diag_df') is not None
     if not prerequisites_met:
-        st.warning("Please load TDT files on the **Home** page first.")
+        st.warning("Please load TDT files on the **Global Settings** sidebar first.")
     
     if st.button("Run Diagnostics Validation", key="run_diag_val", disabled=not prerequisites_met):
         with st.spinner('Running...'):
@@ -586,7 +586,7 @@ with tabs[5]:
     st.markdown("Checks for logic in the **Prescriptive** sheets (if they exist).")
     prerequisites_met = st.session_state.get('survey_df') is not None # Or another df
     if not prerequisites_met:
-        st.warning("Please load TDT files on the **Home** page first.")
+        st.warning("Please load TDT files on the **Global Settings** sidebar first.")
     
     if st.button("Run Prescriptive Validation", key="run_presc_val", disabled=not prerequisites_met):
         with st.spinner('Running...'):

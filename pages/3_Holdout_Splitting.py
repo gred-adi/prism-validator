@@ -113,7 +113,15 @@ def load_data(raw_file, cleaned_file):
 
 # --- Page Layout ---
 st.title("🔀 Holdout Splitting Wizard")
+st.markdown("""
+This tool splits your cleaned dataset into two parts: a **Training/Validation set** and a **Holdout set**.
+The Holdout set is a portion of the most recent data that is kept separate and is used for the final, unbiased evaluation of the model.
 
+**How to use:**
+1.  **Upload Data (Step 1):** Upload both the `RAW` and `CLEANED` versions of your dataset.
+2.  **Configure Split (Step 2):** Use the slider to define the percentage of recent data to allocate to the Holdout set. The timeline visualization helps you see the exact split point.
+3.  **Export & Report (Step 3):** Confirm the output metadata, and the tool will save the `Train/Validation` and `Holdout` sets as separate CSV files. A PDF report summarizing the split will also be generated.
+""")
 steps = ["Upload Data", "Configure Split", "Export & Report"]
 current_step = st.session_state.holdout_step
 st.progress(current_step / len(steps), text=f"Step {current_step}: {steps[current_step-1]}")

@@ -14,7 +14,7 @@ st.markdown("""
 Welcome to the **PRISM Development & QA Toolkit**. This application centralizes the workflows for validating Technical Design Templates (TDTs), auditing live PRISM configurations, and preparing data for model development.
 
 ### 👈 Getting Started
-To begin, please **upload your TDT Excel files in the Sidebar**. This will generate the reference data (`survey_df`) required by most modules below.
+To begin, please **upload your TDT Excel files in the Global Settings sidebar**. This will generate the reference data (`survey_df`) required by most modules below.
 """)
 
 st.divider()
