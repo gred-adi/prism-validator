@@ -247,8 +247,8 @@ This tool validates the alignment between your offline **TDT (Template Design To
 It helps identify discrepancies in metrics, mappings, filters, and diagnostics before or after deployment.
 
 **How to use:**
-1.  **Connect to Database:** Use the sidebar to enter your PRISM database credentials and click "Connect".
-2.  **Load Data:** Ensure your TDT files are processed in the **Global Settings Sidebar**. The reference files generated there are used for these checks.
+1.  **Load Data:** Ensure your TDT files are processed in the **Global Settings Sidebar**. The reference files generated there are used for these checks.
+2.  **Connect to Database:** Use the sidebar to enter your PRISM database credentials and click "Connect".
 3.  **Upload Statistics (Optional):** Upload a "Consolidated Statistics File" in the local sidebar if running Absolute Deviation checks.
 4.  **Select Validation:** Choose a tab below corresponding to the type of check you wish to perform (e.g., *Metric Validation* or *Failure Diagnostics*).
 5.  **Run & Review:** Click the **Run Validation** button within the tab and review the Summary and Mismatches tables.

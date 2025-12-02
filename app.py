@@ -16,27 +16,27 @@ from file_generator import generate_files_from_uploads, convert_dfs_to_excel_byt
 with st.sidebar:
     st.title("Global Settings")
 
-    # --- 1. Root Folder Configuration ---
-    st.header("📂 Output Configuration")
+    # # --- 1. Root Folder Configuration ---
+    # st.header("📂 Output Configuration")
     
-    # Initialize base_path in session state if not present
-    if 'base_path' not in st.session_state:
-        st.session_state.base_path = os.getcwd()
+    # # Initialize base_path in session state if not present
+    # if 'base_path' not in st.session_state:
+    #     st.session_state.base_path = os.getcwd()
 
-    # Text input for root folder
-    st.session_state.base_path = st.text_input(
-        "Root Output Folder", 
-        value=st.session_state.base_path,
-        help="All generated datasets and reports will be saved within this folder."
-    )
+    # # Text input for root folder
+    # st.session_state.base_path = st.text_input(
+    #     "Root Output Folder", 
+    #     value=st.session_state.base_path,
+    #     help="All generated datasets and reports will be saved within this folder."
+    # )
     
-    # Optional: Display current status
-    if os.path.exists(st.session_state.base_path):
-        st.caption(f"✅ Path exists")
-    else:
-        st.caption(f"⚠️ Path does not exist (will be created)")
+    # # Optional: Display current status
+    # if os.path.exists(st.session_state.base_path):
+    #     st.caption(f"✅ Path exists")
+    # else:
+    #     st.caption(f"⚠️ Path does not exist (will be created)")
 
-    st.divider()
+    # st.divider()
 
     # --- 2. TDT File Upload ---
     st.header("📤 Upload TDT Files")
