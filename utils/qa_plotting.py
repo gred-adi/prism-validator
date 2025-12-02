@@ -4,8 +4,16 @@ from typing import List, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import yaml
 import math
+from io import BytesIO
+import base64
+import dataframe_image as dfi
+from playwright.sync_api import sync_playwright
+from jinja2 import Environment
+import sys
+import asyncio
 
 from utils.data_preparation import prepare_omr_data
 from utils.model_validation import (
@@ -19,30 +27,195 @@ from utils.qa_data_processing import (
     load_and_process_data,
 )
 
+# ==========================================
+# NEW PLOTTING FUNCTIONS (For Wizard UI)
+# ==========================================
 
-def apply_conditions(
-        df: pd.DataFrame, 
-        constraint_cols: List[str], 
-        condition_limits: List[float], 
-        operators: List[str],
-    ) -> pd.Series:
-    """
-    Apply multiple conditions to determine when the model is off based on specified constraints.
+def downsample_data(df: pd.DataFrame, max_points: int = 10000) -> pd.DataFrame:
+    """Downsamples dataframe for faster plotting if it exceeds max_points."""
+    if len(df) > max_points:
+        step = len(df) // max_points
+        return df.iloc[::step].copy()
+    return df
 
+def apply_conditions_series(df: pd.DataFrame, constraints_df: pd.DataFrame) -> pd.Series:
     """
-    
+    Applies multiple conditions from a constraints DataFrame.
+    constraints_df expected columns: ['Point Name', 'Operator', 'Value']
+    """
+    if constraints_df.empty:
+        return pd.Series(False, index=df.index)
+
     conditions = []
-    for col, limit, op in zip(constraint_cols, condition_limits, operators):
-        if op == "<":
-            conditions.append(df[col] < limit)
-        elif op == ">":
-            conditions.append(df[col] > limit)
-        elif op == "=":
-            conditions.append(df[col] == limit)
-        else:
-            raise ValueError(f"Unsupported operator: {op}")
+    for _, row in constraints_df.iterrows():
+        col = row['Point Name']
+        op = row['Operator']
+        val = row['Value']
+        
+        if col not in df.columns:
+            continue
+            
+        if op == "<": conditions.append(df[col] < val)
+        elif op == ">": conditions.append(df[col] > val)
+        elif op == "==": conditions.append(df[col] == val)
+        elif op == "<=": conditions.append(df[col] <= val)
+        elif op == ">=": conditions.append(df[col] >= val)
+
+    if not conditions:
+        return pd.Series(False, index=df.index)
+        
+    # Combine with OR logic (Model is OFF if ANY condition is met)
     return pd.Series(np.logical_or.reduce(conditions), index=df.index)
 
+def plot_omr_heatmap(omr_df: pd.DataFrame, timestamp_col: str = "timestamp", omr_col: str = "omr", ax=None):
+    """
+    Generates a heatmap of OMR intensity by Day of Week vs Hour of Day.
+    Helps identify temporal patterns in false positives.
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+    df = omr_df.copy()
+    df['Day'] = df[timestamp_col].dt.day_name()
+    df['Hour'] = df[timestamp_col].dt.hour
+    
+    # Pivot for heatmap
+    heatmap_data = df.pivot_table(index='Day', columns='Hour', values=omr_col, aggfunc='mean')
+    
+    # Sort days
+    days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    heatmap_data = heatmap_data.reindex(days_order)
+    
+    sns.heatmap(heatmap_data, cmap="YlOrRd", ax=ax, cbar_kws={'label': 'Avg OMR'})
+    ax.set_title("Average OMR Heatmap (Day vs Hour)")
+    ax.set_xlabel("Hour of Day")
+    ax.set_ylabel("Day of Week")
+    
+    return ax
+
+def plot_omr_vs_feature(raw_df: pd.DataFrame, omr_df: pd.DataFrame, feature_col: str, timestamp_col: str="timestamp", omr_col: str="omr", ax=None):
+    """
+    Scatter plot of OMR vs a specific feature (e.g. Load/MW).
+    """
+    if feature_col not in raw_df.columns:
+        return None
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 6))
+        
+    # Align dataframes by timestamp if needed, currently assuming aligned index or merging
+    # Ideally, merge on timestamp
+    merged = pd.merge(raw_df[[timestamp_col, feature_col]], omr_df[[timestamp_col, omr_col]], on=timestamp_col, how='inner')
+    
+    # Downsample for scatter to avoid blobs
+    plot_data = downsample_data(merged, 5000)
+    
+    sns.scatterplot(data=plot_data, x=feature_col, y=omr_col, alpha=0.3, ax=ax)
+    ax.set_title(f"OMR vs {feature_col}")
+    ax.set_xlabel(feature_col)
+    ax.set_ylabel("OMR")
+    ax.grid(True, alpha=0.3)
+    return ax
+
+def plot_omr_and_constraint_dynamic(
+    df: pd.DataFrame,
+    omr_df: pd.DataFrame,
+    constraints_df: pd.DataFrame,
+    timestamp_col: str = "timestamp",
+    omr_col: str = "omr",
+    warning_thresh: float = 5.0,
+    alert_thresh: float = 10.0,
+    ax=None
+):
+    """
+    Refactored version of plot_omr_and_constraint that accepts a pre-parsed constraints DataFrame
+    and an optional axis object for subplotting.
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(11, 5.5))
+        
+    # Prepare Data
+    model_off_cond = apply_conditions_series(df, constraints_df)
+    warning_cond = (omr_df[omr_col] >= warning_thresh) & (omr_df[omr_col] < alert_thresh)
+    alert_cond = (omr_df[omr_col] >= alert_thresh)
+    
+    # Plot OMR
+    ax.plot(omr_df[timestamp_col], omr_df[omr_col], color="#1f77b4", linewidth=1, label="OMR")
+    
+    # Limits
+    ymin, ymax = 0, omr_df[omr_col].max()
+    ymax += (ymax * 0.25)
+    
+    # Shading
+    # Use step='mid' or just raw fill depending on preference. fill_between is standard.
+    # Note: timestamps must align for the conditions.
+    
+    # Constraints (Gray)
+    ax.fill_between(df[timestamp_col], ymin, ymax, where=model_off_cond, color="gray", alpha=0.5, linewidth=0, label="Model OFF")
+    
+    # Warning (Orange)
+    ax.fill_between(omr_df[timestamp_col], ymin, ymax, where=warning_cond, color="orange", alpha=0.7, linewidth=0, label="Warning")
+    
+    # Alert (Red)
+    ax.fill_between(omr_df[timestamp_col], ymin, ymax, where=alert_cond, color="red", alpha=0.6, linewidth=0, label="Alert")
+    
+    ax.set_ylabel("OMR (%)")
+    ax.set_ylim([ymin, ymax])
+    ax.legend(loc="upper right")
+    ax.grid(True, alpha=0.3)
+    
+    return ax
+
+def generate_fpr_plots_memory(
+    raw_df: pd.DataFrame,
+    cleaned_val_omr: pd.DataFrame,
+    raw_val_omr: pd.DataFrame,
+    holdout_omr: pd.DataFrame,
+    constraints_df: pd.DataFrame,
+    model_name: str,
+    include_heatmap: bool = True,
+    include_scatter: bool = False
+) -> list:
+    """
+    Generates a list of (Title, Base64Image) tuples for the report.
+    Does NOT save to disk.
+    """
+    plots = []
+    
+    # 1. Cleaned Validation OMR
+    fig, ax = plt.subplots(figsize=(12, 5))
+    plot_omr_and_constraint_dynamic(raw_df, cleaned_val_omr, constraints_df, ax=ax)
+    ax.set_title(f"{model_name} - Cleaned Validation OMR")
+    
+    buf = BytesIO()
+    fig.savefig(buf, format="jpg", bbox_inches='tight', dpi=150)
+    plots.append(("Cleaned Validation OMR", base64.b64encode(buf.getvalue()).decode('utf-8')))
+    plt.close(fig)
+    
+    # 2. Raw Validation OMR
+    fig, ax = plt.subplots(figsize=(12, 5))
+    plot_omr_and_constraint_dynamic(raw_df, raw_val_omr, constraints_df, ax=ax)
+    ax.set_title(f"{model_name} - Raw Validation OMR")
+    
+    buf = BytesIO()
+    fig.savefig(buf, format="jpg", bbox_inches='tight', dpi=150)
+    plots.append(("Raw Validation OMR", base64.b64encode(buf.getvalue()).decode('utf-8')))
+    plt.close(fig)
+    
+    # 3. Optional Heatmap
+    if include_heatmap:
+        fig, ax = plt.subplots(figsize=(10, 6))
+        plot_omr_heatmap(holdout_omr, ax=ax) # Using holdout for heatmap usually
+        buf = BytesIO()
+        fig.savefig(buf, format="jpg", bbox_inches='tight', dpi=150)
+        plots.append(("Holdout OMR Heatmap", base64.b64encode(buf.getvalue()).decode('utf-8')))
+        plt.close(fig)
+        
+    return plots
+
+# ==========================================
+# ORIGINAL FUNCTIONS (RESTORED FOR COMPATIBILITY)
+# ==========================================
 
 def plot_omr_and_constraint(
     df: pd.DataFrame,
