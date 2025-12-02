@@ -195,10 +195,10 @@ tabs = st.tabs(tab_list)
 # --- Tab 0: TDT Consolidation Overview ---
 with tabs[0]:
     st.header("TDT Consolidation Overview")
-    st.markdown("This tab shows the consolidated data loaded from the TDT files on the **Home** page.")
+    st.markdown("This tab shows the consolidated TDT, Survey, and Diagnostic data loaded from the TDT files are processed in the **Global Settings Sidebar**. No validation is performed here.")
     
     if 'overview_df' not in st.session_state or st.session_state.overview_df is None:
-        st.warning("Please go to the **Home** page, upload your TDT files, and click 'Generate & Load Files' to see the overview.")
+        st.info("Please go to the **Global Settings** in the sidebar, upload your TDT files, and click 'Generate & Load Files' to see the overview.")
     else:
         st.subheader("Consolidated TDTs and Models")
         st.dataframe(st.session_state.overview_df, use_container_width=True)
