@@ -198,7 +198,7 @@ def read_process_cache_files(raw_file, point_list_df):
 st.title("🪄 Data Cleansing Wizard")
 
 # Progress Indicator
-steps = ["1. Data Ingestion", "2. Interactive Cleansing", "3. Review & Export"]
+steps = ["Data Ingestion", "Interactive Cleansing", "Review & Export"]
 current_step = st.session_state.cleansing_step
 st.progress(current_step / len(steps), text=f"Step {current_step}: {steps[current_step-1]}")
 

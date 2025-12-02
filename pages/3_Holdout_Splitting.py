@@ -114,7 +114,7 @@ def load_data(raw_file, cleaned_file):
 # --- Page Layout ---
 st.title("🔀 Holdout Splitting Wizard")
 
-steps = ["1. Upload Data", "2. Configure Split", "3. Export & Report"]
+steps = ["Upload Data", "Configure Split", "Export & Report"]
 current_step = st.session_state.holdout_step
 st.progress(current_step / len(steps), text=f"Step {current_step}: {steps[current_step-1]}")
 

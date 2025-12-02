@@ -53,7 +53,7 @@ def prev_step(): st.session_state.fpr_step -= 1
 
 st.title("🔎 Model FPR & QA Wizard")
 
-steps = ["1. Select Model", "2. Configure Constraints", "3. Generate Report"]
+steps = ["Select Model", "Configure Constraints", "Generate Report"]
 current = st.session_state.fpr_step
 st.progress(current / len(steps), text=f"Step {current}: {steps[current-1]}")
 

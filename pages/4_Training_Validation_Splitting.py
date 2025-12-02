@@ -114,7 +114,7 @@ def load_and_map_data(w_outlier_file, wo_outlier_file, survey_df, model_name):
 # --- Page Layout ---
 st.title("🔀 Training-Validation Split Wizard")
 
-steps = ["1. Upload & Map Data", "2. Configure & Split", "3. Visualize & Export"]
+steps = ["Upload & Map Data", "Configure & Split", "Visualize & Export"]
 current = st.session_state.tvs_step
 st.progress(current / len(steps), text=f"Step {current}: {steps[current-1]}")
 

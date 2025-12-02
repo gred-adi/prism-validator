@@ -355,7 +355,7 @@ def calculate_model_accuracy(row, prism_metrics_df):
 st.title("🎯 Model Accuracy Wizard")
 
 # Progress Indicator
-steps = ["1. Scan & Select Models", "2. Process & Results"]
+steps = ["Scan & Select Models", "Process & Results"]
 current_step = st.session_state.acc_step
 st.progress(current_step / len(steps), text=f"Step {current_step}: {steps[current_step-1]}")
 
