@@ -18,6 +18,17 @@ from utils.model_dev_utils import (
 
 st.set_page_config(page_title="Data Cleansing", page_icon="1️⃣", layout="wide")
 
+st.title("🪄 Data Cleansing Wizard")
+st.markdown("""
+This wizard guides you through cleaning raw time-series datasets. 
+It automates column mapping using your TDT files and provides an interactive interface for applying numeric and datetime filters.
+
+**How to Use:**
+1.  **Ingest Data:** Upload your raw CSV dataset. The tool will automatically map column names using the TDT Survey data loaded in the Global Settings Sidebar.
+2.  **Cleanse:** Use the interactive controls to apply numeric thresholds and exclude specific time ranges (e.g., maintenance periods).
+3.  **Review & Export:** Check the impact of your filters and download the cleaned dataset along with a PDF report.
+""")
+
 # --- Initialize Session State ---
 if 'cleansing_step' not in st.session_state: st.session_state.cleansing_step = 1
 
@@ -192,10 +203,6 @@ def read_process_cache_files(raw_file, point_list_df):
         my_bar.empty()
         st.error(f"An error occurred during processing: {e}")
         return None, None, None
-
-# --- Main Page Layout ---
-
-st.title("🪄 Data Cleansing Wizard")
 
 # Progress Indicator
 steps = ["Data Ingestion", "Interactive Cleansing", "Review & Export"]

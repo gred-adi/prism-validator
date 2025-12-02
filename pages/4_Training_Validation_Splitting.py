@@ -15,6 +15,18 @@ from verstack.stratified_continuous_split import scsplit
 
 st.set_page_config(page_title="Train Validation Split", page_icon="4️⃣", layout="wide")
 
+st.title("🔀 Training-Validation Split Wizard")
+st.markdown("""
+This wizard helps you split your Training/Validation data into separate **Training** and **Validation** sets. 
+It uses **stratified splitting** based on an Operational State metric to ensure both sets are representative of the model's operating range.
+
+**How to Use:**
+1.  **Upload Data:** Upload the `WITH-OUTLIER` and `WITHOUT-OUTLIER` files.
+2.  **Configure:** Select the **Operational State** metric to stratify by and the desired split ratio (e.g., 80% Train, 20% Validation).
+3.  **Split:** Run the split algorithm.
+4.  **Visualize & Save:** Review distribution plots to verify balance and save the final files.
+""")
+
 # --- Initialize Session State ---
 if 'tvs_step' not in st.session_state: st.session_state.tvs_step = 1
 
@@ -111,9 +123,7 @@ def load_and_map_data(w_outlier_file, wo_outlier_file, survey_df, model_name):
         st.error(f"Error loading data: {e}")
         return False
 
-# --- Page Layout ---
-st.title("🔀 Training-Validation Split Wizard")
-
+# Progress Indicator
 steps = ["Upload & Map Data", "Configure & Split", "Visualize & Export"]
 current = st.session_state.tvs_step
 st.progress(current / len(steps), text=f"Step {current}: {steps[current-1]}")

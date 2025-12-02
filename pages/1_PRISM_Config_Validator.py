@@ -248,9 +248,10 @@ It helps identify discrepancies in metrics, mappings, filters, and diagnostics b
 
 **How to use:**
 1.  **Connect to Database:** Use the sidebar to enter your PRISM database credentials and click "Connect".
-2.  **Load Data:** Ensure your TDT files are processed on the **Home** page. Optionally, upload a specific "Consolidated Statistics File" in the sidebar if running Absolute Deviation checks.
-3.  **Select Validation:** Choose a tab below corresponding to the type of check you wish to perform (e.g., *Metric Validation* or *Failure Diagnostics*).
-4.  **Run & Review:** Click the **Run Validation** button within the tab and review the Summary and Mismatches tables.
+2.  **Load Data:** Ensure your TDT files are processed in the **Global Settings Sidebar**. The reference files generated there are used for these checks.
+3.  **Upload Statistics (Optional):** Upload a "Consolidated Statistics File" in the local sidebar if running Absolute Deviation checks.
+4.  **Select Validation:** Choose a tab below corresponding to the type of check you wish to perform (e.g., *Metric Validation* or *Failure Diagnostics*).
+5.  **Run & Review:** Click the **Run Validation** button within the tab and review the Summary and Mismatches tables.
 """)
 
 tab_list = [

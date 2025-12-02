@@ -33,8 +33,8 @@ This tool facilitates the extraction of historical time-series data from the **C
 It is designed to help you quickly gather training or analysis data for specific models.
 
 **How to use:**
-1.  **Prerequisites:** Ensure TDT files are loaded via the **Home** page.
-2.  **Filter Metrics (Step 2):** Select the specific TDT and Model you wish to query. This will load the relevant tags.
+1.  **Prerequisites:** Ensure TDT files are loaded via the **Global Settings Sidebar** (on the left).
+2.  **Filter Metrics (Step 2):** Select the specific TDT and Model you wish to query. This will load the relevant tags from the TDT.
 3.  **Configure Query (Step 3):** * Select the specific metrics you want to download.
     * Define the **Start/End Date** and **Aggregate** settings (e.g., 1-minute snapshots).
     * Enter your **API Token**.

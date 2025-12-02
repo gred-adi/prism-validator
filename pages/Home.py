@@ -14,7 +14,10 @@ st.markdown("""
 Welcome to the **PRISM Development & QA Toolkit**. This application centralizes the workflows for validating Technical Design Templates (TDTs), auditing live PRISM configurations, and preparing data for model development.
 
 ### 👈 Getting Started
-To begin, please **upload your TDT Excel files in the Sidebar**. This will generate the reference data (`survey_df`) required by most modules below.
+To begin, please **upload your TDT Excel files in the Global Settings Sidebar** on the left.
+* This sidebar is accessible from **any page**.
+* Uploading files there generates the reference data (`survey_df`) required by most modules below.
+* You only need to upload them once per session.
 """)
 
 st.divider()
@@ -34,8 +37,12 @@ with col1:
         st.markdown("Performs offline integrity checks on the TDT files themselves. Detects duplicates, missing mandatory fields, and logic errors within the Excel templates before you deploy.")
 
     with st.container(border=True):
-        st.markdown("#### 🎯 Model Accuracy & FPR")
-        st.markdown("Post-deployment validation tools to calculate model accuracy scores and generate False Positive Rate (FPR) reports for QA.")
+        st.markdown("#### 🎯 Model Accuracy")
+        st.markdown("Post-deployment validation tool to calculate model accuracy scores by comparing PRISM metrics against calculated values.")
+
+    with st.container(border=True):
+        st.markdown("#### 🔎 Model FPR")
+        st.markdown("Generates False Positive Rate (FPR) reports for QA, analyzing model behavior against holdout data.")
 
 with col2:
     st.subheader("🛠️ Development Tools")

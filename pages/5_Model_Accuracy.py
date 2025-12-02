@@ -17,6 +17,17 @@ from validations.prism_validations.metric_mapping_validation.query import get_qu
 
 st.set_page_config(page_title="Calculate Accuracy", page_icon="🎯", layout="wide")
 
+st.title("🎯 Model Accuracy Wizard")
+st.markdown("""
+Calculates the accuracy of your deployed models by comparing the `.dat` file (from PRISM's relative deviation folder) against the model's active metrics in the database.
+
+**How to Use:**
+1.  **Connect Database:** Connect to the PRISM database in the sidebar to fetch active metric configurations.
+2.  **Scan Directory:** Point the tool to your model root folder (containing the `relative_deviation` subfolders).
+3.  **Process:** Select the models to analyze. The tool will calculate the accuracy score for each based on the formula: `(1 - abs(Mean Relative Deviation)) * 100`.
+4.  **Report:** Download a summary CSV or a PDF report.
+""")
+
 # --- Initialize Session State ---
 if 'acc_step' not in st.session_state: st.session_state.acc_step = 1
 if 'scanned_models_df' not in st.session_state: st.session_state.scanned_models_df = None
@@ -349,10 +360,6 @@ def calculate_model_accuracy(row, prism_metrics_df):
 
     except Exception as e:
         return None, f"Calculation Error: {e}", None
-
-# --- Page Layout ---
-
-st.title("🎯 Model Accuracy Wizard")
 
 # Progress Indicator
 steps = ["Scan & Select Models", "Process & Results"]

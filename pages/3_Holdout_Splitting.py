@@ -11,6 +11,16 @@ from utils.model_dev_utils import cleaned_dataset_name_split, split_holdout, gen
 
 st.set_page_config(page_title="Split Holdout Dataset", page_icon="2️⃣", layout="wide")
 
+st.title("🔀 Holdout Splitting Wizard")
+st.markdown("""
+Use this module to split your cleaned dataset into a **Training/Validation** set and a **Holdout** set based on a time cut-off.
+
+**How to Use:**
+1.  **Upload Data:** Upload the `CLEANED-RAW` and `CLEANED` files generated in the previous step.
+2.  **Configure Split:** Use the slider to determine the percentage of recent data to reserve for the holdout set.
+3.  **Export:** Save the new files. This will generate a `WITH-OUTLIER` (Train/Val) file and a `HOLDOUT` file.
+""")
+
 # --- Initialize Session State ---
 if 'holdout_step' not in st.session_state: st.session_state.holdout_step = 1
 
@@ -111,9 +121,7 @@ def load_data(raw_file, cleaned_file):
         st.error(f"Error reading files: {e}")
         return False
 
-# --- Page Layout ---
-st.title("🔀 Holdout Splitting Wizard")
-
+# Progress Indicator
 steps = ["Upload Data", "Configure Split", "Export & Report"]
 current_step = st.session_state.holdout_step
 st.progress(current_step / len(steps), text=f"Step {current_step}: {steps[current_step-1]}")
