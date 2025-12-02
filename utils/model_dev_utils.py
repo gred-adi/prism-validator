@@ -121,16 +121,26 @@ def scan_folders_structure(root_path: str) -> pd.DataFrame:
                         dataset_path = model_dir / "dataset"
                         has_dataset = dataset_path.exists() and dataset_path.is_dir()
                         
-                        # Find Raw and Holdout files for FPR
+                        # Find Files
                         raw_file = None
                         holdout_file = None
+                        omr_wo = None
+                        omr_w = None
+                        omr_hold = None
+                        
                         if has_dataset:
-                            # Look for standard naming
+                            # Standard CSVs
                             raw_candidates = list(dataset_path.glob("*RAW.csv"))
                             if raw_candidates: raw_file = raw_candidates[0].name
                             
                             hold_candidates = list(dataset_path.glob("*HOLDOUT.csv"))
                             if hold_candidates: holdout_file = hold_candidates[0].name
+                            
+                            # OMR Files
+                            omr_files = list(dataset_path.glob("*OMR*.dat"))
+                            omr_wo = next((f.name for f in omr_files if "WITHOUT-OUTLIER" in f.name), None)
+                            omr_w = next((f.name for f in omr_files if "WITH-OUTLIER" in f.name), None)
+                            omr_hold = next((f.name for f in omr_files if "HOLDOUT" in f.name), None)
 
                         found_models.append({
                             "Select": False,
@@ -142,6 +152,9 @@ def scan_folders_structure(root_path: str) -> pd.DataFrame:
                             "Dataset Found": has_dataset,
                             "Raw File": raw_file,
                             "Holdout File": holdout_file,
+                            "OMR Cleaned File": omr_wo,
+                            "OMR Raw File": omr_w,
+                            "OMR Holdout File": omr_hold,
                             "Dat Filename": dat_file_path.name if has_dat else None,
                             "Full Path": str(model_dir),
                             "Dat Path": str(dat_file_path) if has_dat else None,
@@ -158,10 +171,6 @@ def scan_folders_structure(root_path: str) -> pd.DataFrame:
         df = df.sort_values(by=['Site', 'System', 'Sprint', 'Model'])
         
     return df
-
-# ... (Include previous reporting functions _generate_html_report, generate_simple_report etc. here unchanged)
-# For brevity, assuming the rest of the file content from the upload is preserved.
-# I will re-include the critical PDF generation functions needed for reports below.
 
 def _generate_html_report(stats_payload, numeric_filters, datetime_filters, plot_images):
     """Generates HTML content for the report using Jinja2."""

@@ -1,37 +1,23 @@
-"""
-qa_report.py
-
-Functions for generating PDF reports.
-"""
-
 import os
+import base64
 from datetime import datetime
 import pandas as pd
 from fpdf import FPDF
 import dataframe_image as dfi
+from playwright.sync_api import sync_playwright
+from jinja2 import Environment
+import sys
+import asyncio
 
 from utils.qa_yaml_utils import safe_load_numpy_yaml
 from PIL import Image
 
+# ==========================================
+# HELPER FUNCTIONS (Shared / Legacy FPDF)
+# ==========================================
 
-
-# def add_image_page(
-#     pdf: FPDF, 
-#     image_path: str, 
-#     plot_title: str,
-# ) -> None:
-#     """
-#     Add a new page to the PDF with an image and a centered title.
-#     """
-#     pdf.add_page()
-#     pdf.set_font("Arial", style="B", size=18)
-#     pdf.cell(0, 20, plot_title, ln=True, align='C')
-#     pdf.image(image_path, x=10, y=30, w=280)
 def add_image_page(pdf: FPDF, image_path: str, plot_title: str) -> None:
-    """
-    Add a new page to the PDF with an image (auto-fit) and a centered title.
-    """
-    # 1. Page settings (A4 landscape)
+    """Add a new page to the PDF with an image (auto-fit) and a centered title."""
     PAGE_W = 297
     PAGE_H = 210
     X_MARGIN = 10
@@ -39,46 +25,37 @@ def add_image_page(pdf: FPDF, image_path: str, plot_title: str) -> None:
     TOP_MARGIN = 30
     BOTTOM_MARGIN = 10
 
-    # 2. Area available for image
     max_w = PAGE_W - 2 * X_MARGIN
     max_h = PAGE_H - TOP_MARGIN - BOTTOM_MARGIN
 
-    # 3. Get image size
-    with Image.open(image_path) as img:
-        img_w_px, img_h_px = img.size
-        img_ratio = img_w_px / img_h_px
-        box_ratio = max_w / max_h
+    try:
+        with Image.open(image_path) as img:
+            img_w_px, img_h_px = img.size
+            img_ratio = img_w_px / img_h_px
+            box_ratio = max_w / max_h
 
-        # 4. Decide scaling
-        if img_ratio > box_ratio:
-            # Image is wider than box, fit to width
-            disp_w = max_w
-            disp_h = max_w / img_ratio
-        else:
-            # Image is taller than box, fit to height
-            disp_h = max_h
-            disp_w = max_h * img_ratio
+            if img_ratio > box_ratio:
+                disp_w = max_w
+                disp_h = max_w / img_ratio
+            else:
+                disp_h = max_h
+                disp_w = max_h * img_ratio
 
-    # 5. Insert
-    pdf.add_page()
-    pdf.set_font("Arial", style="B", size=18)
-    pdf.cell(0, TITLE_HEIGHT, plot_title, ln=True, align='C')
-    # Center the image horizontally
-    x = (PAGE_W - disp_w) / 2
-    y = TOP_MARGIN
-    pdf.image(image_path, x=x, y=y, w=disp_w, h=disp_h)
+        pdf.add_page()
+        pdf.set_font("Arial", style="B", size=18)
+        pdf.cell(0, TITLE_HEIGHT, plot_title, ln=True, align='C')
+        x = (PAGE_W - disp_w) / 2
+        y = TOP_MARGIN
+        pdf.image(image_path, x=x, y=y, w=disp_w, h=disp_h)
+    except Exception as e:
+        print(f"Error adding image {image_path}: {e}")
+        # Add a blank page with error message if image fails
+        pdf.add_page()
+        pdf.set_font("Arial", style="B", size=18)
+        pdf.cell(0, 20, f"Error: Could not load image {plot_title}", ln=True, align='C')
 
 
-def add_info_row(
-    pdf: FPDF, 
-    label: str, 
-    value: str, 
-    label2: str, 
-    value2: str,
-) -> None:
-    """
-    Add a row of dataset information to the PDF.
-    """
+def add_info_row(pdf: FPDF, label: str, value: str, label2: str, value2: str) -> None:
     pdf.set_x(30)
     pdf.set_font("Arial", style="B", size=12)
     pdf.cell(40, 5, label, ln=0)
@@ -89,26 +66,11 @@ def add_info_row(
     pdf.set_font("Arial", size=12)
     pdf.cell(0, 5, f"{value2}", ln=True)
     
-def add_dataset_info(
-    pdf: FPDF, 
-    max_omr: float, 
-    min_omr: float,
-) -> None:
-    """
-    Add dataset information (specifically, OMR values) to the PDF below an image.
-    """
+def add_dataset_info(pdf: FPDF, max_omr: float, min_omr: float) -> None:
     pdf.ln(150)
     add_info_row(pdf, "Minimum OMR: ", str(min_omr), "Maximum OMR: ", str(max_omr))
 
-def add_images_from_folder(
-    pdf: FPDF, 
-    folder_path: str, 
-    ks_df: pd.DataFrame, 
-    p_value_threshold: float = 0.05,
-) -> None:
-    """
-    Add images from a folder to the PDF along with KS statistic and P-value information.
-    """
+def add_images_from_folder(pdf: FPDF, folder_path: str, ks_df: pd.DataFrame, p_value_threshold: float = 0.05) -> None:
     for filename in os.listdir(folder_path):
         if filename.startswith("distribution"):
             pdf.add_page()
@@ -149,18 +111,7 @@ def add_images_from_folder(
             pdf.set_font("Arial", style="B", size=12)
             pdf.multi_cell(0, 5, conclusion)
 
-def add_fpr_plot(
-    pdf: FPDF, 
-    image_path: str, 
-    plot_title: str, 
-    fpr_stats_cleaned_omr: dict, 
-    fpr_stats_holdout_omr: dict, 
-    fpr_stats_raw_omr: dict, 
-    fprp_stats_holdout_omr: dict,
-) -> None:
-    """
-    Add an FPR plot to the PDF along with a table of FPR and FPRP statistics.
-    """
+def add_fpr_plot(pdf: FPDF, image_path: str, plot_title: str, fpr_stats_cleaned_omr: dict, fpr_stats_holdout_omr: dict, fpr_stats_raw_omr: dict, fprp_stats_holdout_omr: dict) -> None:
     pdf.add_page()
     pdf.set_font("Arial", style="B", size=18)
     pdf.cell(0, 20, plot_title, ln=True, align='C')
@@ -197,12 +148,11 @@ def generate_dataset_description(dataset_info: dict) -> str:
     Generate a description for a dataset based on its stats.
     """
     return (
-        f"Start Time: {dataset_info['start_time']}\n"
-        f"End Time: {dataset_info['end_time']}\n"
-        f"Number of Records: {dataset_info['n_records']}\n"
-        f"Window Size: {dataset_info['window_size']}\n"
+        f"Start Time: {dataset_info['start_time']}<br>"
+        f"End Time: {dataset_info['end_time']}<br>"
+        f"Number of Records: {dataset_info['n_records']}<br>"
+        f"Window Size: {dataset_info['window_size']}"
     )
-
 
 def generate_qa_report(
     model_name: str,
@@ -217,9 +167,7 @@ def generate_qa_report(
     ks_df_fpath: str,
     datasets_range_fpath: str,
 ) -> None:
-    """
-    Generate a QA report in PDF format.
-    """
+    """Original FPDF generator (kept for compatibility)."""
     fpr_stats_cleaned_omr = safe_load_numpy_yaml(fpr_stats_cleaned_omr_fpath)
     fpr_stats_holdout_omr = safe_load_numpy_yaml(fpr_stats_holdout_omr_fpath)
     fpr_stats_raw_omr = safe_load_numpy_yaml(fpr_stats_raw_omr_fpath)
@@ -231,7 +179,6 @@ def generate_qa_report(
     pdf = FPDF(orientation="L", unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=15)
 
-    # page 1: Cover page
     pdf.add_page()
     pdf.ln(20)
     pdf.set_font("Arial", style="B", size=30)
@@ -245,27 +192,27 @@ def generate_qa_report(
     pdf.cell(0, 10, "Validation Dataset:", ln=True)
     pdf.set_font("Arial", size=12)
     pdf.set_x(indention)
-    pdf.multi_cell(0, 10, generate_dataset_description(data_stats['validation']))
+    desc_val = generate_dataset_description(data_stats['validation']).replace("<br>", "\n")
+    pdf.multi_cell(0, 10, desc_val)
 
     pdf.ln(5)
     pdf.set_font("Arial", style="B", size=12)
     pdf.cell(0, 10, "Holdout Dataset:", ln=True)
     pdf.set_font("Arial", size=12)
     pdf.set_x(indention)
-    pdf.multi_cell(0, 10, generate_dataset_description(data_stats['holdout']))
+    desc_hold = generate_dataset_description(data_stats['holdout']).replace("<br>", "\n")
+    pdf.multi_cell(0, 10, desc_hold)
 
     timestamp = datetime.now().strftime("%m-%d-%y %H:%M:%S")
     pdf.ln(10)
     pdf.set_font("Arial", style="I", size=12)
     pdf.cell(0, 0, f"Report generated on {timestamp}.")
 
-    # page 2: Model performance analysis 
     pdf.add_page()
     pdf.ln(60)
     pdf.set_font("Arial", style="B", size=30)
     pdf.cell(0, 20, "Model Performances Analysis", ln=True, align='C')
 
-    # pages 3, 4, 5: OMR plots
     plot_titles = [
         "Validation Set (without outlier): OMR vs Time",
         "Validation Set (with outlier): OMR vs Time",
@@ -275,27 +222,14 @@ def generate_qa_report(
     ]
     
     add_image_page(pdf, os.path.join(fpr_file_path, f"{model_name} - Cleaned Validation OMR.jpg"), plot_titles[0])
-    add_dataset_info(
-        pdf, 
-        max_omr=datasets_range['cleaned_omr_range']['max'], 
-        min_omr=datasets_range['cleaned_omr_range']['min']
-    )
+    add_dataset_info(pdf, max_omr=datasets_range['cleaned_omr_range']['max'], min_omr=datasets_range['cleaned_omr_range']['min'])
 
     add_image_page(pdf, os.path.join(fpr_file_path, f"{model_name} - Raw Validation OMR.jpg"), plot_titles[1])
-    add_dataset_info(
-        pdf, 
-        max_omr=datasets_range['raw_omr_range']['max'], 
-        min_omr=datasets_range['raw_omr_range']['min']
-    )
+    add_dataset_info(pdf, max_omr=datasets_range['raw_omr_range']['max'], min_omr=datasets_range['raw_omr_range']['min'])
 
     add_image_page(pdf, os.path.join(fpr_file_path, f"{model_name} - Holdout OMR.jpg"), plot_titles[2])
-    add_dataset_info(
-        pdf, 
-        max_omr=datasets_range['holdout_omr_range']['max'], 
-        min_omr=datasets_range['holdout_omr_range']['min']
-    )
+    add_dataset_info(pdf, max_omr=datasets_range['holdout_omr_range']['max'], min_omr=datasets_range['holdout_omr_range']['min'])
 
-    # page 6: FPR plot
     add_fpr_plot(
         pdf=pdf,
         image_path=os.path.join(fpr_file_path, f"{model_name} - False Positive Rates (with and without persistence).jpg"),
@@ -306,13 +240,11 @@ def generate_qa_report(
         fprp_stats_holdout_omr=fprp_stats_holdout_omr,
     )
 
-    # page 7: OMR distributions
     pdf.add_page()
     pdf.set_font("Arial", style="B", size=18)
     pdf.cell(0, 20, plot_titles[4], ln=True, align='C')
     pdf.image(os.path.join(fpr_file_path, f"{model_name} - OMR Distributions.jpg"), x=10, y=30, w=280)
 
-    # page 8: KS caption
     pdf.add_page()
     pdf.ln(20)
     pdf.set_font("Arial", style="B", size=30)
@@ -331,10 +263,8 @@ def generate_qa_report(
     )
     pdf.multi_cell(0, 10, caption, align="C")
 
-    # page 9 onwards: KS distribution comparison images and table
     add_images_from_folder(pdf, ks_file_path, ks_df)
 
-    # last page: KS results summary image
     ks_plot_title = "Summary of the Inwindow Validation and Holdout Datasets Consistency"
     add_image_page(pdf, os.path.join(ks_file_path, "ks_results.jpg"), ks_plot_title)
 
@@ -343,80 +273,320 @@ def generate_qa_report(
 
 
 def generate_summary_fprp(sprint_path: str) -> pd.DataFrame:
-    """
-    Generates a summary DataFrame for False Positive Rate with Persistence (FPRP) statistics across models.
-
-    This function iterates through each model folder within the specified `sprint_path`, retrieves the FPRP 
-    statistics stored in a YAML file, and compiles them into a summary DataFrame. Each model's warning 
-    and alert statistics are sorted in descending order of alert and warning values, and the summary is saved as a 
-    .jpg image.
-    """
-
     data = []
-
     for model_name in os.listdir(sprint_path):
-        if model_name.startswith('.'):
-            continue
-
+        if model_name.startswith('.'): continue
         model_folder = os.path.join(sprint_path, model_name, 'performance_assessment_report', 'FPR')
-
         fprp_file = os.path.join(model_folder, 'fprp_stats_holdout_omr_df.yaml')
-        
         if os.path.isfile(fprp_file):
             stats = safe_load_numpy_yaml(fprp_file)
-
-            warning = stats.get('warning', None)
-            alert = stats.get('alert', None)
-
-            data.append([model_name, warning, alert])
+            data.append([model_name, stats.get('warning', None), stats.get('alert', None)])
 
     summary_fprp = pd.DataFrame(data, columns=['Model Name','FPR with persistence at 5.0% OMR (Warning)', 'FPR with persistence at 10.0% OMR (Alert)'])
-    summary_fprp = summary_fprp.sort_values(by=[
-        'FPR with persistence at 10.0% OMR (Alert)',
-        'FPR with persistence at 5.0% OMR (Warning)',
-    ], ascending=[False, False])
+    summary_fprp = summary_fprp.sort_values(by=['FPR with persistence at 10.0% OMR (Alert)', 'FPR with persistence at 5.0% OMR (Warning)'], ascending=[False, False])
     summary_fprp_no_index = summary_fprp.reset_index(drop=True)
     dfi.export(summary_fprp_no_index, os.path.join(sprint_path, "fpr_summary.jpg"), table_conversion='matplotlib')
-
     return summary_fprp
 
 
-def generate_sprint_summary_report(
-    sprint_path: str,
-    sprint_name: str,
-) -> None:
-    """
-    Generates a summary PDF report for a sprint, displaying key FPR with Persistence (FPRP) metrics.
-
-    This function creates a multi-page PDF report with:
-    - A title page showing the sprint name.
-    - A summary page with an image of FPR with Persistence scores for models in the sprint.
-    - A comparison page with an image showing Warning and Alert FPRP scores across models.
-    """
-    
+def generate_sprint_summary_report(sprint_path: str, sprint_name: str) -> None:
     pdf = FPDF(orientation="L", unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=15)
-
-    # page 1: Title page 
     pdf.add_page()
     pdf.ln(80)
     pdf.set_font("Arial", style="B", size=30)
     pdf.cell(0, 20, sprint_name, ln=True, align='C')
     pdf.set_font("Arial", size=16)
     pdf.cell(0, 10, "Summary Results", ln=True, align='C')
-    
-    # page 2: fPR summary image
     pdf.add_page()
     pdf.ln(10)
     pdf.set_font("Arial", style="B", size=18)
     pdf.cell(0, 0, f"FPR with Persistance Scores of {sprint_name} Models", ln=True, align='C')
     pdf.image(os.path.join(sprint_path, "fpr_summary.jpg"), x=20, y=30, w=250)
-
-    # page 3: FPR comparison plot
     pdf.add_page()
     pdf.ln(10)
     pdf.set_font("Arial", style="B", size=18)
     pdf.cell(0, 0, "Warning and Alert FPR with Persistence Comparison per Model", ln=True, align='C')
     pdf.image(os.path.join(sprint_path, "fprp_plots.jpg"), x=10, y=30, w=280)
-
     pdf.output(os.path.join(sprint_path, f"{sprint_name} Summary Results.pdf"))
+
+# ==========================================
+# NEW PLAYWRIGHT-BASED REPORT GENERATOR
+# ==========================================
+
+def get_image_base64(path):
+    """Helper to load image as base64 string for embedding in HTML"""
+    if os.path.exists(path):
+        with open(path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode("utf-8")
+    return None
+
+def generate_qa_report_playwright(
+    model_name: str,
+    fpr_file_path: str,
+    ks_file_path: str,
+    report_file_path: str,
+    fpr_stats_cleaned_omr_fpath: str,
+    fpr_stats_holdout_omr_fpath: str,
+    fpr_stats_raw_omr_fpath: str,
+    fprp_stats_holdout_omr_fpath: str,
+    data_stats_fpath: str,
+    ks_df_fpath: str,
+    datasets_range_fpath: str,
+) -> bool:
+    """
+    Generates a high-quality PDF report using Playwright (HTML to PDF).
+    Replicates the structure of the original FPDF report but with modern styling.
+    """
+    
+    # 1. Load Data
+    try:
+        fpr_stats_cleaned_omr = safe_load_numpy_yaml(fpr_stats_cleaned_omr_fpath)
+        fpr_stats_holdout_omr = safe_load_numpy_yaml(fpr_stats_holdout_omr_fpath)
+        fpr_stats_raw_omr = safe_load_numpy_yaml(fpr_stats_raw_omr_fpath)
+        fprp_stats_holdout_omr = safe_load_numpy_yaml(fprp_stats_holdout_omr_fpath)
+        data_stats = safe_load_numpy_yaml(data_stats_fpath)
+        datasets_range = safe_load_numpy_yaml(datasets_range_fpath)
+        ks_df = pd.read_csv(ks_df_fpath)
+    except Exception as e:
+        print(f"Error loading stats files: {e}")
+        return False
+
+    # 2. Prepare Images (Convert to Base64)
+    images = {}
+    
+    # OMR Plots (Filenames match those generated by generate_report_plots in qa_plotting.py)
+    img_map = {
+        "cleaned_omr": f"{model_name} - Cleaned Validation OMR.jpg",
+        "raw_omr": f"{model_name} - Raw Validation OMR.jpg",
+        "holdout_omr": f"{model_name} - Holdout OMR.jpg",
+        "fpr_rates": f"{model_name} - False Positive Rates (with and without persistence).jpg",
+        "omr_dist": f"{model_name} - OMR Distributions.jpg",
+    }
+    
+    for key, filename in img_map.items():
+        images[key] = get_image_base64(os.path.join(fpr_file_path, filename))
+
+    # KS Plots
+    ks_images = []
+    for filename in os.listdir(ks_file_path):
+        if filename.startswith("distribution"):
+            variable = filename.replace("distribution_comparison_", "").replace(".jpg", "").replace(".png", "")
+            b64_img = get_image_base64(os.path.join(ks_file_path, filename))
+            
+            # Get stats for this var
+            row = ks_df[ks_df["Variable"] == variable]
+            if not row.empty:
+                ks_stat = row.iloc[0]['KS Statistic']
+                p_value = row.iloc[0]['P-value']
+                consistent = p_value > 0.05
+            else:
+                ks_stat, p_value, consistent = "N/A", "N/A", False
+                
+            ks_images.append({
+                "title": variable,
+                "img": b64_img,
+                "ks_stat": ks_stat,
+                "p_value": p_value,
+                "consistent": consistent
+            })
+    
+    # KS Summary
+    images["ks_summary"] = get_image_base64(os.path.join(ks_file_path, "ks_results.jpg"))
+
+    # 3. HTML Template
+    template_str = """
+    <html>
+    <head>
+        <style>
+            @page { size: A4 landscape; margin: 1cm; }
+            body { font-family: "Helvetica", "Arial", sans-serif; color: #333; margin: 0; padding: 0; }
+            
+            /* Page Breaks */
+            .page-break { page-break-after: always; }
+            .title-page { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 95vh; text-align: center; }
+            
+            /* Headings */
+            h1 { color: #2c3e50; font-size: 32px; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; width: 100%; text-align: center; }
+            h2 { color: #2980b9; font-size: 24px; margin-top: 20px; border-bottom: 1px solid #eee; }
+            h3 { color: #555; font-size: 18px; margin-bottom: 10px; text-align: center; }
+            
+            /* Content Layout */
+            .stats-container { width: 80%; margin: 20px auto; border: 1px solid #ddd; padding: 20px; border-radius: 8px; background-color: #f9f9f9; }
+            .stat-row { margin-bottom: 10px; font-size: 14px; }
+            .label { font-weight: bold; color: #555; width: 150px; display: inline-block; }
+            
+            /* Images */
+            .img-container { text-align: center; margin: 20px 0; }
+            img { max-width: 95%; max-height: 15cm; border: 1px solid #ccc; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); }
+            
+            /* Tables */
+            table { width: 80%; margin: 20px auto; border-collapse: collapse; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 14px; }
+            th { background-color: #f2f2f2; font-weight: bold; }
+            
+            .meta-info { font-size: 12px; color: #888; text-align: center; margin-top: 50px; }
+            
+            .ks-info { font-size: 14px; margin: 10px auto; width: 80%; text-align: left; background: #fff; padding: 10px; border-left: 4px solid #2980b9; }
+        </style>
+    </head>
+    <body>
+        <!-- PAGE 1: COVER -->
+        <div class="title-page page-break">
+            <h1 style="border:none; font-size: 48px;">{{ model_name }}</h1>
+            <h2 style="border:none; color: #7f8c8d;">Model QA Report</h2>
+            
+            <div class="stats-container" style="text-align: left;">
+                <h3>Validation Dataset</h3>
+                <div class="stat-row">{{ data_stats['validation'] | safe }}</div>
+                
+                <h3 style="margin-top: 30px;">Holdout Dataset</h3>
+                <div class="stat-row">{{ data_stats['holdout'] | safe }}</div>
+            </div>
+            
+            <div class="meta-info">Generated on: {{ generation_date }}</div>
+        </div>
+
+        <!-- PAGE 2: Performance Title -->
+        <div class="title-page page-break">
+            <h1 style="border:none; margin-top: 20%;">Model Performance Analysis</h1>
+        </div>
+
+        <!-- PAGE 3: Cleaned OMR -->
+        <div class="page-break">
+            <h3>Validation Set (without outlier): OMR vs Time</h3>
+            <div class="img-container">
+                {% if images['cleaned_omr'] %}<img src="data:image/jpeg;base64,{{ images['cleaned_omr'] }}">{% else %} <p>Image not found</p> {% endif %}
+            </div>
+            <div class="stats-container" style="text-align: center;">
+                <strong>Min OMR:</strong> {{ ranges['cleaned_omr_range']['min'] }} &nbsp;&nbsp;|&nbsp;&nbsp; 
+                <strong>Max OMR:</strong> {{ ranges['cleaned_omr_range']['max'] }}
+            </div>
+        </div>
+
+        <!-- PAGE 4: Raw OMR -->
+        <div class="page-break">
+            <h3>Validation Set (with outlier): OMR vs Time</h3>
+            <div class="img-container">
+                {% if images['raw_omr'] %}<img src="data:image/jpeg;base64,{{ images['raw_omr'] }}">{% endif %}
+            </div>
+            <div class="stats-container" style="text-align: center;">
+                <strong>Min OMR:</strong> {{ ranges['raw_omr_range']['min'] }} &nbsp;&nbsp;|&nbsp;&nbsp; 
+                <strong>Max OMR:</strong> {{ ranges['raw_omr_range']['max'] }}
+            </div>
+        </div>
+
+        <!-- PAGE 5: Holdout OMR -->
+        <div class="page-break">
+            <h3>Holdout Set (with persistence): OMR vs Time</h3>
+            <div class="img-container">
+                {% if images['holdout_omr'] %}<img src="data:image/jpeg;base64,{{ images['holdout_omr'] }}">{% endif %}
+            </div>
+            <div class="stats-container" style="text-align: center;">
+                <strong>Min OMR:</strong> {{ ranges['holdout_omr_range']['min'] }} &nbsp;&nbsp;|&nbsp;&nbsp; 
+                <strong>Max OMR:</strong> {{ ranges['holdout_omr_range']['max'] }}
+            </div>
+        </div>
+
+        <!-- PAGE 6: FPR Rates -->
+        <div class="page-break">
+            <h3>False Positive Rates (with and without persistence)</h3>
+            <div class="img-container">
+                {% if images['fpr_rates'] %}<img src="data:image/jpeg;base64,{{ images['fpr_rates'] }}">{% endif %}
+            </div>
+            
+            <table>
+                <thead>
+                    <tr><th>Metric</th><th>Warning (%)</th><th>Alert (%)</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Inwindow Validation (No Outlier)</td><td>{{ fpr_cleaned['warning']|round(2) }}</td><td>{{ fpr_cleaned['alert']|round(2) }}</td></tr>
+                    <tr><td>Inwindow Validation (With Outlier)</td><td>{{ fpr_raw['warning']|round(2) }}</td><td>{{ fpr_raw['alert']|round(2) }}</td></tr>
+                    <tr><td>Holdout Data</td><td>{{ fpr_holdout['warning']|round(2) }}</td><td>{{ fpr_holdout['alert']|round(2) }}</td></tr>
+                    <tr><td>Holdout Data (Persistence)</td><td>{{ fprp_holdout['warning']|round(2) }}</td><td>{{ fprp_holdout['alert']|round(2) }}</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- PAGE 7: OMR Dist -->
+        <div class="page-break">
+            <h3>OMR Distributions</h3>
+            <div class="img-container">
+                {% if images['omr_dist'] %}<img src="data:image/jpeg;base64,{{ images['omr_dist'] }}">{% endif %}
+            </div>
+        </div>
+
+        <!-- PAGE 8: KS Intro -->
+        <div class="title-page page-break">
+            <h1 style="border:none;">Consistency between Validation and Holdout Datasets</h1>
+            <p style="width: 70%; font-size: 16px; line-height: 1.6; color: #555;">
+                Comparing the consistency of validation and holdout datasets using the Kolmogorov-Smirnov (KS) statistic 
+                is a critical step in model validation. It helps ensure that the model will perform reliably 
+                on unseen data by verifying that the data used during development is representative of the 
+                data it will encounter in practice.
+            </p>
+        </div>
+
+        <!-- PAGE 9+: KS Plots -->
+        {% for ks in ks_images %}
+        <div class="page-break">
+            <h3>Distribution Comparison of {{ ks.title }}</h3>
+            <div class="img-container">
+                <img src="data:image/jpeg;base64,{{ ks.img }}">
+            </div>
+            <div class="ks-info">
+                <strong>KS Statistic:</strong> {{ ks.ks_stat }}<br>
+                <strong>P-value:</strong> {{ ks.p_value }}<br><br>
+                <em>Conclusion: They are {% if ks.consistent %}consistent{% else %}NOT consistent{% endif %} at 95% confidence level.</em>
+            </div>
+        </div>
+        {% endfor %}
+
+        <!-- PAGE LAST: KS Summary -->
+        <div class="page-break">
+            <h3>Summary of Dataset Consistency</h3>
+            <div class="img-container">
+                {% if images['ks_summary'] %}<img src="data:image/jpeg;base64,{{ images['ks_summary'] }}">{% endif %}
+            </div>
+        </div>
+
+    </body>
+    </html>
+    """
+    
+    # 4. Render
+    env = Environment()
+    template = env.from_string(template_str)
+    
+    html_content = template.render(
+        model_name=model_name,
+        generation_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        data_stats={k: generate_dataset_description(v) for k, v in data_stats.items()},
+        ranges=datasets_range,
+        images=images,
+        fpr_cleaned=fpr_stats_cleaned_omr,
+        fpr_raw=fpr_stats_raw_omr,
+        fpr_holdout=fpr_stats_holdout_omr,
+        fprp_holdout=fprp_stats_holdout_omr,
+        ks_images=ks_images
+    )
+    
+    # 5. Save PDF
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.set_content(html_content)
+            
+            # Save final PDF
+            final_pdf_path = os.path.join(report_file_path, f"model_qa_report_{model_name}.pdf")
+            page.pdf(path=final_pdf_path, format="A4", landscape=True, margin={'top': '1cm', 'bottom': '1cm', 'left': '1cm', 'right': '1cm'})
+            
+            browser.close()
+            return True
+    except Exception as e:
+        print(f"Playwright PDF Error: {e}")
+        return False

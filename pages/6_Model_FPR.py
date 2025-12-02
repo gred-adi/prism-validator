@@ -1,21 +1,16 @@
 import streamlit as st
 import pandas as pd
 from pathlib import Path
-import matplotlib.pyplot as plt
-import io
+import shutil
+import os
 
 # Utils
 from utils.model_dev_utils import scan_folders_structure
 from utils.constraint_utils import fetch_model_constraints
-from utils.qa_plotting import (
-    plot_omr_and_constraint_dynamic, 
-    plot_omr_heatmap,
-    generate_fpr_plots_memory,
-    downsample_data
-)
-from utils.qa_data_processing import load_and_process_data
-from utils.data_preparation import prepare_omr_data
-from db_utils import PrismDB  # <--- Added Import
+from utils.qa_plotting import generate_report_plots
+from utils.qa_ks_comparison import compare_data_distributions
+from utils.qa_reporting import generate_qa_report_playwright
+from db_utils import PrismDB
 
 st.set_page_config(page_title="Model FPR", page_icon="🅱️", layout="wide")
 
@@ -24,14 +19,13 @@ if 'fpr_step' not in st.session_state: st.session_state.fpr_step = 1
 if 'fpr_scanned_df' not in st.session_state: st.session_state.fpr_scanned_df = None
 if 'fpr_selected_model_row' not in st.session_state: st.session_state.fpr_selected_model_row = None
 if 'fpr_constraints_df' not in st.session_state: st.session_state.fpr_constraints_df = None
-if 'db' not in st.session_state: st.session_state.db = None # Reuse global db if available
+if 'db' not in st.session_state: st.session_state.db = None 
 
 # --- Sidebar: Database Connection ---
 with st.sidebar:
     st.header("🌍 Database Connection")
     st.caption("Required to fetch active model constraints/filters.")
     
-    # Use secrets if available, else empty
     secrets_db = st.secrets.get("db", {})
     db_host = st.text_input("Host", value=secrets_db.get("host", ""))
     db_name = st.text_input("Database", value=secrets_db.get("database", ""))
@@ -69,8 +63,7 @@ st.progress(current / len(steps), text=f"Step {current}: {steps[current-1]}")
 if current == 1:
     st.header("Step 1: Select Model")
     
-    # Folder Path
-    default_path = st.session_state.get('base_path', Path.cwd())
+    default_path = st.session_state.get('base_path', os.getcwd())
     root_folder = st.text_input("Root Folder Path", value=default_path)
     
     if st.button("🔍 Scan Models"):
@@ -81,7 +74,6 @@ if current == 1:
     if st.session_state.fpr_scanned_df is not None and not st.session_state.fpr_scanned_df.empty:
         df = st.session_state.fpr_scanned_df.copy()
         
-        # Filters
         c1, c2, c3 = st.columns(3)
         with c1: 
             site_sel = st.multiselect("Site", df['Site'].unique())
@@ -94,14 +86,38 @@ if current == 1:
         if sys_sel: df = df[df['System'].isin(sys_sel)]
         if sprint_sel: df = df[df['Sprint'].isin(sprint_sel)]
         
-        # Display logic: Only allow selecting ONE model for deep dive
+        # --- NEW: File Validation Columns ---
+        # Helper to create status emoji
+        def get_status(x):
+            return "✅" if x else "❌"
+
+        # Apply to file columns
+        # Note: 'Raw File', 'Holdout File' etc. contain filenames if present, else None
+        # So bool(x) works perfectly.
+        df['Raw'] = df['Raw File'].apply(get_status)
+        df['Holdout'] = df['Holdout File'].apply(get_status)
+        df['OMR Cleaned'] = df['OMR Cleaned File'].apply(get_status)
+        df['OMR Raw'] = df['OMR Raw File'].apply(get_status)
+        df['OMR Holdout'] = df['OMR Holdout File'].apply(get_status)
+
+        # Define column order for display
+        display_cols = [
+            'Site', 'System', 'Sprint', 'Model',
+            'Raw', 'Raw File', 
+            'Holdout', 'Holdout File',
+            'OMR Cleaned', 'OMR Cleaned File',
+            'OMR Raw', 'OMR Raw File',
+            'OMR Holdout', 'OMR Holdout File'
+        ]
+        
+        # Render
         st.dataframe(
-            df[['Site', 'System', 'Sprint', 'Model', 'Dataset Found']],
+            df[display_cols],
             use_container_width=True,
             hide_index=True
         )
         
-        # Only show models where dataset was actually found
+        # Selection Logic
         valid_models_df = df[df['Dataset Found']]
         
         if valid_models_df.empty:
@@ -111,11 +127,18 @@ if current == 1:
             selected_model_name = st.selectbox("Select Model to Process", model_names)
             
             if st.button("Proceed with Selected Model ➡️"):
-                # Store the full row for the selected model
                 row = valid_models_df[valid_models_df['Model'] == selected_model_name].iloc[0]
-                st.session_state.fpr_selected_model_row = row
-                next_step()
-                st.rerun()
+                
+                # Check if ALL required files exist for the selected model
+                required_files = ['Raw File', 'Holdout File', 'OMR Cleaned File', 'OMR Raw File', 'OMR Holdout File']
+                missing = [f for f in required_files if row[f] is None]
+                
+                if missing:
+                    st.error(f"Cannot proceed. Missing required files: {', '.join(missing)}")
+                else:
+                    st.session_state.fpr_selected_model_row = row
+                    next_step()
+                    st.rerun()
 
 # ==========================================
 # STEP 2: CONSTRAINTS
@@ -127,28 +150,19 @@ elif current == 2:
     
     st.info(f"Configuring **{model_name}**. We will fetch active filters from PRISM to use as constraints.")
     
-    # DB Connection Check
     if st.session_state.db is None:
         st.warning("⚠️ Database not connected. Cannot fetch constraints automatically.")
-        st.markdown("Please connect in the sidebar, or manually add constraints below.")
     
-    # Fetch Logic
-    # We check if we need to fetch (either it's None, or we want to allow refetch)
-    # Using a button for fetch gives user control
     if st.button("Fetch Constraints from DB") or st.session_state.fpr_constraints_df is None:
         if st.session_state.db:
             with st.spinner("Fetching constraints..."):
                 constraints = fetch_model_constraints(st.session_state.db, model_name)
                 st.session_state.fpr_constraints_df = constraints
         else:
-            # Empty frame structure if no DB or first run
             if st.session_state.fpr_constraints_df is None:
-                st.session_state.fpr_constraints_df = pd.DataFrame(columns=["Point Name", "Operator", "Value"])
+                st.session_state.fpr_constraints_df = pd.DataFrame(columns=["Column", "Operator", "Value"])
 
-    # Editable Table
     st.markdown("### Active Constraints (Model OFF conditions)")
-    st.caption("Rows below define when the model is considered 'OFF'. You can add/edit rows here.")
-    
     edited_constraints = st.data_editor(
         st.session_state.fpr_constraints_df,
         num_rows="dynamic",
@@ -174,73 +188,114 @@ elif current == 3:
     model_row = st.session_state.fpr_selected_model_row
     constraints = st.session_state.fpr_constraints_df
     
-    # UI for Plot Selection
-    st.subheader("Report Configuration")
-    c1, c2 = st.columns(2)
-    with c1:
-        inc_ts = st.checkbox("Include Time Series Plots", value=True)
-        inc_dist = st.checkbox("Include Distribution Plots", value=True)
-    with c2:
-        inc_heat = st.checkbox("Include OMR Heatmap", value=True, help="Visualizes OMR intensity by Day of Week and Hour.")
-        inc_fpr = st.checkbox("Include FPR Curve", value=True)
+    # Advanced Configuration
+    with st.expander("Advanced Settings", expanded=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            warning_thresh = st.number_input("Warning Threshold (%)", value=5.0)
+            alert_thresh = st.number_input("Alert Threshold (%)", value=10.0)
+        with col2:
+            sub_ts_len = st.number_input("Sub-TS Length (min)", value=60)
+            n_ts_above = st.number_input("N-Points Above Threshold", value=50)
 
     if st.button("🚀 Generate Report", type="primary"):
-        with st.spinner("Loading data and generating plots..."):
+        with st.spinner("Generating plots and PDF report..."):
             try:
-                # 1. Load Data (Using paths from Step 1 scan)
+                # 1. Setup Paths
                 dataset_path = Path(model_row['Dataset Path'])
+                base_dir = dataset_path.parent
                 
-                # Locate files safely
-                raw_candidates = list(dataset_path.glob("*RAW.csv"))
-                holdout_candidates = list(dataset_path.glob("*HOLDOUT.csv"))
-                omr_candidates = list(dataset_path.glob("*OMR*WITHOUT-OUTLIER*")) # Flexible search for OMR
+                # Output Directories
+                perf_dir = base_dir / "performance_assessment_report"
+                fpr_dir = perf_dir / "FPR"
+                ks_dir = perf_dir / "KS"
+                report_dir = perf_dir / "report_document"
                 
-                if not raw_candidates or not holdout_candidates:
-                    st.error("Missing required RAW or HOLDOUT CSV files in dataset folder.")
-                    st.stop()
-                    
-                raw_file = raw_candidates[0]
-                holdout_file = holdout_candidates[0]
+                # Create Dirs
+                fpr_dir.mkdir(parents=True, exist_ok=True)
+                ks_dir.mkdir(parents=True, exist_ok=True)
+                report_dir.mkdir(parents=True, exist_ok=True)
                 
-                # Load Raw Data (for constraints check)
-                constraint_cols = constraints['Point Name'].tolist() if not constraints.empty else []
+                # 2. Identify Files (Already validated in Step 1)
+                raw_file = Path(model_row['Full Path']) / "dataset" / model_row['Raw File']
+                holdout_file = Path(model_row['Full Path']) / "dataset" / model_row['Holdout File']
                 
-                # Use load_and_process utility
-                raw_df = load_and_process_data(str(raw_file), constraint_cols)
-                
-                # Load OMR Data
-                if not omr_candidates:
-                    st.error("Could not find OMR Validation file (e.g. OMR-VALIDATION-WITHOUT-OUTLIER).")
-                    st.stop()
-                    
-                omr_cleaned = prepare_omr_data(str(omr_candidates[0]))
-                
-                # 2. Generate Plots (In-Memory for preview)
-                st.subheader("Preview: Cleaned Validation OMR")
-                
-                # Downsample for UI
-                raw_small = downsample_data(raw_df)
-                omr_small = downsample_data(omr_cleaned)
-                
-                fig, ax = plt.subplots(figsize=(10, 4))
-                plot_omr_and_constraint_dynamic(
-                    raw_small, omr_small, constraints, 
-                    ax=ax, timestamp_col="timestamp"
+                # OMR Filenames from Step 1 scan
+                val_wo_outlier = model_row['OMR Cleaned File']
+                val_w_outlier = model_row['OMR Raw File']
+                holdout_omr = model_row['OMR Holdout File']
+
+                # 3. Prepare Constraints Lists
+                if not constraints.empty:
+                    c_cols = constraints['Point Name'].tolist()
+                    c_ops = constraints['Operator'].tolist()
+                    c_vals = constraints['Value'].tolist()
+                else:
+                    c_cols, c_ops, c_vals = [], [], []
+
+                # 4. Generate FPR Plots & Stats (Saves to Disk)
+                st.text("Generating FPR Plots...")
+                generate_report_plots(
+                    data_fpath=str(dataset_path),
+                    fpr_fpath=str(fpr_dir),
+                    model_name=model_row['Model'],
+                    constraint_cols=c_cols,
+                    condition_limits=c_vals,
+                    operators=c_ops,
+                    raw_data_fpath=str(raw_file),
+                    holdout_fpath=str(holdout_file),
+                    holdout_omr_fname=holdout_omr,
+                    val_without_outlier_omr_fname=val_wo_outlier,
+                    val_with_outlier_omr_fname=val_w_outlier,
+                    warning_threshold=warning_thresh,
+                    alert_threshold=alert_thresh,
+                    sub_ts_length_in_minutes=sub_ts_len,
+                    n_ts_above_threshold=n_ts_above
                 )
-                st.pyplot(fig)
                 
-                if inc_heat:
-                    st.subheader("Preview: Heatmap")
-                    fig2, ax2 = plt.subplots(figsize=(8, 5))
-                    plot_omr_heatmap(omr_cleaned, ax=ax2, timestamp_col="timestamp")
-                    st.pyplot(fig2)
+                # 5. Generate KS Plots & Stats (Saves to Disk)
+                st.text("Generating KS Comparison...")
+                compare_data_distributions(
+                    validation_fname=str(raw_file),
+                    ks_file_path=str(ks_dir),
+                    holdout_fpath=str(holdout_file),
+                    description_row=0
+                )
                 
-                # (Actual PDF generation logic placeholders)
-                st.success("Analysis complete. PDF Generation logic would execute here.")
-                st.info("Note: Full PDF generation requires integrating `report_generator` with the new plot objects.")
+                # 6. Generate PDF Report (Playwright)
+                st.text("Rendering PDF Report...")
+                
+                # File paths expected by the generator
+                success = generate_qa_report_playwright(
+                    model_name=model_row['Model'],
+                    fpr_file_path=str(fpr_dir),
+                    ks_file_path=str(ks_dir),
+                    report_file_path=str(report_dir),
+                    fpr_stats_cleaned_omr_fpath=str(fpr_dir / "fpr_stats_cleaned_val_omr_df.yaml"),
+                    fpr_stats_holdout_omr_fpath=str(fpr_dir / "fpr_stats_holdout_omr_df.yaml"),
+                    fpr_stats_raw_omr_fpath=str(fpr_dir / "fpr_stats_raw_val_omr_df.yaml"),
+                    fprp_stats_holdout_omr_fpath=str(fpr_dir / "fprp_stats_holdout_omr_df.yaml"),
+                    data_stats_fpath=str(ks_dir / "data_stats.yaml"),
+                    ks_df_fpath=str(ks_dir / "ks_results.csv"),
+                    datasets_range_fpath=str(fpr_dir / "datasets_range.yaml")
+                )
+                
+                if success:
+                    pdf_path = report_dir / f"model_qa_report_{model_row['Model']}.pdf"
+                    st.success(f"Report generated successfully!")
+                    
+                    with open(pdf_path, "rb") as f:
+                        st.download_button(
+                            label="📥 Download PDF Report",
+                            data=f,
+                            file_name=pdf_path.name,
+                            mime="application/pdf"
+                        )
+                else:
+                    st.error("PDF Generation failed. Check logs.")
                 
             except Exception as e:
-                st.error(f"Error during generation: {e}")
-                st.warning("Please check file structure and column names in your CSVs.")
+                st.error(f"Error during processing: {e}")
+                st.exception(e)
 
     st.button("Back", on_click=prev_step)
