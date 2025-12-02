@@ -16,15 +16,16 @@ def parse_db_condition(condition_str: str) -> str:
 def fetch_model_constraints(db_connection, model_name: str) -> pd.DataFrame:
     """
     Fetches active filter constraints for a specific model from the PRISM database.
-    Returns a DataFrame with columns: [Column, Operator, Value]
+    Returns a DataFrame with columns: [Metric Name, Point Name, Operator, Value]
     """
     if not db_connection:
         return pd.DataFrame()
 
-    # Query to fetch Point Name, Condition, and Value for a specific Project
+    # Query to fetch Metric Name, Point Name, Condition, and Value for a specific Project
     # We join Projects -> ProjectPoints -> PointFilters
     query = f"""
     SELECT 
+        TM.Description AS [Metric Name],
         PP.Name AS [Point Name],
         PF.PointCondition AS [Condition],
         PF.PointValue AS [Value]
@@ -45,12 +46,13 @@ def fetch_model_constraints(db_connection, model_name: str) -> pd.DataFrame:
         df = db_connection.run_query(query)
         
         if df.empty:
-            return pd.DataFrame(columns=["Point Name", "Operator", "Value"])
+            return pd.DataFrame(columns=["Metric Name", "Point Name", "Operator", "Value"])
             
         # Parse the results into the format expected by the plotting tool
         parsed_data = []
         for _, row in df.iterrows():
             parsed_data.append({
+                "Metric Name": row['Metric Name'],
                 "Point Name": row['Point Name'],
                 "Operator": parse_db_condition(row['Condition']),
                 "Value": float(row['Value'])
@@ -60,4 +62,4 @@ def fetch_model_constraints(db_connection, model_name: str) -> pd.DataFrame:
         
     except Exception as e:
         st.error(f"Error fetching constraints: {e}")
-        return pd.DataFrame(columns=["Point Name", "Operator", "Value"])
+        return pd.DataFrame(columns=["Metric Name", "Point Name", "Operator", "Value"])

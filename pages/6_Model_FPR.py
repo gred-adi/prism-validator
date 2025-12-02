@@ -51,7 +51,7 @@ with st.sidebar:
 def next_step(): st.session_state.fpr_step += 1
 def prev_step(): st.session_state.fpr_step -= 1
 
-st.title("🔎 Model FPR & QA Wizard")
+st.title("🔎 Model FPR Wizard")
 
 steps = ["Select Model", "Configure Constraints", "Generate Report"]
 current = st.session_state.fpr_step
@@ -160,7 +160,8 @@ elif current == 2:
                 st.session_state.fpr_constraints_df = constraints
         else:
             if st.session_state.fpr_constraints_df is None:
-                st.session_state.fpr_constraints_df = pd.DataFrame(columns=["Column", "Operator", "Value"])
+                # Initialize empty dataframe with correct structure
+                st.session_state.fpr_constraints_df = pd.DataFrame(columns=["Metric Name", "Point Name", "Operator", "Value"])
 
     st.markdown("### Active Constraints (Model OFF conditions)")
     edited_constraints = st.data_editor(
@@ -168,6 +169,8 @@ elif current == 2:
         num_rows="dynamic",
         use_container_width=True,
         column_config={
+            "Metric Name": st.column_config.TextColumn("Metric Name", disabled=True),
+            "Point Name": st.column_config.TextColumn("Point Name", disabled=True),
             "Operator": st.column_config.SelectboxColumn("Operator", options=["<", ">", "==", "<=", ">="])
         }
     )
@@ -199,9 +202,11 @@ elif current == 3:
             n_ts_above = st.number_input("N-Points Above Threshold", value=50)
 
     if st.button("🚀 Generate Report", type="primary"):
-        with st.spinner("Generating plots and PDF report..."):
+        # Use st.status container for better progress tracking
+        with st.status("🚀 Starting Report Generation...", expanded=True) as status:
             try:
                 # 1. Setup Paths
+                st.write("📂 Setting up directories...")
                 dataset_path = Path(model_row['Dataset Path'])
                 base_dir = dataset_path.parent
                 
@@ -227,6 +232,7 @@ elif current == 3:
 
                 # 3. Prepare Constraints Lists
                 if not constraints.empty:
+                    # We strictly use 'Point Name' for the actual logic as it matches the CSV header
                     c_cols = constraints['Point Name'].tolist()
                     c_ops = constraints['Operator'].tolist()
                     c_vals = constraints['Value'].tolist()
@@ -234,7 +240,7 @@ elif current == 3:
                     c_cols, c_ops, c_vals = [], [], []
 
                 # 4. Generate FPR Plots & Stats (Saves to Disk)
-                st.text("Generating FPR Plots...")
+                st.write("📊 Generating FPR Plots & Statistics...")
                 generate_report_plots(
                     data_fpath=str(dataset_path),
                     fpr_fpath=str(fpr_dir),
@@ -253,8 +259,12 @@ elif current == 3:
                     n_ts_above_threshold=n_ts_above
                 )
                 
+                # Show generated FPR files
+                fpr_files = [f.name for f in fpr_dir.iterdir() if f.suffix == '.jpg']
+                st.caption(f"✅ Created {len(fpr_files)} FPR plots.")
+                
                 # 5. Generate KS Plots & Stats (Saves to Disk)
-                st.text("Generating KS Comparison...")
+                st.write("📉 Generating KS Distribution Comparisons...")
                 compare_data_distributions(
                     validation_fname=str(raw_file),
                     ks_file_path=str(ks_dir),
@@ -262,8 +272,12 @@ elif current == 3:
                     description_row=0
                 )
                 
+                # Show generated KS files
+                ks_files = [f.name for f in ks_dir.iterdir() if f.suffix == '.jpg']
+                st.caption(f"✅ Created {len(ks_files)} KS distribution plots.")
+                
                 # 6. Generate PDF Report (Playwright)
-                st.text("Rendering PDF Report...")
+                st.write("📄 Rendering PDF Report...")
                 
                 # File paths expected by the generator
                 success = generate_qa_report_playwright(
@@ -282,7 +296,10 @@ elif current == 3:
                 
                 if success:
                     pdf_path = report_dir / f"model_qa_report_{model_row['Model']}.pdf"
+                    status.update(label="✅ Report Generation Complete!", state="complete", expanded=False)
+                    
                     st.success(f"Report generated successfully!")
+                    st.caption(f"Location: `{pdf_path}`")
                     
                     with open(pdf_path, "rb") as f:
                         st.download_button(
@@ -292,9 +309,11 @@ elif current == 3:
                             mime="application/pdf"
                         )
                 else:
+                    status.update(label="❌ PDF Generation Failed", state="error")
                     st.error("PDF Generation failed. Check logs.")
                 
             except Exception as e:
+                status.update(label="❌ Error Occurred", state="error")
                 st.error(f"Error during processing: {e}")
                 st.exception(e)
 
