@@ -3,6 +3,7 @@ import pandas as pd
 import gc
 from pathlib import Path
 from datetime import datetime
+import re
 
 # Import utils
 from utils.model_dev_utils import (
@@ -26,7 +27,7 @@ It uses **stratified splitting** based on an Operational State metric to ensure 
 3.  **Upload Data:** Upload the `CLEANED_...WITH-OUTLIER` and `CLEANED_...WITHOUT-OUTLIER` files.
 4.  **Configure:** Select the **Operational State** metric to stratify by and the desired split ratio (e.g., 80% Train, 20% Validation).
 5.  **Split:** Run the split algorithm.
-6.  **Visualize & Save:** Review distribution plots to verify balance and save the final datasets along with a PDF report.
+6.  **Visualize & Save:** Review distribution plots to verify balance and save the final files.
 """)
 
 # --- Initialize Session State ---
@@ -75,7 +76,6 @@ def load_and_map_data(w_outlier_file, wo_outlier_file, survey_df, model_name):
         model_survey = survey_df[survey_df['Model'] == model_name]
         
         # Create map: Canary Point Name -> Metric
-        # Handle cases where 'Canary Point Name' might be missing or named differently in survey
         point_col = 'Canary Point Name' if 'Canary Point Name' in model_survey.columns else 'Point Name'
         
         name_to_metric = pd.Series(
@@ -83,35 +83,71 @@ def load_and_map_data(w_outlier_file, wo_outlier_file, survey_df, model_name):
             index=model_survey[point_col]
         ).to_dict()
 
+        # Create map: Metric -> Function (for logging context)
+        # Also need Canary -> Function for direct mapping
+        name_to_function = pd.Series(
+            model_survey['Function'].values,
+            index=model_survey[point_col]
+        ).to_dict()
+        
+        metric_to_function = pd.Series(
+            model_survey['Function'].values,
+            index=model_survey['Metric']
+        ).to_dict()
+
+        # Helper to strip prefixes
+        def strip_prefix(s):
+            # Removes "AP-TVI-", "AP-TSI-" etc
+            return re.sub(r'^AP-[A-Z]{3}-', '', str(s))
+
         # 4. Apply Mapping function and track mapping
         mapping_log = []
 
-        def map_cols(df):
+        def map_cols(df, log_mappings=False):
             new_cols = []
             for col in df.columns:
                 if col == 'DATETIME':
                     new_cols.append(col)
                 else:
-                    # Try to find mapping
-                    mapped = name_to_metric.get(col)
-                    if mapped and str(mapped) != 'nan':
-                        new_cols.append(str(mapped))
-                        # Only log distinct mappings once
-                        if not any(d['Original Column'] == col for d in mapping_log):
-                            mapping_log.append({'Original Column': col, 'Mapped Metric': str(mapped)})
+                    mapped_metric = None
+                    mapped_function = "N/A"
+                    
+                    # Strategy 1: Direct match with Point Name
+                    if col in name_to_metric:
+                        mapped_metric = name_to_metric[col]
+                        mapped_function = name_to_function.get(col, "N/A")
+                    
+                    # Strategy 2: Strip prefix and check if it matches a Metric Name directly
+                    if mapped_metric is None:
+                        stripped_col = strip_prefix(col)
+                        # Check if the stripped name exists in the Metric column of the survey
+                        if stripped_col in metric_to_function:
+                            mapped_metric = stripped_col
+                            mapped_function = metric_to_function[stripped_col]
+
+                    # Final Assignment
+                    if mapped_metric and str(mapped_metric) != 'nan':
+                        new_cols.append(str(mapped_metric))
+                        if log_mappings and not any(d['Original Column'] == col for d in mapping_log):
+                            mapping_log.append({
+                                'Original Column': col, 
+                                'Mapped Metric': str(mapped_metric),
+                                'Function': str(mapped_function)
+                            })
                     else:
                         new_cols.append(col)
-                        if not any(d['Original Column'] == col for d in mapping_log):
-                            mapping_log.append({'Original Column': col, 'Mapped Metric': 'Not Found (Kept Original)'})
+                        if log_mappings and not any(d['Original Column'] == col for d in mapping_log):
+                            mapping_log.append({
+                                'Original Column': col, 
+                                'Mapped Metric': 'Not Found (Kept Original)',
+                                'Function': 'N/A'
+                            })
             df.columns = new_cols
             return df
 
-        df_w_mapped = map_cols(df_w_clean)
-        # Reset log before second pass if you only want unique mappings from one file, 
-        # OR keep it cumulative. Since columns should be identical, cumulative is fine or just rely on first.
-        # We will just rely on the first map since columns should be identical.
-        
-        df_wo_mapped = map_cols(df_wo_clean)
+        # Map both dataframes, but only log mappings once
+        df_w_mapped = map_cols(df_w_clean, log_mappings=True)
+        df_wo_mapped = map_cols(df_wo_clean, log_mappings=False)
 
         # Save to session
         st.session_state.tvs_header = header_wo # Save one header for export
