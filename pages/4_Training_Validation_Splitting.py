@@ -13,7 +13,7 @@ from utils.model_dev_utils import (
 )
 from verstack.stratified_continuous_split import scsplit
 
-st.set_page_config(page_title="Train Validation Split", page_icon="4️⃣", layout="wide")
+st.set_page_config(page_title="Train Validation Split", page_icon="🔀", layout="wide")
 
 st.title("🔀 Training-Validation Split Wizard")
 st.markdown("""
@@ -21,11 +21,12 @@ This wizard helps you split your Training/Validation data into separate **Traini
 It uses **stratified splitting** based on an Operational State metric to ensure both sets are representative of the model's operating range.
 
 **How to Use:**
-1.  **Load TDT Files:** Ensure your TDT files are processed in the **Global Settings** sidebar. Select the desired **TDT** and **Model**.
-2.  **Upload Data:** Upload the `CLEANED_...WITH-OUTLIER` and `CLEANED_...WITHOUT-OUTLIER` files.
-3.  **Configure:** Select the **Operational State** metric to stratify by and the desired split ratio (e.g., 80% Train, 20% Validation).
-4.  **Split:** Run the split algorithm.
-5.  **Visualize & Save:** Review distribution plots to verify balance and save the final files.
+1.  **Load TDT Files:** Ensure your TDT files are processed in the Global Settings sidebar. Select the desired **TDT** and **Model**.
+2.  **Set Output Folder:** On the Global Settings sidebar, specify the base output folder where cleaned datasets and reports will be saved.             
+3.  **Upload Data:** Upload the `CLEANED_...WITH-OUTLIER` and `CLEANED_...WITHOUT-OUTLIER` files.
+4.  **Configure:** Select the **Operational State** metric to stratify by and the desired split ratio (e.g., 80% Train, 20% Validation).
+5.  **Split:** Run the split algorithm.
+6.  **Visualize & Save:** Review distribution plots to verify balance and save the final files.
 """)
 
 # --- Initialize Session State ---

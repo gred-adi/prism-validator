@@ -16,7 +16,7 @@ from utils.model_dev_utils import (
     generate_simple_report
 )
 
-st.set_page_config(page_title="Data Cleansing", page_icon="1️⃣", layout="wide")
+st.set_page_config(page_title="Data Cleansing", page_icon="🪄", layout="wide")
 
 st.title("🪄 Data Cleansing Wizard")
 st.markdown("""
@@ -24,10 +24,11 @@ This wizard guides you through cleaning raw time-series datasets.
 It automates column mapping using your TDT files and provides an interactive interface for applying numeric and datetime filters.
 
 **How to Use:**
-1.  **Load TDT Files:** Ensure your TDT files are processed in the **Global Settings** sidebar. The reference files generated there are used for this module.
-2.  **Ingest Data:** Upload your raw CSV dataset. The tool will automatically map metric names using the TDT Survey data loaded in the **Global Settings** sidebar.
-3.  **Cleanse:** Use the interactive controls to apply numeric thresholds (e.g., operational and sensor limits) and exclude specific time ranges (e.g., maintenance periods, historical abnormalities and failures).
-4.  **Review & Export:** Check the impact of your filters and download the cleaned dataset along with a PDF report.
+1.  **Load TDT Files:** Ensure your TDT files are processed on the Global Settings sidebar. The reference files generated there are used for this module.
+2.  **Set Output Folder:** On the Global Settings sidebar, specify the base output folder where cleaned datasets and reports will be saved.            
+3.  **Ingest Data:** Upload your raw CSV dataset. The tool will automatically map metric names using the TDT Survey data loaded in the Global Settings sidebar.
+4.  **Cleanse:** Use the interactive controls to apply numeric thresholds (e.g., operational and sensor limits) and exclude specific time ranges (e.g., maintenance periods, historical abnormalities and failures).
+5.  **Review & Export:** Check the impact of your filters and download the cleaned dataset along with a PDF report.
 """)
 
 # --- Initialize Session State ---

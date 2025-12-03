@@ -1,6 +1,6 @@
 import streamlit as st
 
-st.set_page_config(page_title="Outlier Removal", page_icon="3️⃣")
+st.set_page_config(page_title="Outlier Removal", page_icon="❇️")
 
 st.title("❇️ Outlier Removal")
 

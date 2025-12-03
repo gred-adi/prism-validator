@@ -12,7 +12,7 @@ from utils.qa_ks_comparison import compare_data_distributions
 from utils.qa_reporting import generate_qa_report_playwright
 from db_utils import PrismDB
 
-st.set_page_config(page_title="Model FPR", page_icon="🅱️", layout="wide")
+st.set_page_config(page_title="Model FPR", page_icon="🔎", layout="wide")
 
 # --- Session State ---
 if 'fpr_step' not in st.session_state: st.session_state.fpr_step = 1
