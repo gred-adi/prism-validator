@@ -172,7 +172,7 @@ def display_simple_results(summary_df, details_df, columns_to_show, show_summary
 # --- Main Page UI ---
 st.title("☑️ TDT Configuration Validator")
 st.markdown("""
-This tool performs **offline integrity checks** on your **TDT (Template Design Tool)** files. It is designed to catch errors, duplicates, and missing mandatory fields within the spreadsheets themselves, ensuring data quality before configuration to PRISM.
+This tool performs **offline integrity checks** on your **TDT (Template Design Tool)** files. It is designed to catch errors, duplicates, and missing mandatory fields within the spreadsheets themselves, ensuring data quality before configuration in PRISM.
 
 **How to use:**
 1.  **Load Data:** Ensure your TDT files are processed in the **Global Settings** sidebar. The reference files generated there are used for these checks.

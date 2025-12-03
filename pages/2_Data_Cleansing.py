@@ -216,7 +216,7 @@ st.progress(current_step / len(steps), text=f"Step {current_step}: {steps[curren
 # ==========================================
 if current_step == 1:
     st.header("Step 1: Data Ingestion")
-    st.markdown("Upload your Raw Dataset. The Point List mapping will be retrieved automatically from the **TDT Survey** (loaded on Global Settings sidebar) based on the model name in your file.")
+    st.markdown("Upload your raw dataset. The point list mapping will be retrieved automatically from the **TDT Survey** (loaded on the Global Settings sidebar) based on the model name in your file.")
 
     raw_file = st.file_uploader("Upload RAW dataset (.csv)", type=["csv"], accept_multiple_files=False)
     

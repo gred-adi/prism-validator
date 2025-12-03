@@ -18,23 +18,19 @@ def generate_raw_validation_set(
     train_data_fpath: str,
     raw_data_fpath: str,
 ) -> pd.DataFrame:
-    """
-    Generate a raw validation set by extracting timestamps from the training 
-    dataset and filtering the raw data to include only the relevant timestamps.
+    """Generates a raw validation set from training and raw data files.
 
-    Parameters:
-    ----------
-    file_path : str
-        The directory path where the data files are located.
-    train_data_fpath : str
-        The filename of the training dataset to extract timestamps from.
-    raw_data_fpath : str
-        The filename of the raw dataset to filter.
+    This function extracts timestamps from the training dataset and uses them
+    to filter the raw data, creating a validation set that is aligned with
+    the training data.
+
+    Args:
+        file_path (str): The directory path where the data files are located.
+        train_data_fpath (str): The filename of the training dataset.
+        raw_data_fpath (str): The filename of the raw dataset.
 
     Returns:
-    -------
-    pd.DataFrame
-        A DataFrame containing the filtered raw validation set.
+        pd.DataFrame: A DataFrame containing the filtered raw validation set.
     """
     train_timestamps = extract_training_timestamps(os.path.join(file_path, train_data_fpath))
     in_window_df = create_in_window_val_set(os.path.join(file_path, raw_data_fpath), train_timestamps)
@@ -47,27 +43,24 @@ def load_and_process_data(
     constraint_cols: List[str],
     timestamp_col: str = "Point Name",
 ) -> pd.DataFrame:
-    """
-    Load and process a CSV file containing gross load data.
+    """Loads and processes a CSV file for QA analysis.
 
-    Parameters
-    ----------
-    file_fpath : str
-        The directory path for the input data file.
-    constraint_cols : list of str
-        The names of the constraint columns.
-    timestamp_col : str, optional
-        The name of the timestamp column. Defaults to "Point Name".
+    This function reads a CSV file, handling various encodings, and processes
+    it by converting the timestamp column to datetime objects and the
+    constraint columns to numeric types.
 
-    Returns
-    -------
-    pd.DataFrame
-        A processed DataFrame with timestamp and gross load.
-    
-    Raises
-    ------
-    ValueError
-        If the specified columns are not found in the expected row.
+    Args:
+        file_fpath (str): The path to the input data file.
+        constraint_cols (List[str]): A list of constraint column names.
+        timestamp_col (str, optional): The name of the timestamp column.
+
+    Returns:
+        pd.DataFrame: A processed DataFrame.
+
+    Raises:
+        ValueError: If the specified columns are not found in the file.
+        UnicodeDecodeError: If the file cannot be read with any of the
+            supported encodings.
     """
     # Try different encodings
     encodings = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']
@@ -103,25 +96,22 @@ def apply_conditions(
         condition_limits: List[float], 
         operators: List[str],
     ) -> pd.Series:
-    """
-    Apply multiple conditions to determine when the model is off based on specified constraints.
+    """Applies multiple conditions to a DataFrame to identify "model off" states.
 
-    Parameters
-    ----------
-    df : pd.DataFrame
-        The DataFrame containing constraint values.
-    constraint_cols : list of str
-        The names of the constraint columns in the DataFrame.
-    condition_limits : list of float
-        The corresponding limit values for each constraint.
-    operators : list of str
-        The comparison operators (e.g., "<", ">", "=") to apply for each constraint limit.
+    This function takes a DataFrame and a set of constraints, and returns a
+    boolean Series indicating which rows meet any of the "model off" conditions.
 
-    Returns
-    -------
-    pd.Series
-        A boolean series indicating whether each row meets any "model off" condition.
+    Args:
+        df (pd.DataFrame): The DataFrame to apply conditions to.
+        constraint_cols (List[str]): A list of constraint column names.
+        condition_limits (List[float]): A list of limit values for each constraint.
+        operators (List[str]): A list of comparison operators for each constraint.
 
+    Returns:
+        pd.Series: A boolean Series indicating "model off" conditions.
+
+    Raises:
+        ValueError: If an unsupported operator is provided.
     """
     
     conditions = []

@@ -24,7 +24,7 @@ st.set_page_config(page_title="Outlier Removal", page_icon="❇️", layout="wid
 st.title("❇️ Outlier Removal Wizard")
 st.markdown("""
 Refine your dataset by removing statistical outliers and anomalies. 
-The wizard helps you analyze metric relationships to choose between **Pairwise Detection** (analyzing relationships against Operational State) or **Multivariate Detection** (analyzing global structure).
+The wizard helps you analyze metric relationships to choose between **Pairwise Detection** (analyzing relationships against an operational state) or **Multivariate Detection** (analyzing the global structure).
 
 **How to Use:**
 1.  **Select Model:** Ensure your TDT files are processed in the Global Settings sidebar. Select the desired **TDT** and **Model**.

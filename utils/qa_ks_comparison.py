@@ -18,18 +18,16 @@ from utils.qa_yaml_utils import convert_timestamps_for_yaml
 
 
 def is_timestamp(timestamp: str) -> bool:
-    """
-    Check if a given string is a valid timestamp in one of the specified formats.
+    """Checks if a string is a valid timestamp.
 
-    Parameters
-    ----------
-    timestamp : str
-        The string to check for timestamp validity.
+    This function checks if a given string can be parsed into a valid
+    timestamp using a list of predefined formats.
 
-    Returns
-    -------
-    bool
-        True if the string is a valid timestamp in one of the formats, False otherwise.
+    Args:
+        timestamp (str): The string to check.
+
+    Returns:
+        bool: True if the string is a valid timestamp, False otherwise.
     """
     formats = [
         "%Y-%m-%d %H:%M:%S",   # 24-hour format
@@ -49,20 +47,14 @@ def get_timestamps(
     df: pd.DataFrame,
     timestamp_col: str,
 ) -> pd.Series:
-    """
-    Extract and convert valid timestamps from a DataFrame column.
+    """Extracts and converts valid timestamps from a DataFrame column.
 
-    Parameters
-    ----------
-    df : pd.DataFrame
-        The DataFrame containing the timestamp data.
-    timestamp_col : str
-        The name of the column containing timestamps.
+    Args:
+        df (pd.DataFrame): The DataFrame containing the timestamp data.
+        timestamp_col (str): The name of the column containing timestamps.
 
-    Returns
-    -------
-    pd.Series
-        A Pandas Series containing valid and converted timestamps.
+    Returns:
+        pd.Series: A Pandas Series containing valid and converted timestamps.
     """
     cond = ~df[timestamp_col].isna()
     timestamps = df.loc[cond, timestamp_col]
@@ -73,6 +65,14 @@ def get_timestamps(
 
 
 def timedelta_to_str(td):
+    """Converts a timedelta object to a human-readable string.
+
+    Args:
+        td (timedelta): The timedelta object to convert.
+
+    Returns:
+        str: A string representation of the timedelta (e.g., "1 days, 2 hours").
+    """
     days = td.days
     hours, rem = divmod(td.seconds, 3600)
     minutes, seconds = divmod(rem, 60)
@@ -85,18 +85,16 @@ def timedelta_to_str(td):
 
 
 def sanitize_filename(filename: str) -> str:
-    """
-    Sanitize the filename by replacing invalid characters (like "/") with underscores.
+    """Sanitizes a filename by replacing invalid characters.
 
-    Parameters
-    ----------
-    filename : str
-        The original filename.
+    This function replaces characters that are invalid in file paths (e.g., "/")
+    with underscores.
 
-    Returns
-    -------
-    str
-        The sanitized filename.
+    Args:
+        filename (str): The original filename.
+
+    Returns:
+        str: The sanitized filename.
     """
     return filename.replace("/", "_").replace("\\", "_")
 
@@ -113,37 +111,24 @@ def compare_data_distributions(
     n_bins: int = 40,
     alpha_grid: float = 0.2,
 ) -> None:
-    """
-    Compare data distributions between validation and holdout datasets using the KS test
-    and save the results as a CSV file and plots of normalized distributions.
+    """Compares data distributions between validation and holdout datasets.
 
-    Parameters
-    ----------
-    validation_fname : str
-        Filename of the cleaned raw validation dataset.
-    holdout_fpath : str
-        Filename of the cleaned holdout dataset.
-    ks_file_path : str
-        Path to save the KS distribution comparison plots.
-    timestamp_col : str, optional
-        Column name containing timestamps. Defaults to "Point Name".
-    description_row : int
-        Row number in the holdout file that contains the descriptions. Defaults to 1 (second row).
-    percentile_lower : float, optional
-        Lower quantile for filtering data. Defaults to 0.005.
-    percentile_upper : float, optional
-        Upper quantile for filtering data. Defaults to 0.995.
-    alpha : float, optional
-        Alpha transparency for the histogram plots. Defaults to 0.5.
-    n_bins : int, optional
-        Number of bins for histogram plots. Defaults to 40.
-    alpha_grid : float, optional
-        Alpha transparency for the grid in plots. Defaults to 0.2.
+    This function performs a Kolmogorov-Smirnov (KS) test to compare the
+    distributions of variables in the validation and holdout datasets. It
+    saves the results as a CSV file and generates plots of the normalized
+    distributions.
 
-    Returns
-    -------
-    None
-        The function saves the KS test results and plots to the specified file paths.
+    Args:
+        validation_fname (str): Filename of the validation dataset.
+        holdout_fpath (str): Filename of the holdout dataset.
+        ks_file_path (str): Path to save the KS comparison plots.
+        timestamp_col (str, optional): The name of the timestamp column.
+        description_row (int, optional): The row number containing descriptions.
+        percentile_lower (float, optional): The lower percentile for filtering.
+        percentile_upper (float, optional): The upper percentile for filtering.
+        alpha (float, optional): The alpha transparency for histogram plots.
+        n_bins (int, optional): The number of bins for histogram plots.
+        alpha_grid (float, optional): The alpha transparency for plot grids.
     """
     validation_df = pd.read_csv(validation_fname)
     validation_timestamp = get_timestamps(df=validation_df, timestamp_col=timestamp_col)

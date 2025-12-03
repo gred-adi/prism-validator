@@ -3,9 +3,17 @@ import streamlit as st
 import re
 
 def parse_db_condition(condition_str: str) -> str:
-    """
-    Standardizes database condition strings to Python operators.
-    Example: "Equal To" -> "==", "<" -> "<"
+    """Standardizes database condition strings to Python operators.
+
+    This function takes a condition string from the PRISM database (e.g.,
+    "Equal To", "<") and converts it into a standardized Python comparison
+    operator (e.g., "==", "<").
+
+    Args:
+        condition_str (str): The condition string from the database.
+
+    Returns:
+        str: The standardized Python operator.
     """
     c = condition_str.lower().strip()
     if "equal" in c or c == "=": return "=="
@@ -14,9 +22,20 @@ def parse_db_condition(condition_str: str) -> str:
     return c
 
 def fetch_model_constraints(db_connection, model_name: str) -> pd.DataFrame:
-    """
-    Fetches active filter constraints for a specific model from the PRISM database.
-    Returns a DataFrame with columns: [Metric Name, Point Name, Operator, Value]
+    """Fetches active filter constraints for a model from the PRISM database.
+
+    This function queries the PRISM database to retrieve the active filter
+    constraints for a given model. It returns a structured DataFrame containing
+    the metric name, point name, operator, and value for each constraint.
+
+    Args:
+        db_connection: An active database connection object.
+        model_name (str): The name of the model to fetch constraints for.
+
+    Returns:
+        pd.DataFrame: A DataFrame with columns ['Metric Name', 'Point Name',
+        'Operator', 'Value'], or an empty DataFrame if no constraints are found
+        or an error occurs.
     """
     if not db_connection:
         return pd.DataFrame()

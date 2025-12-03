@@ -1,26 +1,20 @@
-# PRISM Configuration Validator
+# PRISM Dev/QA Web Toolkit
 
 ## 📖 Overview
-The **PRISM Configuration Validator** is a comprehensive Streamlit web application designed to automate and streamline the process of validating Microsoft SQL Server-based PRISM configurations. It compares live database data against reference technical design templates (TDTs), providing detailed summaries and mismatch reports across various configuration sections.
+The **PRISM Dev/QA Web Toolkit** is a comprehensive Streamlit application designed to centralize and streamline the workflows for validating Technical Design Templates (TDTs), auditing live PRISM configurations, and preparing data for model development.
 
-The application features a modular architecture, allowing for easy extension and maintenance of different validation types.
+The application features a modular, multi-page architecture that guides users through validation, data extraction, and data preparation tasks.
 
 ## ✨ Key Features
-*   **Modular Validation Tabs:** Each validation type is organized into its own dedicated tab for a clean user experience.
-    *   Consolidation Overview
-    *   Metric Validation (Template)
-    *   Metric Mapping Validation (Project)
-    *   Filter Validation (Project)
-    *   Failure Diagnostics Validation (Template)
-    *   Absolute Deviation Validation
-*   **Dynamic File Generation:** Automatically consolidates multiple TDT Excel files from a selected local folder into the required reference files, eliminating manual preparation.
+*   **TDT and PRISM Validation:** Perform offline integrity checks on TDT files and validate them against live PRISM database configurations.
+*   **Data Extraction:** Fetch historical time-series data from Canary Historian based on TDT tag definitions.
+*   **Data Preparation Wizard:** A step-by-step wizard for data cleansing, holdout splitting, outlier removal, and train-validation splitting.
 *   **Secure Database Connection:** Uses Streamlit's secrets management to handle database credentials securely.
-*   **Dynamic SQL Queries:** Fetches model deployment configurations based on user-provided asset lists.
-*   **Interactive Reports:** Presents validation results in clear, filterable tables, including summaries, matches, and categorized mismatches.
-*   **Optional File Downloads:** Allows users to download the consolidated reference files for offline analysis.
+*   **Dynamic Reporting:** Generate detailed PDF reports for validation results and data preparation steps.
+*   **Interactive UI:** An intuitive and interactive user interface for configuring tasks and reviewing results.
 
 ## 🚀 Getting Started
-Follow these instructions to set up and run the PRISM Validator on your local machine.
+Follow these instructions to set up and run the PRISM Dev/QA Web Toolkit on your local machine.
 
 ### 1. Prerequisites
 Before you begin, ensure you have the following installed:
@@ -108,14 +102,10 @@ Your web browser will automatically open a new tab with the running application.
 
 ## 💻 How to Use the App
 
-1.   **Connect to Database:** Fill in your database credentials in the sidebar (they will be pre-filled from your secrets file) and click **"Connect to Database"**.
-2.   **Generate Reference Files:**
-      * Click the **"Select TDT Folder"** button to open your computer's file browser and choose the folder containing your TDT Excel files.
-      * Once the folder is selected, click **"Generate & Load Files"**. The app will process the files and show a success message.
-3.   **Upload Statistics File:** Click "Browse files" to upload the `Consolidated Statistics file`.
-4.   **Navigate to a Validation Tab:** Go to any of the validation tabs (e.g., "Metric Mapping Validation"). The "Run Validation" button will be enabled.
-5.   **Run Validation:** Click the **"Run..."** button to perform the comparison. The results, including a summary and detailed tables, will appear on the screen.
-6.   **Filter Results:** Use the dropdown menus to filter the detailed match and mismatch tables by TDT or Model.
+1.  **Global Settings:** In the sidebar on the left, upload your TDT Excel files and click **"Generate & Load Files"**. This step is required for most modules.
+2.  **Navigate to a Module:** Select a module from the navigation on the left to begin a task.
+3.  **Follow Instructions:** Each module provides a "How to use" section with step-by-step instructions.
+4.  **Connect to Database:** If a module requires a database connection, use the sidebar to enter your credentials and connect.
 
 # 📁 Project Structure
 The repository is organized into a modular structure to separate concerns and improve maintainability.
@@ -135,7 +125,11 @@ prism-validator/
 ├── pages/                   # Each file represents a page in the Streamlit app
 │   ├── 1_PRISM_Config_Validator.py
 │   ├── 2_Canary_Historian_Downloader.py
-│   └── 3_TDT_Validator.py
+│   └── ... (other pages)
+│
+├── utils/                   # Utility functions for data processing, plotting, etc.
+│   ├── model_dev_utils.py
+│   └── ... (other utils)
 │
 ├── validations/             # Package containing all validation-specific modules
 │   ├── __init__.py          # Makes 'validations' a Python package

@@ -11,30 +11,20 @@ def calculate_fpr(
     omr_limits: Tuple[float, float] = (0.0, 20.0),
     n_steps: int = 20
 ) -> Tuple[np.ndarray, List[float]]:
-    """
-    Calculate the false positive rate (FPR) for given OMR values across a range 
+    """Calculates the false positive rate (FPR) for a series of OMR values.
+
+    This function calculates the percentage of OMR values that exceed a range
     of thresholds.
 
-    Parameters:
-    ----------
-    omr_values : pd.Series
-        A Pandas Series of OMR values.
-    omr_limits : Tuple[float, float], optional
-        A tuple specifying the lower and upper limits for OMR thresholds.
-        Defaults to (0.0, 20.0).
-    n_steps : int, optional
-        The number of steps to divide the threshold range. Defaults to 20.
-    fpr_fpath : str
-        The file path where the FPR stats will be saved as a YAML file.
+    Args:
+        omr_values (pd.Series): A Pandas Series of OMR values.
+        fpr_fpath (str): The file path to save the FPR statistics YAML file.
+        omr_limits (Tuple[float, float], optional): The range of OMR thresholds.
+        n_steps (int, optional): The number of steps to divide the threshold range.
 
     Returns:
-    -------
-    Tuple[np.ndarray, List[float]]
-        A tuple containing:
-        - thresholds : np.ndarray
-            An array of threshold values.
-        - fractions_above_threshold : List[float]
-            A list of the percentage of OMR values above each threshold.
+        Tuple[np.ndarray, List[float]]: A tuple containing the thresholds and
+        the percentage of OMR values above each threshold.
     """
     n_omr_values = len(omr_values)
     delta = omr_limits[1] - omr_limits[0]
@@ -70,36 +60,24 @@ def calculate_fpr_with_persistence(
     omr_limits: Tuple[float, float] = (0.0, 20.0),
     n_steps: int = 20,
 ) -> Tuple[np.ndarray, List[float]]:
-    """
-    Calculate the false positive rate with persistence (FPRP) for OMR values 
-    in a DataFrame over specified sub-time series lengths and thresholds.
+    """Calculates the false positive rate with persistence (FPRP).
 
-    Parameters:
-    ----------
-    df : pd.DataFrame
-        A DataFrame containing OMR values.
-    sub_ts_length_in_minutes : float
-        The length of the sub-time series to evaluate in minutes.
-    n_ts_above_threshold : int
-        The number of timestamps above the threshold required for a sub-time 
-        series to be counted.
-    omr_limits : Tuple[float, float], optional
-        A tuple specifying the lower and upper limits for OMR thresholds. 
-        Defaults to (0.0, 20.0).
-    n_steps : int, optional
-        The number of steps to divide the threshold range. Defaults to 20.
-    fpr_fpath : str
-        The file path where the FPRP stats will be saved as a YAML file.
+    This function calculates the FPRP for OMR values over specified sub-time
+    series lengths and thresholds.
+
+    Args:
+        df (pd.DataFrame): A DataFrame containing OMR values.
+        sub_ts_length_in_minutes (float): The length of the sub-time series.
+        n_ts_above_threshold (int): The number of timestamps above the
+            threshold required for a sub-time series to be counted.
+        time_interval (int): The time interval of the data.
+        fpr_fpath (str): The file path to save the FPRP statistics YAML file.
+        omr_limits (Tuple[float, float], optional): The range of OMR thresholds.
+        n_steps (int, optional): The number of steps to divide the threshold range.
 
     Returns:
-    -------
-    Tuple[np.ndarray, List[float]]
-        A tuple containing:
-        - thresholds : np.ndarray
-            An array of threshold values.
-        - fprp_values : List[float]
-            A list of the false positive rates with persistence for 
-            each threshold.
+        Tuple[np.ndarray, List[float]]: A tuple containing the thresholds and
+        the FPRP values for each threshold.
     """
     df_temp = df.copy()
     df_temp.sort_values("timestamp", ascending=True, inplace=True)
@@ -164,32 +142,24 @@ def compute_alert_persistence(
     n_ts_above_threshold: int = 50,
     time_interval: int = 1,
 ) -> Tuple[List[datetime], np.ndarray, np.ndarray]:
-    """
-    Compute alert persistence for OMR values in a time series dataset.
+    """Computes alert persistence for OMR values in a time series dataset.
 
-    Parameters
-    ----------
-    df : pd.DataFrame
-        DataFrame containing OMR values and timestamps.
-    warning_threshold : float, optional
-        OMR value threshold for warning alerts. Defaults to 5.0.
-    alert_threshold : float, optional
-        OMR value threshold for alert alerts. Defaults to 10.0.
-    sub_ts_length_in_minutes : int, optional
-        Length of the sub-time series in minutes. Defaults to 60.
-    n_ts_above_threshold : int, optional
-        Number of timestamps that need to be above the threshold to trigger an alert. Defaults to 50.
+    This function calculates whether warning and alert conditions are met
+    persistently over a sliding window.
 
-    Returns
-    -------
-    Tuple[List[datetime], np.ndarray, np.ndarray]
-        A tuple containing:
-        - ts_values : List[datetime]
-            List of timestamps at which the persistence calculation was performed.
-        - warning_alerts : np.ndarray
-            Array of 1s and 0s indicating warning alerts at each timestamp.
-        - alerts : np.ndarray
-            Array of 1s and 0s indicating alert conditions at each timestamp.
+    Args:
+        df (pd.DataFrame): DataFrame with OMR values and timestamps.
+        warning_threshold (float, optional): The warning threshold.
+        alert_threshold (float, optional): The alert threshold.
+        sub_ts_length_in_minutes (int, optional): The length of the sliding window.
+        n_ts_above_threshold (int, optional): The number of timestamps above
+            the threshold to trigger an alert.
+        time_interval (int, optional): The time interval of the data.
+
+    Returns:
+        Tuple[List[datetime], np.ndarray, np.ndarray]: A tuple containing the
+        timestamps, a boolean array for warning alerts, and a boolean array for
+        alerts.
     """
     sub_ts_delta = timedelta(minutes=sub_ts_length_in_minutes)
 

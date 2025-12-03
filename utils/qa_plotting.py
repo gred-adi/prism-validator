@@ -32,16 +32,36 @@ from utils.qa_data_processing import (
 # ==========================================
 
 def downsample_data(df: pd.DataFrame, max_points: int = 10000) -> pd.DataFrame:
-    """Downsamples dataframe for faster plotting if it exceeds max_points."""
+    """Downsamples a DataFrame for faster plotting.
+
+    If the number of rows in the DataFrame exceeds `max_points`, this function
+    will downsample the data by taking every Nth row.
+
+    Args:
+        df (pd.DataFrame): The DataFrame to downsample.
+        max_points (int, optional): The maximum number of points to keep.
+
+    Returns:
+        pd.DataFrame: The downsampled DataFrame.
+    """
     if len(df) > max_points:
         step = len(df) // max_points
         return df.iloc[::step].copy()
     return df
 
 def apply_conditions_series(df: pd.DataFrame, constraints_df: pd.DataFrame) -> pd.Series:
-    """
-    Applies multiple conditions from a constraints DataFrame.
-    constraints_df expected columns: ['Point Name', 'Operator', 'Value']
+    """Applies multiple conditions from a constraints DataFrame to a data DataFrame.
+
+    This function iterates through a constraints DataFrame and applies each
+    constraint to the data DataFrame, combining them with OR logic.
+
+    Args:
+        df (pd.DataFrame): The data DataFrame to apply conditions to.
+        constraints_df (pd.DataFrame): A DataFrame with 'Point Name', 'Operator',
+            and 'Value' columns.
+
+    Returns:
+        pd.Series: A boolean Series indicating where the conditions are met.
     """
     if constraints_df.empty:
         return pd.Series(False, index=df.index)
@@ -68,9 +88,19 @@ def apply_conditions_series(df: pd.DataFrame, constraints_df: pd.DataFrame) -> p
     return pd.Series(np.logical_or.reduce(conditions), index=df.index)
 
 def plot_omr_heatmap(omr_df: pd.DataFrame, timestamp_col: str = "timestamp", omr_col: str = "omr", ax=None):
-    """
-    Generates a heatmap of OMR intensity by Day of Week vs Hour of Day.
-    Helps identify temporal patterns in false positives.
+    """Generates a heatmap of OMR intensity by day of the week and hour.
+
+    This function helps identify temporal patterns in false positives by
+    plotting the average OMR value for each hour of each day of the week.
+
+    Args:
+        omr_df (pd.DataFrame): The DataFrame containing OMR data.
+        timestamp_col (str, optional): The name of the timestamp column.
+        omr_col (str, optional): The name of the OMR column.
+        ax (matplotlib.axes.Axes, optional): An existing axes object to plot on.
+
+    Returns:
+        matplotlib.axes.Axes: The axes object with the heatmap.
     """
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -94,8 +124,21 @@ def plot_omr_heatmap(omr_df: pd.DataFrame, timestamp_col: str = "timestamp", omr
     return ax
 
 def plot_omr_vs_feature(raw_df: pd.DataFrame, omr_df: pd.DataFrame, feature_col: str, timestamp_col: str="timestamp", omr_col: str="omr", ax=None):
-    """
-    Scatter plot of OMR vs a specific feature (e.g. Load/MW).
+    """Generates a scatter plot of OMR values against a specified feature.
+
+    This function helps to identify correlations between OMR and other
+    variables, such as load or temperature.
+
+    Args:
+        raw_df (pd.DataFrame): The DataFrame containing the feature data.
+        omr_df (pd.DataFrame): The DataFrame containing the OMR data.
+        feature_col (str): The name of the feature column to plot against OMR.
+        timestamp_col (str, optional): The name of the timestamp column.
+        omr_col (str, optional): The name of the OMR column.
+        ax (matplotlib.axes.Axes, optional): An existing axes object to plot on.
+
+    Returns:
+        matplotlib.axes.Axes: The axes object with the scatter plot.
     """
     if feature_col not in raw_df.columns:
         return None
@@ -127,9 +170,24 @@ def plot_omr_and_constraint_dynamic(
     alert_thresh: float = 10.0,
     ax=None
 ):
-    """
-    Refactored version of plot_omr_and_constraint that accepts a pre-parsed constraints DataFrame
-    and an optional axis object for subplotting.
+    """Plots OMR values with dynamic constraint and alert overlays.
+
+    This function visualizes OMR values over time, with shaded regions
+    indicating when the model is off (based on constraints) and when OMR
+    values exceed warning or alert thresholds.
+
+    Args:
+        df (pd.DataFrame): The DataFrame containing the raw data.
+        omr_df (pd.DataFrame): The DataFrame containing OMR data.
+        constraints_df (pd.DataFrame): A DataFrame of constraints.
+        timestamp_col (str, optional): The name of the timestamp column.
+        omr_col (str, optional): The name of the OMR column.
+        warning_thresh (float, optional): The warning threshold.
+        alert_thresh (float, optional): The alert threshold.
+        ax (matplotlib.axes.Axes, optional): An existing axes object.
+
+    Returns:
+        matplotlib.axes.Axes: The axes object with the plot.
     """
     if ax is None:
         fig, ax = plt.subplots(figsize=(11, 5.5))
@@ -176,9 +234,24 @@ def generate_fpr_plots_memory(
     include_heatmap: bool = True,
     include_scatter: bool = False
 ) -> list:
-    """
-    Generates a list of (Title, Base64Image) tuples for the report.
-    Does NOT save to disk.
+    """Generates FPR plots in memory and returns them as base64 encoded images.
+
+    This function creates several plots for the FPR report, including OMR
+    timelines and an optional heatmap, and returns them as a list of tuples
+    containing the plot title and base64 encoded image data.
+
+    Args:
+        raw_df (pd.DataFrame): The raw data DataFrame.
+        cleaned_val_omr (pd.DataFrame): The cleaned validation OMR DataFrame.
+        raw_val_omr (pd.DataFrame): The raw validation OMR DataFrame.
+        holdout_omr (pd.DataFrame): The holdout OMR DataFrame.
+        constraints_df (pd.DataFrame): A DataFrame of constraints.
+        model_name (str): The name of the model.
+        include_heatmap (bool, optional): Whether to include a heatmap.
+        include_scatter (bool, optional): Whether to include a scatter plot.
+
+    Returns:
+        list: A list of (title, base64_image) tuples for the report.
     """
     plots = []
     
@@ -230,8 +303,24 @@ def plot_omr_and_constraint(
     alert_thresh: float = 10.0,
     font_size: int = 12,
 ) -> None:
-    """
-    Plot OMR values with constraint condition overlayed, including warning and alert thresholds.
+    """Plots OMR values with constraint and alert overlays.
+
+    This function visualizes OMR values over time, with shaded regions
+    indicating when the model is off (based on constraints) and when OMR
+    values exceed warning or alert thresholds.
+
+    Args:
+        df (pd.DataFrame): The DataFrame containing the raw data.
+        omr_df (pd.DataFrame): The DataFrame containing OMR data.
+        plot_fname (str): The file path to save the plot.
+        constraint_cols (List[str]): A list of constraint column names.
+        condition_limits (List[float]): A list of limit values for each constraint.
+        operators (List[str]): A list of comparison operators for each constraint.
+        timestamp_col (str, optional): The name of the timestamp column.
+        omr_col (str, optional): The name of the OMR column.
+        warning_thresh (float, optional): The warning threshold.
+        alert_thresh (float, optional): The alert threshold.
+        font_size (int, optional): The font size for the plot.
     """
 
     if df.empty or omr_df.empty:
@@ -295,9 +384,24 @@ def plot_alert_persistence(
     timestamp_col: str,
     font_size: int = 10,
 ) -> None:
-    """
-    Plot OMR values and alert persistence areas for warnings and alerts, with 
-    additional model-off condition overlays based on multiple constraints.
+    """Plots OMR values with alert persistence and constraint overlays.
+
+    This function visualizes OMR values and highlights areas where warning
+    and alert conditions are met persistently, as well as when the model is
+    off based on constraints.
+
+    Args:
+        df (pd.DataFrame): The DataFrame with raw data.
+        omr_df (pd.DataFrame): The DataFrame with OMR data.
+        ts_values (List[datetime]): The timestamps for the alerts.
+        warning_alerts (np.ndarray): A boolean array for warning alerts.
+        alerts (np.ndarray): A boolean array for alerts.
+        plot_fname (str): The file path to save the plot.
+        constraint_cols (List[str]): A list of constraint column names.
+        condition_limits (List[float]): A list of limit values for each constraint.
+        operators (List[str]): A list of comparison operators for each constraint.
+        timestamp_col (str): The name of the timestamp column.
+        font_size (int, optional): The font size for the plot.
     """
 
     plt.figure(figsize=(11, 5.5))
@@ -363,8 +467,21 @@ def plot_omr_distribution_comparison(
     alpha: float = 0.5,
     alpha_grid: float = 0.5,
 ) -> None:
-    """
-    Plot the OMR distribution comparison for clean validation, raw validation, and holdout datasets.
+    """Plots a comparison of OMR distributions.
+
+    This function creates a histogram to compare the OMR distributions of the
+    clean validation, raw validation, and holdout datasets.
+
+    Args:
+        clean_val_omr_df (pd.DataFrame): The clean validation OMR DataFrame.
+        raw_val_omr_df (pd.DataFrame): The raw validation OMR DataFrame.
+        holdout_omr_df (pd.DataFrame): The holdout OMR DataFrame.
+        plot_fname (str): The file path to save the plot.
+        percentile_lower (float, optional): The lower percentile for filtering.
+        percentile_upper (float, optional): The upper percentile for filtering.
+        n_bins (int, optional): The number of bins for the histogram.
+        alpha (float, optional): The alpha transparency for the histogram.
+        alpha_grid (float, optional): The alpha transparency for the grid.
     """
     quantile_05_clean_val = clean_val_omr_df.omr.quantile(percentile_lower)
     quantile_05_raw_val = raw_val_omr_df.omr.quantile(percentile_lower)
@@ -454,9 +571,36 @@ def generate_report_plots(
     nsteps: int = 20,
     font_size: int = 12,
 ) -> None:
-    """
-    Generate and save plots for OMR and gross load comparisons, along with false positive rates (FPR) for cleaned, 
-    raw, and holdout datasets.
+    """Generates and saves all plots for the QA report.
+
+    This function orchestrates the creation of all plots required for the QA
+    report, including OMR timelines, alert persistence, FPR curves, and
+    distribution comparisons.
+
+    Args:
+        data_fpath (str): The path to the data directory.
+        fpr_fpath (str): The path to save the FPR plots.
+        model_name (str): The name of the model.
+        constraint_cols (List[str]): A list of constraint column names.
+        condition_limits (List[float]): A list of limit values for each constraint.
+        operators (List[str]): A list of comparison operators for each constraint.
+        raw_data_fpath (str): The path to the raw data file.
+        holdout_fpath (str): The path to the holdout data file.
+        holdout_omr_fname (str): The filename of the holdout OMR data.
+        val_without_outlier_omr_fname (str): The filename of the validation OMR
+            data without outliers.
+        val_with_outlier_omr_fname (str): The filename of the validation OMR
+            data with outliers.
+        timestamp_col (str, optional): The name of the timestamp column.
+        warning_threshold (float, optional): The warning threshold.
+        alert_threshold (float, optional): The alert threshold.
+        sub_ts_length_in_minutes (float, optional): The length of the sub-time
+            series in minutes.
+        n_ts_above_threshold (float, optional): The number of timestamps above
+            the threshold to trigger an alert.
+        time_interval (int, optional): The time interval of the data.
+        nsteps (int, optional): The number of steps for the FPR calculation.
+        font_size (int, optional): The font size for the plots.
     """
 
     raw_df = load_and_process_data(raw_data_fpath, constraint_cols)
@@ -589,13 +733,16 @@ def generate_summary_fprp_plots(
     fpr_limit: float = 10,
     font_size: int = 16,
 ) -> None:
-    """
-    Generates and saves a horizontal bar plot visualizing False Positive Rate with Persistence (FPRP) 
-    statistics for each model.
+    """Generates and saves a summary plot of FPRP statistics for multiple models.
 
-    This function creates a bar plot with two bars per model, representing FPRP at 5.0% OMR (Warning) 
-    and 10.0% OMR (Alert). Models are displayed on the y-axis in ascending order of their FPRP at 10.0% OMR (Alert). 
-    The plot is saved as an image file.
+    This function creates a horizontal bar plot to visualize and compare the
+    FPRP at warning and alert levels across different models.
+
+    Args:
+        df (pd.DataFrame): A DataFrame with FPRP statistics for each model.
+        plot_fname (str): The file path to save the plot.
+        fpr_limit (float, optional): The x-axis limit for the FPR.
+        font_size (int, optional): The font size for the plot.
     """
 
     df_sorted = df.sort_values(
