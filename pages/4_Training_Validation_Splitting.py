@@ -26,7 +26,7 @@ It uses **stratified splitting** based on an Operational State metric to ensure 
 3.  **Upload Data:** Upload the `CLEANED_...WITH-OUTLIER` and `CLEANED_...WITHOUT-OUTLIER` files.
 4.  **Configure:** Select the **Operational State** metric to stratify by and the desired split ratio (e.g., 80% Train, 20% Validation).
 5.  **Split:** Run the split algorithm.
-6.  **Visualize & Save:** Review distribution plots to verify balance and save the final files.
+6.  **Visualize & Save:** Review distribution plots to verify balance and save the final datasets along with a PDF report.
 """)
 
 # --- Initialize Session State ---

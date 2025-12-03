@@ -7,6 +7,7 @@ import sys
 import asyncio
 from jinja2 import Environment
 import re
+from datetime import datetime
 
 # Import Utils
 from utils.model_dev_utils import cleaned_dataset_name_split, read_prism_csv
@@ -20,40 +21,42 @@ Refine your dataset by removing statistical outliers and anomalies.
 Choose between **Pairwise Detection** (analyzing relationships against Operational State) or **Multivariate Detection** (analyzing global structure).
 
 **How to Use:**
-1.  **Upload:** Load your `WITH-OUTLIER` dataset (output from Data Cleansing or Holdout Splitting).
-2.  **Configure Strategy:**
+1.  **Load TDT Files:** Ensure your TDT files are processed in the Global Settings sidebar. Select the desired **TDT** and **Model**.
+2.  **Set Output Folder:** On the Global Settings sidebar, specify the base output folder where cleaned datasets and reports will be saved.             
+3.  **Upload Data:** Upload the `CLEANED_...WITH-OUTLIER` file (output from Data Cleansing or Holdout Splitting).
+4.  **Configure Strategy:**
     * **Pairwise:** Best for checking if specific sensors deviate from the Operational State (e.g., Temperature vs Load).
     * **Multivariate:** Best for finding structural anomalies where the combination of tags violates system correlation.
-3.  **Process:** Run the detection algorithms and review the visualized outliers.
-4.  **Export:** Save the clean dataset.
+5.  **Process:** Run the detection algorithms and review the visualized outliers.
+6.  **Export:** Save the clean dataset along with a PDF report.
 """)
 
 # --- Constants ---
 ALGO_DESCRIPTIONS = {
     "isoforest": """**Isolation Forest:** An unsupervised algorithm that isolates anomalies by randomly partitioning the data. Outliers are 'easier' to isolate (require fewer splits) than normal points. Best for detecting global anomalies in complex, non-linear clusters.
     
-    * Contamination: The expected proportion of outliers in the dataset. Adjust this based on how clean you believe your data is (e.g., 0.01 = 1%).""",
+    * **Contamination:** The expected proportion of outliers in the dataset. Adjust this based on how clean you believe your data is (e.g., 0.01 = 1%).""",
     
     "residual": """**RANSAC (Residuals):** Fits a robust regression model (ignoring existing outliers) to find the trend between the Feature and Operational State. Outliers are flagged based on their distance (residual) from this trend line. Best for features that have a strong linear relationship with the Operational State.
     
-    * Residual Threshold: The Z-Score cutoff for residuals. A higher value (e.g., 3.5) means only very extreme deviations are flagged. A lower value (e.g., 2.0) is stricter.""",
+    * **Residual Threshold:** The Z-Score cutoff for residuals. A higher value (e.g., 3.5) means only very extreme deviations are flagged. A lower value (e.g., 2.0) is stricter.""",
     
     "lof": """**Local Outlier Factor (LOF):** Measures the local density deviation of a data point compared to its neighbors. It flags points that have a significantly lower density than their neighbors. Best for finding local outliers in clusters.
     
-    * Contamination: The expected proportion of outliers in the dataset.
-    * n_neighbors: The number of neighbors to consider for density estimation (default: 20).""",
+    * **Contamination:** The expected proportion of outliers in the dataset.
+    * **n_neighbors:** The number of neighbors to consider for density estimation (default: 20).""",
     
-    "iqr": """**Interquartile Range (IQR):** A simple statistical method. Calculates the range between the 25th and 75th percentiles (IQR). Points outside **`Q1-1.5*IQR`** and **`Q3+1.5*IQR`** are flagged. Best for simple, univariate cutoff filtering.
+    "iqr": """**Interquartile Range (IQR):** A simple statistical method. Calculates the range between the 25th and 75th percentiles (IQR). Points outside `Q1 - 1.5*IQR` and `Q3 + 1.5*IQR` are flagged. Best for simple, univariate cutoff filtering.
     
-    * IQR Factor: The multiplier for the IQR range (standard is 1.5). Increasing this makes the filter more lenient.""",
+    * **IQR Factor:** The multiplier for the IQR range (standard is 1.5). Increasing this makes the filter more lenient.""",
     
     "pca_recon": """**PCA Reconstruction Error:** Projects the data into a lower-dimensional space using Principal Component Analysis (PCA) and then reconstructs it. Points with high reconstruction error (large difference between original and reconstructed value) violate the correlation structure of the system. Best for finding multi-sensor consistency issues.
     
-    * Contamination: The expected proportion of outliers (points with the highest reconstruction errors) to remove.""",
+    * **Contamination:** The expected proportion of outliers (points with the highest reconstruction errors) to remove.""",
     
     "isoforest_global": """**Isolation Forest (Global):** Applies the Isolation Forest algorithm to the entire dataset (all features simultaneously) without a specific target variable. Identifies points that are anomalous in the high-dimensional space.
     
-    * Contamination: The expected proportion of outliers in the dataset."""
+    * **Contamination:** The expected proportion of outliers in the dataset."""
 }
 
 # --- Initialize Session State ---
@@ -63,10 +66,11 @@ if 'or_step' not in st.session_state: st.session_state.or_step = 1
 if 'or_raw_df' not in st.session_state: st.session_state.or_raw_df = None
 if 'or_header' not in st.session_state: st.session_state.or_header = None
 if 'or_mapped_df' not in st.session_state: st.session_state.or_mapped_df = None
-if 'or_mapping_table' not in st.session_state: st.session_state.or_mapping_table = None # New state for mapping review
-if 'or_mask' not in st.session_state: st.session_state.or_mask = None # Boolean mask of outliers
+if 'or_mapping_table' not in st.session_state: st.session_state.or_mapping_table = None 
+if 'or_mask' not in st.session_state: st.session_state.or_mask = None 
 if 'or_summary_stats' not in st.session_state: st.session_state.or_summary_stats = None
 if 'or_plot_images' not in st.session_state: st.session_state.or_plot_images = []
+if 'or_config_summary' not in st.session_state: st.session_state.or_config_summary = {}
 
 # Metadata
 if 'site_name' not in st.session_state: st.session_state.site_name = ""
@@ -75,11 +79,11 @@ if 'model_name' not in st.session_state: st.session_state.model_name = ""
 if 'sprint_name' not in st.session_state: st.session_state.sprint_name = ""
 if 'inclusive_dates' not in st.session_state: st.session_state.inclusive_dates = ""
 
-# Check for TDT Data Availability (The Fix)
+# Check for TDT Data Availability
 if 'survey_df' not in st.session_state or st.session_state.survey_df is None:
     st.warning("⚠️ **TDT Data Not Found**")
     st.info("Please go to the **Global Settings** sidebar (on the left), upload your TDT Excel files, and click 'Generate & Load Files'. This is required to map metric names.")
-    st.stop() # Stop execution here until data is loaded
+    st.stop() 
 
 # --- Helper Functions ---
 def next_step(): st.session_state.or_step += 1
@@ -138,7 +142,6 @@ def load_and_map_data(uploaded_file, survey_df, model_name):
                 # Strategy 2: Strip prefix and check if it matches a Metric Name directly
                 if mapped_metric is None:
                     stripped_col = strip_prefix(col)
-                    # Check if the stripped name exists in the Metric column of the survey
                     if stripped_col in metric_to_function:
                         mapped_metric = stripped_col
                         mapped_function = metric_to_function[stripped_col]
@@ -170,43 +173,127 @@ def load_and_map_data(uploaded_file, survey_df, model_name):
         st.error(f"Error loading file: {e}")
         return False
 
-def generate_report_html(stats, plot_images, strategy):
+def generate_report_html(stats, plot_data, config, strategy):
+    formatted_stats = {
+        "original": f"{stats['original']:,}",
+        "cleaned": f"{stats['cleaned']:,}",
+        "removed": f"{stats['removed']:,}",
+        "pct": stats['pct']
+    }
+
     env = Environment()
     template_str = """
     <html>
     <head>
         <style>
-            body { font-family: "Helvetica", "Arial", sans-serif; color: #333; margin: 40px; }
+            @page { size: A4 portrait; margin: 2cm; }
+            @page landscape { size: A4 landscape; margin: 2cm; }
+            
+            body { font-family: "Helvetica", "Arial", sans-serif; color: #333; margin: 0; }
+            
             h1 { color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; }
             h2 { color: #2980b9; margin-top: 30px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
-            .stats-box { background-color: #f9f9f9; border: 1px solid #ddd; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
-            .stat-item { margin-bottom: 5px; }
-            .img-container { text-align: center; margin-top: 20px; page-break-inside: avoid; }
-            img { max-width: 95%; height: auto; border: 1px solid #ccc; }
+            .section { margin-bottom: 20px; }
+            
+            /* Stats & Config Table */
+            .info-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px; }
+            .info-table th, .info-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            .info-table th { background-color: #f2f2f2; font-weight: bold; width: 30%; }
+            
+            .description-box { background-color: #f9f9f9; padding: 15px; border-left: 5px solid #2980b9; margin-bottom: 20px; font-size: 13px; line-height: 1.5; }
+            
+            /* Page Break & Images */
+            .page-break { page-break-before: always; }
+            
+            .landscape-section {
+                page: landscape;
+                width: 100%;
+                page-break-before: always;
+            }
+            
+            .img-container { text-align: center; margin-top: 10px; page-break-inside: avoid; }
+            img { max-width: 95%; height: auto; border: 1px solid #ccc; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); }
+            
+            .plot-title { font-size: 16px; font-weight: bold; color: #333; margin-bottom: 5px; text-align: center; }
         </style>
     </head>
     <body>
         <h1>Outlier Removal Report</h1>
-        <div class="stats-box">
+        <div style="font-size: 12px; color: #777; margin-bottom: 20px;">Generated on: {{ date }}</div>
+
+        <!-- Processing Summary -->
+        <div class="section">
             <h2>Processing Summary</h2>
-            <div class="stat-item"><strong>Strategy:</strong> {{ strategy }}</div>
-            <div class="stat-item"><strong>Original Rows:</strong> {{ stats.original }}</div>
-            <div class="stat-item"><strong>Cleaned Rows:</strong> {{ stats.cleaned }}</div>
-            <div class="stat-item"><strong>Removed:</strong> {{ stats.removed }} ({{ stats.pct }}%)</div>
+            
+            <table class="info-table">
+                <tr><th>Strategy</th><td>{{ config.strategy }}</td></tr>
+                <tr><th>Algorithm</th><td>{{ config.algorithm }}</td></tr>
+                {% for key, val in config.params.items() %}
+                <tr><th>{{ key }}</th><td>{{ val }}</td></tr>
+                {% endfor %}
+            </table>
+            
+            <h3>Impact Statistics</h3>
+            <table class="info-table">
+                <tr><th>Original Rows</th><td>{{ stats.original }}</td></tr>
+                <tr><th>Cleaned Rows</th><td>{{ stats.cleaned }}</td></tr>
+                <tr><th>Outliers Removed</th><td>{{ stats.removed }} ({{ stats.pct }}%)</td></tr>
+            </table>
+
+            <h3>Algorithm Description</h3>
+            <div class="description-box">
+                {{ config.description | safe }}
+            </div>
         </div>
         
+        <!-- VISUALIZATIONS START ON NEW PAGE -->
+        <div class="page-break"></div>
         <h2>Visualizations</h2>
-        {% for title, img_data in images %}
-        <div class="img-container">
-            <h3>{{ title }}</h3>
-            <img src="data:image/png;base64,{{ img_data }}" />
-        </div>
+        
+        {% for item in plot_data %}
+            
+            {% if item.type == 'pairwise' %}
+            <div class="section page-break">
+                <div class="plot-title">{{ item.title }}</div>
+                <div class="img-container">
+                    <p><strong>Time Series & Outliers</strong></p>
+                    <img src="data:image/png;base64,{{ item.ts_img }}" style="width: 100%;" />
+                </div>
+                <div class="img-container">
+                    <p><strong>Density Scatterplot</strong></p>
+                    <img src="data:image/png;base64,{{ item.scatter_img }}" style="width: 80%;" />
+                </div>
+            </div>
+            
+            {% elif item.type == 'multivariate_summary' %}
+            <div class="section">
+                <div class="plot-title">{{ item.title }}</div>
+                <div class="img-container">
+                    <img src="data:image/png;base64,{{ item.img }}" />
+                </div>
+            </div>
+            
+            {% elif item.type == 'multivariate_ts' %}
+            <div class="section landscape-section">
+                <div class="plot-title">{{ item.title }}</div>
+                <div class="img-container">
+                    <img src="data:image/png;base64,{{ item.ts_img }}" style="width: 100%;" />
+                </div>
+            </div>
+            {% endif %}
+            
         {% endfor %}
     </body>
     </html>
     """
     template = env.from_string(template_str)
-    return template.render(stats=stats, images=plot_images, strategy=strategy)
+    return template.render(
+        stats=formatted_stats, 
+        plot_data=plot_data, 
+        config=config, 
+        strategy=strategy,
+        date=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
 
 # Progress Indicator
 steps = ["Upload & Map", "Configure & Detect", "Export"]
@@ -321,6 +408,7 @@ elif current == 2:
     iqr_factor = 1.5
     n_neighbors = 20
     percentile_cut = 0.01
+    current_params = {}
 
     # 1. Pairwise Config
     if "Pairwise" in strategy:
@@ -337,13 +425,17 @@ elif current == 2:
             # --- Dynamic Hyperparameters ---
             if method == "isoforest":
                 contamination = st.slider("Contamination (Expected Outlier %)", 0.001, 0.05, 0.005, 0.001, format="%.4f")
+                current_params = {"Contamination": contamination}
             elif method == "residual":
                 residual_thresh = st.slider("Residual Threshold (Z-Score)", 2.0, 5.0, 3.5, 0.1)
+                current_params = {"Residual Threshold": residual_thresh}
             elif method == "lof":
                 contamination = st.slider("Contamination (Expected Outlier %)", 0.001, 0.05, 0.005, 0.001, format="%.4f")
                 n_neighbors = st.slider("N Neighbors", 5, 50, 20, 1)
+                current_params = {"Contamination": contamination, "N Neighbors": n_neighbors}
             elif method == "iqr":
                 iqr_factor = st.slider("IQR Factor", 1.0, 3.0, 1.5, 0.1)
+                current_params = {"IQR Factor": iqr_factor}
         
         # Info Box for Algorithm
         st.info(ALGO_DESCRIPTIONS.get(method, ""))
@@ -365,9 +457,15 @@ elif current == 2:
         current_strategy = "multivariate"
         col1, col2 = st.columns(2)
         with col1:
+            # Add Operational State selection for Visualization context
+            # Set default index for Op State if found
+            op_state_idx = numeric_cols.index(default_op_state) if default_op_state in numeric_cols else 0
+            op_state = st.selectbox("Operational State (for Visualization context)", numeric_cols, index=op_state_idx)
+            
             method = st.selectbox("Algorithm", ["pca_recon", "isoforest_global"]) 
         with col2:
             contamination = st.slider("Contamination (Expected Outlier %)", 0.001, 0.05, 0.01, 0.001)
+            current_params = {"Contamination": contamination}
             
         # Info Box for Algorithm
         st.info(ALGO_DESCRIPTIONS.get(method, ""))
@@ -377,7 +475,7 @@ elif current == 2:
             numeric_cols, 
             default=default_features
         )
-        op_state = None # Not used here
+        # op_state is now used for visualization in multivariate too
 
     # --- Run Detection ---
     if st.button("🚀 Run Detection", type="primary"):
@@ -387,6 +485,14 @@ elif current == 2:
             with st.spinner("Running algorithms..."):
                 final_mask = pd.Series(False, index=df.index)
                 
+                # Capture Config Summary for Report
+                st.session_state.or_config_summary = {
+                    "strategy": strategy,
+                    "algorithm": method,
+                    "params": current_params,
+                    "description": ALGO_DESCRIPTIONS.get(method, "").replace("**", "<b>").replace("</b>:", "</b>").replace("\n", "<br>")
+                }
+
                 # Logic Execution
                 if current_strategy == "pairwise":
                     # Run parallel flagging
@@ -394,8 +500,6 @@ elif current == 2:
                     progress_bar = st.progress(0)
                     
                     for i, feat in enumerate(target_features):
-                        # Pass the dynamically set params to the function
-                        # Unused params for a specific method will be ignored by detect_outliers_series
                         flag_series = detect_outliers_series(
                             df, op_state, feat, 
                             method=method, 
@@ -434,8 +538,16 @@ elif current == 2:
                 }
                 
                 # Generate Plots
+                # Limit features to avoid overloading the UI/Report
+                features_to_plot = target_features[:10]
+                
                 st.session_state.or_plot_images = generate_outlier_plots(
-                    df, final_mask, current_strategy, op_state, target_features[:6] # Limit plots
+                    df, 
+                    final_mask, 
+                    current_strategy, 
+                    op_state, 
+                    features_to_plot,
+                    time_col='DATETIME' # Ensure we pass the time column
                 )
                 
                 st.rerun()
@@ -454,10 +566,29 @@ elif current == 2:
         st.subheader("Visualizations")
         # Display images stored in session state
         if st.session_state.or_plot_images:
-            cols = st.columns(2)
-            for i, (title, img_b64) in enumerate(st.session_state.or_plot_images):
-                with cols[i % 2]:
-                    st.image(f"data:image/png;base64,{img_b64}", caption=title)
+            for item in st.session_state.or_plot_images:
+                # Pairwise: Show Side-by-Side
+                if item['type'] == 'pairwise':
+                    st.markdown(f"#### {item['title']}")
+                    vc1, vc2 = st.columns(2)
+                    with vc1:
+                        st.image(f"data:image/png;base64,{item['ts_img']}", caption="Time Series (Green=OpState, Blue=Feature, Red=Outlier)")
+                    with vc2:
+                        st.image(f"data:image/png;base64,{item['scatter_img']}", caption="Density Scatter (Red=Outlier)")
+                    st.markdown("---")
+                
+                # Multivariate Summary (PCA)
+                elif item['type'] == 'multivariate_summary':
+                    st.markdown(f"#### {item['title']}")
+                    st.image(f"data:image/png;base64,{item['img']}")
+                    st.markdown("---")
+                
+                # Multivariate Time Series
+                elif item['type'] == 'multivariate_ts':
+                    # We can grid these to save space in UI
+                    # But for now, simple list is fine
+                    st.image(f"data:image/png;base64,{item['ts_img']}", caption=f"Time Series: {item['title']} (Red=Global Outlier)")
+
         
         if st.button("Proceed to Export ➡️", type="primary"):
             next_step()
@@ -512,11 +643,7 @@ elif current == 3:
                 # Save CSVs (Re-attach header)
                 def save_w_header(df, path):
                     df_copy = df.copy()
-                    df_copy.columns = header.columns # Remap back to Tags if header has tags? 
-                    # Note: header columns usually are tags. 
-                    # If we mapped or_raw_df to Metrics, we must map back or just save data.
-                    # Standard PRISM files: Header has tags. Data should be aligned.
-                    # We assume column order hasn't changed.
+                    df_copy.columns = header.columns 
                     final = pd.concat([header, df_copy], ignore_index=True)
                     final.to_csv(path, index=False)
                     
@@ -530,6 +657,7 @@ elif current == 3:
                 html = generate_report_html(
                     st.session_state.or_summary_stats, 
                     st.session_state.or_plot_images, 
+                    st.session_state.or_config_summary, # Pass full config
                     "Outlier Removal"
                 )
                 

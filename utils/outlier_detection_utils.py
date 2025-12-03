@@ -1,12 +1,14 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import seaborn as sns
 from sklearn.ensemble import IsolationForest
 from sklearn.neighbors import LocalOutlierFactor
 from sklearn.linear_model import RANSACRegressor
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
+from scipy.stats import gaussian_kde
 from io import BytesIO
 import base64
 
@@ -129,13 +131,23 @@ def detect_multivariate_outliers(df, feature_cols, method='pca_recon', contamina
     is_outlier.loc[X.index] = (outlier_labels == -1)
     return is_outlier
 
-def generate_outlier_plots(df_original, mask_outliers, strategy, op_state=None, plot_cols=None):
+def generate_outlier_plots(df_original, mask_outliers, strategy, op_state=None, plot_cols=None, time_col='DATETIME'):
     """
-    Generates a list of (Title, Base64_Image) tuples for reports/display.
-    df_original: DataFrame with data
-    mask_outliers: Boolean Series (True = Row is Outlier)
+    Generates a list of dictionaries containing plot details.
+    
+    Returns structure:
+    [
+        {
+            'type': 'pairwise' | 'multivariate',
+            'title': str,
+            'scatter_img': base64_str (for pairwise),
+            'ts_img': base64_str (for pairwise),
+            'img': base64_str (for multivariate, e.g. PCA)
+        },
+        ...
+    ]
     """
-    plot_images = []
+    plots_data = []
     
     # Downsample for plotting speed
     MAX_POINTS = 5000
@@ -144,7 +156,7 @@ def generate_outlier_plots(df_original, mask_outliers, strategy, op_state=None, 
         # Ensure we include some outliers in the sample if they exist
         outlier_indices = df_original[mask_outliers].index
         if len(outlier_indices) > 0:
-            # Mix random sample with outliers (up to a limit)
+            # Mix random sample with outliers (up to a limit to avoid overcrowding)
             outlier_sample = np.random.choice(outlier_indices, min(len(outlier_indices), 1000), replace=False)
             final_idx = np.unique(np.concatenate([sample_idx, outlier_sample]))
             plot_df = df_original.loc[final_idx].copy()
@@ -156,6 +168,11 @@ def generate_outlier_plots(df_original, mask_outliers, strategy, op_state=None, 
         plot_df = df_original.copy()
         plot_mask = mask_outliers
 
+    # Ensure DATETIME is properly typed for plotting
+    if time_col in plot_df.columns:
+        plot_df[time_col] = pd.to_datetime(plot_df[time_col])
+        plot_df = plot_df.sort_values(time_col)
+
     inliers = plot_df[~plot_mask]
     outliers = plot_df[plot_mask]
 
@@ -164,32 +181,97 @@ def generate_outlier_plots(df_original, mask_outliers, strategy, op_state=None, 
         for feat in plot_cols:
             if feat not in plot_df.columns: continue
             
-            fig, ax = plt.subplots(figsize=(8, 5))
+            # --- Plot A: Scatter with KDE ---
+            fig_scat, ax_scat = plt.subplots(figsize=(8, 5))
             
+            # KDE Density Estimation (on Inliers only for clean contour)
+            try:
+                # Remove NaNs for KDE calculation
+                kde_data = inliers[[op_state, feat]].dropna()
+                if len(kde_data) > 5:
+                    x = kde_data[op_state].values
+                    y = kde_data[feat].values
+                    
+                    # Calculate the point density
+                    k = gaussian_kde(np.vstack([x, y]))
+                    xi, yi = np.mgrid[x.min():x.max():x.size**0.5*1j, y.min():y.max():y.size**0.5*1j]
+                    zi = k(np.vstack([xi.flatten(), yi.flatten()]))
+                    
+                    # Overlay contours
+                    ax_scat.contour(xi, yi, zi.reshape(xi.shape), levels=5, colors='black', alpha=0.3, linewidths=0.5)
+                    ax_scat.contourf(xi, yi, zi.reshape(xi.shape), levels=5, cmap="Greys", alpha=0.1)
+            except Exception as e:
+                print(f"KDE Plot Error for {feat}: {e}")
+
             # Plot Inliers
             sns.scatterplot(
                 x=inliers[op_state], y=inliers[feat], 
-                color='gray', alpha=0.3, s=15, label='Inlier', ax=ax, edgecolor=None
+                color='gray', alpha=0.4, s=15, label='Inlier', ax=ax_scat, edgecolor=None
             )
             # Plot Outliers
             if not outliers.empty:
                 sns.scatterplot(
                     x=outliers[op_state], y=outliers[feat], 
-                    color='red', alpha=0.8, s=25, label='Outlier', ax=ax, marker='x'
+                    color='red', alpha=0.9, s=30, label='Outlier', ax=ax_scat, marker='x', linewidth=1.5
                 )
             
-            ax.set_title(f"Outlier Detection: {op_state} vs {feat}")
-            ax.legend()
-            ax.grid(True, alpha=0.2)
+            ax_scat.set_title(f"Scatter: {op_state} vs {feat}")
+            ax_scat.legend()
+            ax_scat.grid(True, alpha=0.2)
             plt.tight_layout()
             
-            # Save
-            buf = BytesIO()
-            fig.savefig(buf, format="png", dpi=100)
-            buf.seek(0)
-            img_str = base64.b64encode(buf.read()).decode('utf-8')
-            plot_images.append((f"{feat} vs {op_state}", img_str))
-            plt.close(fig)
+            # Save Scatter
+            buf_scat = BytesIO()
+            fig_scat.savefig(buf_scat, format="png", dpi=100)
+            buf_scat.seek(0)
+            img_scat = base64.b64encode(buf_scat.read()).decode('utf-8')
+            plt.close(fig_scat)
+
+            # --- Plot B: Time Series (Dual Axis) ---
+            fig_ts, ax_ts = plt.subplots(figsize=(10, 4))
+            
+            # Primary Y: Op State (Green)
+            ax_ts.plot(plot_df[time_col], plot_df[op_state], color='green', alpha=0.3, label=op_state, linewidth=1)
+            ax_ts.set_ylabel(op_state, color='green')
+            ax_ts.tick_params(axis='y', labelcolor='green')
+            
+            # Secondary Y: Feature (Blue)
+            ax2 = ax_ts.twinx()
+            ax2.plot(plot_df[time_col], plot_df[feat], color='blue', alpha=0.5, label=feat, linewidth=1)
+            
+            # Highlight Outliers on Secondary Y
+            if not outliers.empty:
+                ax2.scatter(outliers[time_col], outliers[feat], color='red', s=20, label='Outlier', zorder=10, marker='x')
+            
+            ax2.set_ylabel(feat, color='blue')
+            ax2.tick_params(axis='y', labelcolor='blue')
+            
+            ax_ts.set_title(f"Time Series: {feat} & {op_state}")
+            ax_ts.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+            
+            # Combined Legend - Bottom Outside
+            lines, labels = ax_ts.get_legend_handles_labels()
+            lines2, labels2 = ax2.get_legend_handles_labels()
+            # bbox_to_anchor controls position relative to plot
+            # (0.5, -0.2) means centered horizontally (0.5) and below the plot area (-0.2)
+            ax2.legend(lines + lines2, labels + labels2, loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=3)
+            
+            plt.tight_layout()
+            
+            # Save Time Series
+            buf_ts = BytesIO()
+            fig_ts.savefig(buf_ts, format="png", dpi=100)
+            buf_ts.seek(0)
+            img_ts = base64.b64encode(buf_ts.read()).decode('utf-8')
+            plt.close(fig_ts)
+
+            # Append structured data
+            plots_data.append({
+                'type': 'pairwise',
+                'title': feat,
+                'scatter_img': img_scat,
+                'ts_img': img_ts
+            })
 
     # --- Strategy 2: Multivariate Visuals ---
     elif strategy == 'multivariate' and plot_cols:
@@ -215,15 +297,63 @@ def generate_outlier_plots(df_original, mask_outliers, strategy, op_state=None, 
             ax.set_title("Multivariate Outliers (PCA Projection)")
             ax.grid(True, alpha=0.2)
             
-            # Save
+            # Save PCA Plot
             buf = BytesIO()
             fig.savefig(buf, format="png", dpi=100)
             buf.seek(0)
             img_str = base64.b64encode(buf.read()).decode('utf-8')
-            plot_images.append(("PCA Projection 2D", img_str))
             plt.close(fig)
+            
+            plots_data.append({
+                'type': 'multivariate_summary',
+                'title': 'PCA Projection 2D',
+                'img': img_str
+            })
             
         except Exception as e:
             print(f"PCA Plot Error: {e}")
 
-    return plot_images
+        # 2. Time Series for each feature (for context)
+        # We assume operational state is only for pairwise or is the first column if not provided
+        # For multivariate, just plot the feature with outliers
+        
+        target_op_state = op_state if op_state else (plot_cols[0] if plot_cols else None) 
+
+        for feat in plot_cols[:10]: # Limit to first 10 to avoid explosion
+            
+            fig_ts, ax_ts = plt.subplots(figsize=(10, 4))
+            
+            # Plot Feature (Blue) on Primary Y if no Op State, or Secondary Y if Op State exists
+            # Requested: "no need to show the op state together with the features" for multivariate
+            # So we strictly use single axis
+            
+            ax_ts.plot(plot_df[time_col], plot_df[feat], color='blue', alpha=0.5, label=feat, linewidth=1)
+            
+            # Highlight Outliers (Red) - These are global multivariate outliers
+            if not outliers.empty:
+                ax_ts.scatter(outliers[time_col], outliers[feat], color='red', s=20, label='Global Outlier', zorder=10, marker='x')
+            
+            ax_ts.set_ylabel(feat, color='blue')
+            ax_ts.tick_params(axis='y', labelcolor='blue')
+            
+            ax_ts.set_title(f"Multivariate Context: {feat}")
+            ax_ts.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+            # Legend - Bottom Outside
+            ax_ts.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=3)
+
+            plt.tight_layout()
+            
+            # Save Time Series
+            buf_ts = BytesIO()
+            fig_ts.savefig(buf_ts, format="png", dpi=100)
+            buf_ts.seek(0)
+            img_ts = base64.b64encode(buf_ts.read()).decode('utf-8')
+            plt.close(fig_ts)
+
+            plots_data.append({
+                'type': 'multivariate_ts',
+                'title': feat,
+                'ts_img': img_ts
+            })
+
+    return plots_data
