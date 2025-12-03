@@ -29,13 +29,13 @@ col1, col2 = st.columns(2, gap="medium")
 with col1:
     st.subheader("🔍 Validation Tools")
     with st.container(border=True):
+        st.markdown("#### ☑️ TDT Validator")
+        st.markdown("Performs offline integrity checks on the TDT files themselves. Detects duplicates, missing mandatory fields, and logic errors within the Excel templates before you configure in PRISM.")
+
+    with st.container(border=True):
         st.markdown("#### ✅ PRISM Config Validator")
         st.markdown("Compares your offline **TDT files** against the live **PRISM Database**. Identifies discrepancies in metric configuration, mappings, filters, and diagnostics.")
     
-    with st.container(border=True):
-        st.markdown("#### ☑️ TDT Validator")
-        st.markdown("Performs offline integrity checks on the TDT files themselves. Detects duplicates, missing mandatory fields, and logic errors within the Excel templates before you deploy.")
-
     with st.container(border=True):
         st.markdown("#### 🎯 Model Accuracy")
         st.markdown("Post-deployment validation tool to calculate model accuracy scores by comparing PRISM metrics against calculated values.")

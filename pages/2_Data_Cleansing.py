@@ -24,7 +24,7 @@ This wizard guides you through cleaning raw time-series datasets.
 It automates column mapping using your TDT files and provides an interactive interface for applying numeric and datetime filters.
 
 **How to Use:**
-1.  **Ingest Data:** Upload your raw CSV dataset. The tool will automatically map column names using the TDT Survey data loaded in the Global Settings Sidebar.
+1.  **Ingest Data:** Upload your raw CSV dataset. The tool will automatically map column names using the TDT Survey data loaded in the **Global Settings** sidebar.
 2.  **Cleanse:** Use the interactive controls to apply numeric thresholds and exclude specific time ranges (e.g., maintenance periods).
 3.  **Review & Export:** Check the impact of your filters and download the cleaned dataset along with a PDF report.
 """)

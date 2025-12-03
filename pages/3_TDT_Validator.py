@@ -172,10 +172,10 @@ def display_simple_results(summary_df, details_df, columns_to_show, show_summary
 # --- Main Page UI ---
 st.title("☑️ TDT Configuration Validator")
 st.markdown("""
-This tool performs **offline integrity checks** on your TDT Excel files. It is designed to catch errors, duplicates, and missing mandatory fields within the spreadsheets themselves, ensuring data quality before deployment to PRISM.
+This tool performs **offline integrity checks** on your TDT Excel files. It is designed to catch errors, duplicates, and missing mandatory fields within the spreadsheets themselves, ensuring data quality before configuration to PRISM.
 
 **How to use:**
-1.  **Load Data:** Ensure your TDT files are processed in the **Global Settings Sidebar**. The reference files generated there are used for these checks.
+1.  **Load Data:** Ensure your TDT files are processed in the **Global Settings** sidebar. The reference files generated there are used for these checks.
 2.  **Select Audit:** Click on the tabs below to inspect different sections of the TDT (e.g., *Point Survey*, *Calculations*, *Attributes*).
 3.  **Run Validation:** Click the button inside the tab to execute the check.
 4.  **Review Issues:** The results will highlight specific rows or cells containing errors (marked in red) or confirm if the section is valid (✅).
@@ -195,7 +195,7 @@ tabs = st.tabs(tab_list)
 # --- Tab 0: TDT Consolidation Overview ---
 with tabs[0]:
     st.header("TDT Consolidation Overview")
-    st.markdown("This tab shows the consolidated TDT, Survey, and Diagnostic data loaded from the TDT files are processed in the **Global Settings Sidebar**. No validation is performed here.")
+    st.markdown("This tab shows the consolidated TDT Survey and Diagnostic data loaded from the TDT files are processed in the **Global Settings** sidebar. No validation is performed here.")
     
     if 'overview_df' not in st.session_state or st.session_state.overview_df is None:
         st.info("Please go to the **Global Settings** in the sidebar, upload your TDT files, and click 'Generate & Load Files' to see the overview.")
