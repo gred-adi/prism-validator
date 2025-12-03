@@ -34,8 +34,8 @@ It is designed to help you quickly gather training or analysis data for specific
 
 **How to use:**
 1.  **Prerequisites:** Ensure TDT files are loaded via the **Global Settings** sidebar (on the left).
-2.  **Filter Metrics (Step 2):** Select the specific TDT and Model you wish to query. This will load the relevant tags from the TDT.
-3.  **Configure Query (Step 3):** * Select the specific metrics you want to download.
+2.  **Filter Metrics:** Select the specific TDT and Model you wish to query. This will load the relevant tags from the TDT.
+3.  **Configure Query:** Select the specific metrics you want to download.
     * Define the **Start/End Date** and **Aggregate** settings (e.g., 1-minute snapshots).
     * Enter your **API Token**.
 4.  **Fetch & Download:** Click "Fetch Data" to retrieve the data from the API, preview the statistics, and download the result as a CSV file.
@@ -266,7 +266,7 @@ df_survey = None
 data_source_selected = False
 
 if 'survey_df' in st.session_state:
-    st.info("Please go to the Global Settings in the sidebar, upload your TDT files, and click 'Generate & Load Files'.")
+    st.info("Please go to the **Global Settings** in the sidebar, upload your TDT files, and click 'Generate & Load Files'.")
     df_survey = st.session_state.survey_df
     data_source_selected = True
 else:

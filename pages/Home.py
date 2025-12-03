@@ -8,10 +8,10 @@ import streamlit as st
 
 st.set_page_config(page_title="Home", layout="wide")
 
-st.title("PRISM Dev/QA Toolkit")
+st.title("PRISM Dev/QA Web Toolkit")
 
 st.markdown("""
-Welcome to the **PRISM Development & QA Toolkit**. This application centralizes the workflows for validating Technical Design Templates (TDTs), auditing live PRISM configurations, and preparing data for model development.
+Welcome to the **PRISM Development & QA Web Toolkit**. This application centralizes the workflows for validating Technical Design Templates (TDTs), auditing live PRISM configurations, and preparing data for model development.
 
 ### 👈 Getting Started
 To begin, please **upload your TDT Excel files in the Global Settings Sidebar** on the left.
@@ -59,8 +59,12 @@ with col2:
         st.markdown("Splits your cleaned dataset into **Training/Validation** and **Holdout** sets based on a time horizon.")
 
     with st.container(border=True):
+        st.markdown("#### 3️⃣ Outlier Removal")
+        st.markdown("Refine your dataset by removing statistical outliers and anomalies. Choose between **Pairwise Detection** (using Operational State) or **Multivariate Detection** (Global Structure).")
+
+    with st.container(border=True):
         st.markdown("#### 4️⃣ Train-Val Splitting")
         st.markdown("Performs stratified splitting of your training data to ensure balanced coverage of operational states.")
 
 st.markdown("---")
-st.caption("PRISM Dev/QA Toolkit | v1.0")
+st.caption("PRISM Dev/QA Web Toolkit | v1.0")

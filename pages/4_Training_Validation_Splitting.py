@@ -174,7 +174,7 @@ if current == 1:
 
     # 1. TDT/Model Selection
     if st.session_state.survey_df is None:
-        st.error("❌ TDT Data not found. Please go to the **Home** page and load your TDT files first.")
+        st.error("❌ TDT Data not found. Please go to the **Global Settings** sidebar and load your TDT files first.")
         st.stop()
     
     survey_df = st.session_state.survey_df
