@@ -21,10 +21,11 @@ This wizard helps you split your Training/Validation data into separate **Traini
 It uses **stratified splitting** based on an Operational State metric to ensure both sets are representative of the model's operating range.
 
 **How to Use:**
-1.  **Upload Data:** Upload the `WITH-OUTLIER` and `WITHOUT-OUTLIER` files.
-2.  **Configure:** Select the **Operational State** metric to stratify by and the desired split ratio (e.g., 80% Train, 20% Validation).
-3.  **Split:** Run the split algorithm.
-4.  **Visualize & Save:** Review distribution plots to verify balance and save the final files.
+1.  **Load TDT Files:** Ensure your TDT files are processed in the **Global Settings** sidebar. Select the desired **TDT** and **Model**.
+2.  **Upload Data:** Upload the `CLEANED_...WITH-OUTLIER` and `CLEANED_...WITHOUT-OUTLIER` files.
+3.  **Configure:** Select the **Operational State** metric to stratify by and the desired split ratio (e.g., 80% Train, 20% Validation).
+4.  **Split:** Run the split algorithm.
+5.  **Visualize & Save:** Review distribution plots to verify balance and save the final files.
 """)
 
 # --- Initialize Session State ---
@@ -133,7 +134,7 @@ st.progress(current / len(steps), text=f"Step {current}: {steps[current-1]}")
 # ==========================================
 if current == 1:
     st.header("Step 1: Upload Data & Select TDT")
-    st.info("Upload the cleaned datasets. We will use the **TDT Survey Data** (loaded on Home) to map point names to metrics and identify the Operational State.")
+    st.info("Upload the cleaned datasets. We will use the **TDT Survey Data** (loaded on Global Settings sidebar) to map point names to metrics and identify the Operational State.")
 
     # 1. TDT/Model Selection
     if st.session_state.survey_df is None:

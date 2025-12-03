@@ -24,9 +24,10 @@ This wizard guides you through cleaning raw time-series datasets.
 It automates column mapping using your TDT files and provides an interactive interface for applying numeric and datetime filters.
 
 **How to Use:**
-1.  **Ingest Data:** Upload your raw CSV dataset. The tool will automatically map column names using the TDT Survey data loaded in the **Global Settings** sidebar.
-2.  **Cleanse:** Use the interactive controls to apply numeric thresholds and exclude specific time ranges (e.g., maintenance periods).
-3.  **Review & Export:** Check the impact of your filters and download the cleaned dataset along with a PDF report.
+1.  **Load TDT Files:** Ensure your TDT files are processed in the **Global Settings** sidebar. The reference files generated there are used for this module.
+2.  **Ingest Data:** Upload your raw CSV dataset. The tool will automatically map metric names using the TDT Survey data loaded in the **Global Settings** sidebar.
+3.  **Cleanse:** Use the interactive controls to apply numeric thresholds (e.g., operational and sensor limits) and exclude specific time ranges (e.g., maintenance periods, historical abnormalities and failures).
+4.  **Review & Export:** Check the impact of your filters and download the cleaned dataset along with a PDF report.
 """)
 
 # --- Initialize Session State ---
@@ -214,7 +215,7 @@ st.progress(current_step / len(steps), text=f"Step {current_step}: {steps[curren
 # ==========================================
 if current_step == 1:
     st.header("Step 1: Data Ingestion")
-    st.markdown("Upload your Raw Dataset. The Point List mapping will be retrieved automatically from the **TDT Survey** (loaded on Home) based on the model name in your file.")
+    st.markdown("Upload your Raw Dataset. The Point List mapping will be retrieved automatically from the **TDT Survey** (loaded on Global Settings sidebar) based on the model name in your file.")
 
     raw_file = st.file_uploader("Upload RAW dataset (.csv)", type=["csv"], accept_multiple_files=False)
     

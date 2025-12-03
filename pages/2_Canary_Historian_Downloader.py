@@ -266,11 +266,11 @@ df_survey = None
 data_source_selected = False
 
 if 'survey_df' in st.session_state:
-    st.info("Using the TDT data from the Home page.")
+    st.info("Please go to the Global Settings in the sidebar, upload your TDT files, and click 'Generate & Load Files'.")
     df_survey = st.session_state.survey_df
     data_source_selected = True
 else:
-    st.warning("Please generate the TDT files on the Home page first.")
+    st.warning("Please upload the TDT files on the Global Settings in the sidebar first.")
     st.stop()
 
 # --- Step 2: Filter & Load Metrics ---
