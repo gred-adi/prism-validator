@@ -11,52 +11,55 @@ from datetime import datetime
 
 # Import Utils
 from utils.model_dev_utils import cleaned_dataset_name_split, read_prism_csv
-from utils.outlier_detection_utils import detect_outliers_series, detect_multivariate_outliers, generate_outlier_plots
+from utils.outlier_detection_utils import (
+    detect_outliers_series, 
+    detect_multivariate_outliers, 
+    generate_outlier_plots,
+    generate_correlation_analysis,
+    generate_pairplot_visuals
+)
 
 st.set_page_config(page_title="Outlier Removal", page_icon="❇️", layout="wide")
 
 st.title("❇️ Outlier Removal Wizard")
 st.markdown("""
 Refine your dataset by removing statistical outliers and anomalies. 
-Choose between **Pairwise Detection** (analyzing relationships against Operational State) or **Multivariate Detection** (analyzing global structure).
+The wizard helps you analyze metric relationships to choose between **Pairwise Detection** (analyzing relationships against Operational State) or **Multivariate Detection** (analyzing global structure).
 
 **How to Use:**
-1.  **Load TDT Files:** Ensure your TDT files are processed in the Global Settings sidebar. Select the desired **TDT** and **Model**.
-2.  **Set Output Folder:** On the Global Settings sidebar, specify the base output folder where cleaned datasets and reports will be saved.             
-3.  **Upload Data:** Upload the `CLEANED_...WITH-OUTLIER` file (output from Data Cleansing or Holdout Splitting).
-4.  **Configure Strategy:**
-    * **Pairwise:** Best for checking if specific sensors deviate from the Operational State (e.g., Temperature vs Load).
-    * **Multivariate:** Best for finding structural anomalies where the combination of tags violates system correlation.
-5.  **Process:** Run the detection algorithms and review the visualized outliers.
-6.  **Export:** Save the clean dataset along with a PDF report.
+1.  **Select Model:** Ensure your TDT files are processed in the Global Settings sidebar. Select the desired **TDT** and **Model**.
+2.  **Upload Data:** Upload the `CLEANED_...WITH-OUTLIER` file.
+3.  **Analyze (Optional):** Review correlation stats and visualizations to decide the best strategy.
+4.  **Configure:** Apply the chosen algorithm (e.g., RANSAC for pairwise, Isolation Forest for multivariate).
+5.  **Export:** Save the clean dataset along with a PDF report.
 """)
 
 # --- Constants ---
 ALGO_DESCRIPTIONS = {
     "isoforest": """**Isolation Forest:** An unsupervised algorithm that isolates anomalies by randomly partitioning the data. Outliers are 'easier' to isolate (require fewer splits) than normal points. Best for detecting global anomalies in complex, non-linear clusters.
     
-    * **Contamination:** The expected proportion of outliers in the dataset. Adjust this based on how clean you believe your data is (e.g., 0.01 = 1%).""",
+    * Contamination: The expected proportion of outliers in the dataset. Adjust this based on how clean you believe your data is (e.g., 0.01 = 1%).""",
     
     "residual": """**RANSAC (Residuals):** Fits a robust regression model (ignoring existing outliers) to find the trend between the Feature and Operational State. Outliers are flagged based on their distance (residual) from this trend line. Best for features that have a strong linear relationship with the Operational State.
     
-    * **Residual Threshold:** The Z-Score cutoff for residuals. A higher value (e.g., 3.5) means only very extreme deviations are flagged. A lower value (e.g., 2.0) is stricter.""",
+    * Residual Threshold: The Z-Score cutoff for residuals. A higher value (e.g., 3.5) means only very extreme deviations are flagged. A lower value (e.g., 2.0) is stricter.""",
     
     "lof": """**Local Outlier Factor (LOF):** Measures the local density deviation of a data point compared to its neighbors. It flags points that have a significantly lower density than their neighbors. Best for finding local outliers in clusters.
     
-    * **Contamination:** The expected proportion of outliers in the dataset.
-    * **n_neighbors:** The number of neighbors to consider for density estimation (default: 20).""",
+    * Contamination: The expected proportion of outliers in the dataset.
+    * n_neighbors: The number of neighbors to consider for density estimation (default: 20).""",
     
     "iqr": """**Interquartile Range (IQR):** A simple statistical method. Calculates the range between the 25th and 75th percentiles (IQR). Points outside `Q1 - 1.5*IQR` and `Q3 + 1.5*IQR` are flagged. Best for simple, univariate cutoff filtering.
     
-    * **IQR Factor:** The multiplier for the IQR range (standard is 1.5). Increasing this makes the filter more lenient.""",
+    * IQR Factor: The multiplier for the IQR range (standard is 1.5). Increasing this makes the filter more lenient.""",
     
     "pca_recon": """**PCA Reconstruction Error:** Projects the data into a lower-dimensional space using Principal Component Analysis (PCA) and then reconstructs it. Points with high reconstruction error (large difference between original and reconstructed value) violate the correlation structure of the system. Best for finding multi-sensor consistency issues.
     
-    * **Contamination:** The expected proportion of outliers (points with the highest reconstruction errors) to remove.""",
+    * Contamination: The expected proportion of outliers (points with the highest reconstruction errors) to remove.""",
     
     "isoforest_global": """**Isolation Forest (Global):** Applies the Isolation Forest algorithm to the entire dataset (all features simultaneously) without a specific target variable. Identifies points that are anomalous in the high-dimensional space.
     
-    * **Contamination:** The expected proportion of outliers in the dataset."""
+    * Contamination: The expected proportion of outliers in the dataset."""
 }
 
 # --- Initialize Session State ---
@@ -71,6 +74,11 @@ if 'or_mask' not in st.session_state: st.session_state.or_mask = None
 if 'or_summary_stats' not in st.session_state: st.session_state.or_summary_stats = None
 if 'or_plot_images' not in st.session_state: st.session_state.or_plot_images = []
 if 'or_config_summary' not in st.session_state: st.session_state.or_config_summary = {}
+if 'or_selected_features' not in st.session_state: st.session_state.or_selected_features = [] # Store selected features for final PairPlot
+
+# Recommendation State
+if 'or_recommendation' not in st.session_state: st.session_state.or_recommendation = None
+if 'or_analysis_imgs' not in st.session_state: st.session_state.or_analysis_imgs = {}
 
 # Metadata
 if 'site_name' not in st.session_state: st.session_state.site_name = ""
@@ -246,9 +254,35 @@ def generate_report_html(stats, plot_data, config, strategy):
             </div>
         </div>
         
-        <!-- VISUALIZATIONS START ON NEW PAGE -->
+        <!-- PAIR PLOTS: BEFORE & AFTER -->
         <div class="page-break"></div>
-        <h2>Visualizations</h2>
+        <h2>Data Distribution Analysis</h2>
+        
+        {% for item in plot_data %}
+            {% if item.type == 'pairplot_before' %}
+            <div class="section page-break">
+                <div class="plot-title">Before Outlier Removal</div>
+                <div class="img-container">
+                    <img src="data:image/png;base64,{{ item.img }}" style="width: 100%;" />
+                </div>
+            </div>
+            {% endif %}
+        {% endfor %}
+        
+        {% for item in plot_data %}
+            {% if item.type == 'pairplot_after' %}
+            <div class="section page-break">
+                <div class="plot-title">After Outlier Removal</div>
+                <div class="img-container">
+                    <img src="data:image/png;base64,{{ item.img }}" style="width: 100%;" />
+                </div>
+            </div>
+            {% endif %}
+        {% endfor %}
+        
+        <!-- OTHER VISUALIZATIONS -->
+        <div class="page-break"></div>
+        <h2>Detection Details</h2>
         
         {% for item in plot_data %}
             
@@ -296,7 +330,7 @@ def generate_report_html(stats, plot_data, config, strategy):
     )
 
 # Progress Indicator
-steps = ["Upload & Map", "Configure & Detect", "Export"]
+steps = ["Upload & Map", "Analyze & Recommend", "Configure & Detect", "Export"]
 current = st.session_state.or_step
 st.progress(current / len(steps), text=f"Step {current}: {steps[current-1]}")
 
@@ -355,22 +389,116 @@ if current == 1:
             st.rerun()
 
 # ==========================================
-# STEP 2: CONFIGURE & DETECT
+# STEP 2: ANALYZE & RECOMMEND (NEW)
 # ==========================================
 elif current == 2:
-    st.header("Step 2: Configuration & Detection")
+    st.header("Step 2: Analyze & Recommend")
     
     df = st.session_state.or_mapped_df
     if df is None:
         st.error("No data loaded.")
+        st.button("Back", on_click=prev_step) # Ensure back button exists if data lost
         st.stop()
         
+    numeric_cols = [c for c in df.columns if c != 'DATETIME']
+    
+    st.markdown("""
+    This step helps identify relationships between variables to recommend an outlier detection strategy.
+    
+    * **Click 'Run Analysis'** to generate correlation heatmaps and receive a recommendation.
+    * **Click 'Skip / Proceed'** to go directly to configuration if you already know your strategy.
+    """)
+
+    # --- Identify Focused Metrics ---
+    focused_cols = []
+    survey_df = st.session_state.survey_df
+    model_name = st.session_state.model_name
+    
+    if survey_df is not None and model_name:
+        m_survey = survey_df[survey_df['Model'] == model_name]
+        if not m_survey.empty and 'Function' in m_survey.columns and 'Metric' in m_survey.columns:
+            targets = m_survey[m_survey['Function'].isin(['Operational State', 'Fault Detection'])]['Metric'].tolist()
+            focused_cols = [m for m in targets if m in numeric_cols]
+            
+    # --- Metrics Toggle ---
+    col_anal1, col_anal2 = st.columns([3, 1])
+    with col_anal1:
+        if focused_cols:
+            st.info(f"Defaulting to **{len(focused_cols)}** focused metrics (Operational State & Fault Detection).")
+        else:
+            st.info("No 'Operational State' or 'Fault Detection' tags found in TDT. Defaulting to first 6 numeric columns.")
+            
+    with col_anal2:
+        use_all_metrics = st.toggle("Include all metrics", value=False, help="If on, analyzes all numeric columns. If off, focuses only on Operational State and Fault Detection.")
+
+    # Logic: Only run if button clicked OR results already exist
+    # Allow re-run if user changes toggle (by clicking Run again)
+    if st.button("📊 Run Analysis", type="primary"):
+        with st.spinner("Analyzing dataset correlations..."):
+            
+            # Determine columns based on toggle
+            cols_to_analyze = numeric_cols if use_all_metrics else focused_cols
+            if not cols_to_analyze: cols_to_analyze = numeric_cols[:6] # Fallback
+            
+            rec_text, rec_stats, rec_reason = generate_correlation_analysis(df, cols_to_analyze)
+            imgs = generate_pairplot_visuals(df, cols_to_analyze)
+            
+            st.session_state.or_recommendation = {
+                "strategy": rec_text,
+                "stats": rec_stats,
+                "reason": rec_reason
+            }
+            st.session_state.or_analysis_imgs = imgs
+            st.rerun()
+    
+    # Display Recommendation & Visuals if available
+    if st.session_state.or_recommendation:
+        rec = st.session_state.or_recommendation
+        
+        if rec["strategy"] == "Pairwise":
+            st.success(f"💡 **Recommendation: {rec['strategy']} Approach**")
+        else:
+            st.info(f"💡 **Recommendation: {rec['strategy']} Approach**")
+            
+        st.markdown(f"**Reason:** {rec['reason']}")
+        
+        # Display Visuals
+        st.divider()
+        st.subheader("Data Relationships")
+        
+        # We only have one image now (PairGrid), so full width is better
+        if "pairplot" in st.session_state.or_analysis_imgs:
+            st.image(f"data:image/png;base64,{st.session_state.or_analysis_imgs['pairplot']}", caption="Pairwise Relationships (Downsampled)", use_container_width=True)
+            
+    st.markdown("---")
+    c_back, c_next = st.columns([1, 5])
+    with c_back:
+        st.button("⬅️ Back", on_click=prev_step)
+    with c_next:
+        # Button text changes based on whether analysis was run
+        btn_text = "Proceed to Configuration ➡️" if st.session_state.or_recommendation else "Skip & Proceed to Configuration ⏩"
+        st.button(btn_text, on_click=next_step, type="primary")
+
+# ==========================================
+# STEP 3: CONFIGURE & DETECT
+# ==========================================
+elif current == 3:
+    st.header("Step 3: Configuration & Detection")
+    
+    df = st.session_state.or_mapped_df
+    
     # --- Configuration UI ---
     st.subheader("Detection Strategy")
+    
+    # Pre-select based on recommendation if available
+    default_strat_idx = 0
+    if st.session_state.or_recommendation and st.session_state.or_recommendation["strategy"] == "Multivariate":
+        default_strat_idx = 1
     
     strategy = st.radio(
         "Select Approach", 
         ["Pairwise (Op. State vs Features)", "Multivariate (Global Structure)"],
+        index=default_strat_idx,
         horizontal=True
     )
     
@@ -482,6 +610,9 @@ elif current == 2:
         if not target_features:
             st.error("Please select at least one feature.")
         else:
+            # Store selected features for next step (PairGrid)
+            st.session_state.or_selected_features = target_features
+            
             with st.spinner("Running algorithms..."):
                 final_mask = pd.Series(False, index=df.index)
                 
@@ -598,10 +729,10 @@ elif current == 2:
     st.button("⬅️ Back", on_click=prev_step, key="back_step_2")
 
 # ==========================================
-# STEP 3: EXPORT
+# STEP 4: EXPORT
 # ==========================================
-elif current == 3:
-    st.header("Step 3: Export")
+elif current == 4:
+    st.header("Step 4: Export")
     
     if st.session_state.or_mask is None:
         st.error("No results found.")
@@ -622,7 +753,7 @@ elif current == 3:
         if not all([st.session_state.site_name, st.session_state.system_name]):
             st.error("Please fill in metadata.")
         else:
-            with st.spinner("Saving..."):
+            with st.spinner("Generating visuals and saving..."):
                 # Paths
                 base_path = Path(st.session_state.get('base_path', Path.cwd()))
                 folder_path = base_path / st.session_state.site_name / st.session_state.system_name / st.session_state.sprint_name / st.session_state.model_name / "dataset"
@@ -630,9 +761,28 @@ elif current == 3:
                 
                 # Apply Mask
                 mask = st.session_state.or_mask
-                df_clean = st.session_state.or_raw_df[~mask]
-                df_outliers = st.session_state.or_raw_df[mask]
+                df_raw = st.session_state.or_raw_df # Original mapped df
+                df_clean = df_raw[~mask]
+                df_outliers = df_raw[mask]
                 header = st.session_state.or_header
+                
+                # --- NEW: Generate Before/After PairGrids for Report ---
+                # Get the features used in detection (stored in Step 3)
+                feats_to_plot = st.session_state.get('or_selected_features', [])
+                if not feats_to_plot: # Fallback
+                    feats_to_plot = [c for c in df_raw.columns if c != 'DATETIME'][:6]
+                
+                # Generate "Before" Plot
+                imgs_before = generate_pairplot_visuals(df_raw, feats_to_plot, title_suffix="Before Removal")
+                # Generate "After" Plot
+                imgs_after = generate_pairplot_visuals(df_clean, feats_to_plot, title_suffix="After Removal")
+                
+                # Add these to the plot list for the report
+                report_plots = st.session_state.or_plot_images.copy()
+                if "pairplot" in imgs_before:
+                    report_plots.insert(0, {'type': 'pairplot_before', 'img': imgs_before['pairplot']})
+                if "pairplot" in imgs_after:
+                    report_plots.insert(1, {'type': 'pairplot_after', 'img': imgs_after['pairplot']})
                 
                 # Filenames
                 prefix = f"CLEANED-{st.session_state.model_name}-{st.session_state.inclusive_dates}"
@@ -656,7 +806,7 @@ elif current == 3:
                     
                 html = generate_report_html(
                     st.session_state.or_summary_stats, 
-                    st.session_state.or_plot_images, 
+                    report_plots, 
                     st.session_state.or_config_summary, # Pass full config
                     "Outlier Removal"
                 )
@@ -673,5 +823,15 @@ elif current == 3:
                     st.error(f"PDF Error: {e}")
                     
                 st.success(f"Files saved to `{folder_path}`")
+                
+                # Show the new plots in UI for confirmation
+                st.markdown("### Generated Data Distribution Plots")
+                c1, c2 = st.columns(2)
+                with c1:
+                    if "pairplot" in imgs_before:
+                        st.image(f"data:image/png;base64,{imgs_before['pairplot']}", caption="Before Removal", use_container_width=True)
+                with c2:
+                    if "pairplot" in imgs_after:
+                        st.image(f"data:image/png;base64,{imgs_after['pairplot']}", caption="After Removal", use_container_width=True)
 
-    st.button("⬅️ Back", on_click=prev_step, key="back_step_3")
+    st.button("⬅️ Back", on_click=prev_step, key="back_step_4")

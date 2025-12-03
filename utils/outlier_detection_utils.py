@@ -11,6 +11,10 @@ from sklearn.preprocessing import StandardScaler
 from scipy.stats import gaussian_kde
 from io import BytesIO
 import base64
+import textwrap
+
+# Import correlation function from model_dev_utils
+from utils.model_dev_utils import corrfunc
 
 def detect_outliers_series(
     df,
@@ -134,18 +138,6 @@ def detect_multivariate_outliers(df, feature_cols, method='pca_recon', contamina
 def generate_outlier_plots(df_original, mask_outliers, strategy, op_state=None, plot_cols=None, time_col='DATETIME'):
     """
     Generates a list of dictionaries containing plot details.
-    
-    Returns structure:
-    [
-        {
-            'type': 'pairwise' | 'multivariate',
-            'title': str,
-            'scatter_img': base64_str (for pairwise),
-            'ts_img': base64_str (for pairwise),
-            'img': base64_str (for multivariate, e.g. PCA)
-        },
-        ...
-    ]
     """
     plots_data = []
     
@@ -201,7 +193,8 @@ def generate_outlier_plots(df_original, mask_outliers, strategy, op_state=None, 
                     ax_scat.contour(xi, yi, zi.reshape(xi.shape), levels=5, colors='black', alpha=0.3, linewidths=0.5)
                     ax_scat.contourf(xi, yi, zi.reshape(xi.shape), levels=5, cmap="Greys", alpha=0.1)
             except Exception as e:
-                print(f"KDE Plot Error for {feat}: {e}")
+                # print(f"KDE Plot Error for {feat}: {e}")
+                pass
 
             # Plot Inliers
             sns.scatterplot(
@@ -252,8 +245,6 @@ def generate_outlier_plots(df_original, mask_outliers, strategy, op_state=None, 
             # Combined Legend - Bottom Outside
             lines, labels = ax_ts.get_legend_handles_labels()
             lines2, labels2 = ax2.get_legend_handles_labels()
-            # bbox_to_anchor controls position relative to plot
-            # (0.5, -0.2) means centered horizontally (0.5) and below the plot area (-0.2)
             ax2.legend(lines + lines2, labels + labels2, loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=3)
             
             plt.tight_layout()
@@ -288,7 +279,6 @@ def generate_outlier_plots(df_original, mask_outliers, strategy, op_state=None, 
             
             # Color by outlier status
             colors = np.where(plot_mask.loc[plot_df.dropna().index], 'red', 'gray')
-            alphas = np.where(plot_mask.loc[plot_df.dropna().index], 0.8, 0.3)
             
             ax.scatter(pca_res[:, 0], pca_res[:, 1], c=colors, alpha=0.5, s=20, edgecolor=None)
             
@@ -313,32 +303,20 @@ def generate_outlier_plots(df_original, mask_outliers, strategy, op_state=None, 
         except Exception as e:
             print(f"PCA Plot Error: {e}")
 
-        # 2. Time Series for each feature (for context)
-        # We assume operational state is only for pairwise or is the first column if not provided
-        # For multivariate, just plot the feature with outliers
-        
-        target_op_state = op_state if op_state else (plot_cols[0] if plot_cols else None) 
-
-        for feat in plot_cols[:10]: # Limit to first 10 to avoid explosion
-            
+        # 2. Time Series for each feature
+        for feat in plot_cols[:10]: # Limit to first 10
             fig_ts, ax_ts = plt.subplots(figsize=(10, 4))
-            
-            # Plot Feature (Blue) on Primary Y if no Op State, or Secondary Y if Op State exists
-            # Requested: "no need to show the op state together with the features" for multivariate
-            # So we strictly use single axis
             
             ax_ts.plot(plot_df[time_col], plot_df[feat], color='blue', alpha=0.5, label=feat, linewidth=1)
             
-            # Highlight Outliers (Red) - These are global multivariate outliers
+            # Highlight Outliers (Red)
             if not outliers.empty:
                 ax_ts.scatter(outliers[time_col], outliers[feat], color='red', s=20, label='Global Outlier', zorder=10, marker='x')
             
             ax_ts.set_ylabel(feat, color='blue')
             ax_ts.tick_params(axis='y', labelcolor='blue')
-            
             ax_ts.set_title(f"Multivariate Context: {feat}")
             ax_ts.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
-            # Legend - Bottom Outside
             ax_ts.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=3)
 
             plt.tight_layout()
@@ -357,3 +335,107 @@ def generate_outlier_plots(df_original, mask_outliers, strategy, op_state=None, 
             })
 
     return plots_data
+
+def generate_correlation_analysis(df, numeric_cols):
+    """
+    Calculates correlation metrics and provides a strategy recommendation.
+    """
+    if df is None or df.empty or not numeric_cols:
+        return "Not enough data", {}, None
+
+    # Calculate correlation matrix (absolute values to detect strength regardless of direction)
+    corr_matrix = df[numeric_cols].corr().abs()
+    
+    # Mask diagonal (correlation with self is always 1)
+    mask = np.ones_like(corr_matrix, dtype=bool)
+    np.fill_diagonal(mask, False)
+    
+    # Extract stats from off-diagonal elements
+    off_diag_corr = corr_matrix.where(mask)
+    avg_corr = off_diag_corr.mean().mean()
+    max_corr = off_diag_corr.max().max()
+    
+    # Decision Logic
+    # If there's strong linear relationship (high avg or some very high pairs), suggest Pairwise
+    if avg_corr > 0.5 or max_corr > 0.8:
+        recommendation = "Pairwise"
+        reason = f"Strong linear relationships detected (Max Corr: {max_corr:.2f}, Avg Corr: {avg_corr:.2f}). Pairwise methods (like Residual/RANSAC) often work best here."
+    else:
+        recommendation = "Multivariate"
+        reason = f"Weaker linear correlations detected (Max Corr: {max_corr:.2f}, Avg Corr: {avg_corr:.2f}). Multivariate methods (like Isolation Forest/PCA) are better for detecting structural anomalies in lower-correlation datasets."
+
+    return recommendation, {"avg": avg_corr, "max": max_corr}, reason
+
+def generate_pairplot_visuals(df, numeric_cols, title_suffix=""):
+    """
+    Generates a customized PairGrid plot.
+    
+    Logic:
+    - Upper triangle: Correlation values (using corrfunc)
+    - Lower triangle: Scatterplot
+    - Diagonal: KDE plot
+    """
+    images = {}
+    
+    if not numeric_cols:
+        return images
+
+    # Downsample row count for performance
+    MAX_POINTS = 800
+    if len(df) > MAX_POINTS:
+        plot_df = df[numeric_cols].sample(n=MAX_POINTS, random_state=42)
+    else:
+        plot_df = df[numeric_cols]
+        
+    # --- FIX: Wrap Labels for Readability ---
+    wrapper = textwrap.TextWrapper(width=15, break_long_words=False)
+    # Map original col names to wrapped names
+    wrapped_cols = {col: "\n".join(wrapper.wrap(col)) for col in numeric_cols}
+    plot_df = plot_df.rename(columns=wrapped_cols)
+    
+    # Determine plot height based on number of variables to fit on screen
+    # Fewer vars = larger plots, More vars = smaller plots
+    num_vars = len(numeric_cols)
+    plot_height = 2.5 if num_vars < 10 else 2.0 
+    
+    try:
+        g = sns.PairGrid(plot_df, height=plot_height, diag_sharey=False)
+        g.map_upper(corrfunc, cmap=plt.get_cmap('BrBG'), norm=plt.Normalize(vmin=-1, vmax=1))
+        g.map_lower(sns.scatterplot, s=50, color='#018571', alpha=0.6, edgecolor=None)
+        g.map_diag(sns.kdeplot, color='red', fill=True, alpha=0.3)
+        g.fig.subplots_adjust(wspace=0.1, hspace=0.1)
+        
+        # --- NEW: Improved Axis Label Handling ---
+        for ax in g.axes.flatten():
+            if ax:
+                # 1. Rotate & Shrink Tick Labels
+                for label in ax.get_xticklabels():
+                    label.set_rotation(45)
+                    label.set_ha('right')
+                    label.set_fontsize(7) 
+                
+                for label in ax.get_yticklabels():
+                    label.set_fontsize(7)
+                
+                # 2. Adjust Axis Title Font Size (The wrapped Metric Name)
+                xaxis = ax.get_xlabel()
+                yaxis = ax.get_ylabel()
+                if xaxis: ax.set_xlabel(xaxis, fontsize=9, labelpad=10) # Added padding
+                if yaxis: ax.set_ylabel(yaxis, fontsize=9, labelpad=10)
+
+        # Adjust main title position
+        title = "Feature Relationships"
+        if title_suffix:
+            title += f" ({title_suffix})"
+        
+        g.fig.suptitle(title, y=1.02, fontsize=16)
+        
+        buf_pp = BytesIO()
+        g.savefig(buf_pp, format="png", dpi=100, bbox_inches='tight')
+        buf_pp.seek(0)
+        images["pairplot"] = base64.b64encode(buf_pp.read()).decode('utf-8')
+        plt.close(g.fig)
+    except Exception as e:
+        print(f"Pairplot generation failed: {e}")
+    
+    return images
