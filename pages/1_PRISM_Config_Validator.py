@@ -269,7 +269,7 @@ tabs = st.tabs(tab_list)
 # --- NEW Tab 0: Consolidation Overview ---
 with tabs[0]:
     st.header("TDT Consolidation Overview")
-    st.markdown("This tab shows the consolidated TDT, Survey, and Diagnostic data loaded from the TDT files are processed in the **Global Settings** sidebar. No validation is performed here.")
+    st.markdown("This tab shows the consolidated TDT Survey and Diagnostic data loaded from the TDT files are processed in the **Global Settings** sidebar. No validation is performed here.")
     
     if st.session_state.overview_df is None:
         st.info("Please go to the **Global Settings** in the sidebar, upload your TDT files, and click 'Generate & Load Files' to see the overview.")
