@@ -53,16 +53,30 @@ cd prism-validator
       [project]
       name = "prism-validator"
       version = "1.0.0"
-      description = "A Streamlit application to validate PRISM configurations against generated reference files from TDTs."
+      description = "A comprehensive Streamlit application designed to centralize and streamline the workflows for validating Technical Design Templates (TDTs), auditing live PRISM configurations, and preparing data for model development."
       readme = "README.md"
       requires-python = ">=3.9"
       dependencies = [
-          "streamlit",
-          "pandas",
-          "pyodbc",
+          "click",
+          "dataframe-image",
+          "fpdf2",
+          "ipykernel",
+          "jinja2",
+          "lxml",
+          "matplotlib",
+          "numpy",
           "openpyxl",
-          "xlsxwriter",
-          "matplotlib"
+          "pandas",
+          "playwright",
+          "plotly",
+          "pyodbc",
+          "requests",
+          "scikit-learn",
+          "scipy",
+          "seaborn",
+          "streamlit",
+          "verstack",
+          "xlsxwriter"
       ]
       ```
       
@@ -87,10 +101,13 @@ The application requires a `secrets.toml` file to store your database credential
 
     ```
     [db]
-    host = "YOUR_DATABASE_HOST"
-    database = "YOUR_DATABASE_NAME"
-    user = "YOUR_USERNAME"
-    password = "YOUR_PASSWORD"
+    host = "PRISM_DATABASE_HOST"
+    database = "PRISM_DATABASE_NAME"
+    user = "PRISM_USERNAME"
+    password = "PRISM_PASSWORD"
+
+    [api]
+    token = "CANARY_API_TOKEN"
     ```
 
 ### 3. Running the Application
