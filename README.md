@@ -86,17 +86,12 @@ cd prism-validator
       uv sync
       ```
       This will install all the dependencies listed in the `pyproject.toml file` and set up a virtual environment (`.venv`), ensuring your project’s dependencies are isolated from your system Python.
-     
-  2. Run the following command to activate the environment:
-      ```
-      .venv\Scripts\activate
-      ```
       
 **Step 5: Create the Secrets File**
 
 The application requires a `secrets.toml` file to store your database credentials.
 1. Create a new folder named `.streamlit` inside the `prism-validator` directory.
-2. Inside the .streamlit folder, create a new file named secrets.toml.
+2. Inside the `.streamlit` folder, create a new file named `secrets.toml`.
 3. Add your database credentials to this file using the following format:
 
     ```
@@ -111,11 +106,17 @@ The application requires a `secrets.toml` file to store your database credential
     ```
 
 ### 3. Running the Application
-Once the setup is complete, you can run the Streamlit application with a single command:
-```
-streamlit run app.py
-```
-Your web browser will automatically open a new tab with the running application.
+Instead of running terminal commands manually every time, you can configure the provided `run_app.bat` script for one-click launching.
+  1. **Locate the Script:** Find the `run_app.bat` file in the root directory of the project.
+  2. **Edit the File:** Right-click `run_app.bat` and select Edit (or open it with a text editor like Notepad).
+  3. **Configure Your Path:** Look for the line:
+     ```
+     cd /d "[Your App Location]"
+     ```
+     Replace `[Your App Location]` with the full path to your `prism-validator` folder. _Example:_ `cd /d "C:\Users\YourName\Documents\prism-validator"`
+  4. **Save and Close.**
+
+     **To run the app:** Simply double-click the `run_app.bat file`. This will automatically activate the virtual environment and launch the Streamlit server in your default browser.
 
 ## 💻 How to Use the App
 
