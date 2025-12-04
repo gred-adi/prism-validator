@@ -19,12 +19,12 @@ Follow these instructions to set up and run the PRISM Dev/QA Web Toolkit on your
 ### 1. Prerequisites
 Before you begin, ensure you have the following installed:
   * **Python:** Version 3.9 or higher.
-  * **uv:** The fast Python package installer. If you don't have it, install it with:
+  * **uv:** A tool for managing Python environments and dependencies. Install it with **PowerShell** or **Terminal** on your system and run the following command:
     ```
-    pip install uv
+    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex" 
     ```
   * **Git:** For cloning the repository.
-  * **Microsoft ODBC Driver for SQL Server:** This is a critical system-level requirement. The application cannot connect to the database without it. Download and install it from the official Microsoft website.
+  * **Microsoft ODBC Driver 18 for SQL Server:** This is a critical system-level requirement. The application cannot connect to the database without it. Download and install it from the official Microsoft website.
 
 ### 2. Setup Instructions
 
@@ -46,7 +46,7 @@ cd prism-validator
 
 **Step 3: Configure** `pyproject.toml`
   
-  The pyproject.toml file defines the dependencies and configurations for your Python project. You can edit it to specify the versions and libraries you need.
+  The `pyproject.toml` file defines the dependencies and configurations for your Python project. You can edit it to specify the versions and libraries you need.
   1. Open the `pyproject.toml` file created during the `uv init` process.
   2. Replace its entire content with the following:
       ```
