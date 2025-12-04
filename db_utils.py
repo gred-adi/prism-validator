@@ -68,5 +68,4 @@ class PrismDB:
         Returns:
             pd.DataFrame: A DataFrame containing the results of the query.
         """
-        print(f"--- Running SQL Query: {query[:50]}... ---") # For debugging
         return pd.read_sql(query, _self._conn)
