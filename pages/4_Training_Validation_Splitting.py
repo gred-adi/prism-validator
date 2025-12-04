@@ -19,12 +19,12 @@ st.set_page_config(page_title="Train Validation Split", page_icon="🔀", layout
 st.title("🔀 Training-Validation Split Wizard")
 st.markdown("""
 This wizard helps you split your Training/Validation data into separate **Training** and **Validation** sets. 
-It uses **stratified splitting** based on an Operational State metric to ensure both sets are representative of the model's operating range.
+It uses **stratified splitting** based on an operational state metric to ensure both sets are representative of the model's operating range.
 
 **How to Use:**
 1.  **Select Model:** Ensure your TDT files are processed in the Global Settings sidebar. Select the desired **TDT** and **Model**.         
 2.  **Upload Data:** Upload the `CLEANED_...WITH-OUTLIER` and `CLEANED_...WITHOUT-OUTLIER` files.
-3.  **Configure:** Select the **Operational State** metric to stratify by and the desired split ratio (e.g., 80% Train, 20% Validation).
+3.  **Configure:** Select the **Operational State** metric to stratify by and the desired split ratio (e.g., 80% train, 20% validation).
 4.  **Split:** Run the split algorithm.
 5.  **Visualize & Save:** Review distribution plots to verify balance and save the final files.
 """)

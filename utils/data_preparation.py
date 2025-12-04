@@ -5,16 +5,15 @@ def extract_training_timestamps(
     file_path: str,
     timestamp_col: str = "Point Name",
 ) -> List:
-    """
-    Extracts and returns a sorted list of training timestamps from a CSV file.
+    """Extracts and returns a sorted list of training timestamps from a CSV file.
 
-    Parameters:
-    file_path (str): The path to the input CSV file.
-    timestamp_col (str, optional): The name of the timestamp column. 
-        Defaults to "Point Name".
+    Args:
+        file_path (str): The path to the input CSV file.
+        timestamp_col (str, optional): The name of the timestamp column.
+            Defaults to "Point Name".
 
     Returns:
-    List: A sorted list of training timestamps.
+        List: A sorted list of training timestamps.
     """
     df = pd.read_csv(file_path)[4:]
     df[timestamp_col] = pd.to_datetime(df[timestamp_col])
@@ -30,19 +29,20 @@ def create_in_window_val_set(
     train_timestamps: List,
     timestamp_col: str = "Point Name",
 ) -> pd.DataFrame:
-    """
-    Creates a validation set by filtering the raw data to include only 
-    timestamps that are greater than or equal to the minimum training timestamp 
-    and excluding the training timestamps.
+    """Creates a validation set from a raw data file.
 
-    Parameters:
-    file_path (str): The path to the input CSV file containing raw data.
-    train_timestamps (List): A list of training timestamps to exclude from the validation set.
-    timestamp_col (str, optional): The name of the timestamp column. 
-        Defaults to "Point Name".
+    This function filters the raw data to include only timestamps that are
+    greater than or equal to the minimum training timestamp, and then excludes
+    the training timestamps themselves.
+
+    Args:
+        file_path (str): The path to the input CSV file containing raw data.
+        train_timestamps (List): A list of training timestamps to exclude.
+        timestamp_col (str, optional): The name of the timestamp column.
+            Defaults to "Point Name".
 
     Returns:
-    pd.DataFrame: A DataFrame containing the filtered validation set with headers.
+        pd.DataFrame: A DataFrame containing the filtered validation set.
     """
     header = pd.read_csv(file_path)[:4]
 
@@ -61,15 +61,17 @@ def create_in_window_val_set(
 def prepare_omr_data(
     file_path: str,
 ) -> pd.DataFrame:
-    """
-    Prepares OMR data from a tab-delimited CSV file 
-    by cleaning and transforming the data.
+    """Prepares OMR data from a tab-delimited file.
 
-    Parameters:
-    file_path (str): The path to the input OMR data file.
+    This function reads a tab-delimited OMR data file, cleans it by removing
+    invalid rows, converts the 'timestamp' column to datetime objects, and
+    casts the 'omr' column to float.
+
+    Args:
+        file_path (str): The path to the input OMR data file.
 
     Returns:
-    pd.DataFrame: A cleaned DataFrame containing timestamps and OMR values.
+        pd.DataFrame: A cleaned DataFrame with 'timestamp' and 'omr' columns.
     """
     
     df = pd.read_csv(

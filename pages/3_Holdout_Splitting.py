@@ -13,10 +13,10 @@ st.set_page_config(page_title="Split Holdout Dataset", page_icon="🔀", layout=
 
 st.title("🔀 Holdout Splitting Wizard")
 st.markdown("""
-Use this module to split your cleaned dataset into a **Training/Validation** set and a **Holdout** set based on a time cut-off.
+Use this module to split your cleaned dataset into a **Training/Validation** set and a **Holdout** set based on a time cutoff.
 
 **How to Use:**
-1.  **Upload Data:** Upload the `RAW` and `CLEANED-...-RAW` file generated in the previous step.
+1.  **Upload Data:** Upload the `RAW` and `CLEANED-...-RAW` files generated in the previous step.
 2.  **Configure Split:** Use the slider to determine the percentage of recent data to reserve for the holdout set.
 3.  **Export:** Save the new files. This will generate a `WITH-OUTLIER` (Train/Val) file and a `HOLDOUT` file.
 """)

@@ -27,9 +27,24 @@ def detect_outliers_series(
     percentile_cut=0.01,
     residual_threshold=3.5
 ):
-    """
-    Calculates outlier flags for a single feature against an operational state.
-    Returns a boolean Series (True = Outlier).
+    """Detects outliers in a feature series relative to an operational state.
+
+    This function applies various outlier detection algorithms to a feature
+    series, considering its relationship with an operational state variable.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame.
+        op_state_col (str): The name of the operational state column.
+        feature (str): The name of the feature column to analyze.
+        method (str, optional): The outlier detection method to use.
+        contamination (float, optional): The expected proportion of outliers.
+        n_neighbors (int, optional): The number of neighbors for LOF.
+        iqr_factor (float, optional): The IQR factor for the IQR method.
+        percentile_cut (float, optional): The percentile cutoff.
+        residual_threshold (float, optional): The residual threshold for RANSAC.
+
+    Returns:
+        pd.Series: A boolean Series indicating outliers (True = Outlier).
     """
     # Prepare Data
     X = df[[op_state_col, feature]].copy()
@@ -95,9 +110,19 @@ def detect_outliers_series(
     return is_outlier
 
 def detect_multivariate_outliers(df, feature_cols, method='pca_recon', contamination=0.01):
-    """
-    Detects outliers using the entire feature set at once.
-    Returns a boolean Series (True = Outlier).
+    """Detects outliers in a multivariate dataset.
+
+    This function applies outlier detection algorithms to the entire feature
+    set simultaneously, identifying global anomalies.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame.
+        feature_cols (list): A list of feature column names.
+        method (str, optional): The outlier detection method to use.
+        contamination (float, optional): The expected proportion of outliers.
+
+    Returns:
+        pd.Series: A boolean Series indicating outliers (True = Outlier).
     """
     X = df[feature_cols].dropna()
     if X.empty:
@@ -136,8 +161,23 @@ def detect_multivariate_outliers(df, feature_cols, method='pca_recon', contamina
     return is_outlier
 
 def generate_outlier_plots(df_original, mask_outliers, strategy, op_state=None, plot_cols=None, time_col='DATETIME'):
-    """
-    Generates a list of dictionaries containing plot details.
+    """Generates visualizations for outlier detection results.
+
+    This function creates a series of plots to visualize the detected outliers,
+    with different plots generated based on whether a pairwise or multivariate
+    strategy was used.
+
+    Args:
+        df_original (pd.DataFrame): The original DataFrame.
+        mask_outliers (pd.Series): A boolean Series indicating outliers.
+        strategy (str): The outlier detection strategy used ('pairwise' or 'multivariate').
+        op_state (str, optional): The name of the operational state column.
+        plot_cols (list, optional): A list of column names to plot.
+        time_col (str, optional): The name of the time column.
+
+    Returns:
+        list: A list of dictionaries, where each dictionary contains plot
+        details, including the plot type, title, and base64 encoded image data.
     """
     plots_data = []
     
@@ -337,8 +377,20 @@ def generate_outlier_plots(df_original, mask_outliers, strategy, op_state=None, 
     return plots_data
 
 def generate_correlation_analysis(df, numeric_cols):
-    """
-    Calculates correlation metrics and provides a strategy recommendation.
+    """Analyzes correlations in the data to recommend an outlier detection strategy.
+
+    This function calculates the correlation matrix for the given numeric
+    columns and recommends either a 'Pairwise' or 'Multivariate' outlier
+    detection strategy based on the strength of the correlations.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame.
+        numeric_cols (list): A list of numeric column names to analyze.
+
+    Returns:
+        Tuple[str, dict, str]: A tuple containing the recommended strategy,
+        a dictionary of correlation statistics, and the reason for the
+        recommendation.
     """
     if df is None or df.empty or not numeric_cols:
         return "Not enough data", {}, None
@@ -367,13 +419,19 @@ def generate_correlation_analysis(df, numeric_cols):
     return recommendation, {"avg": avg_corr, "max": max_corr}, reason
 
 def generate_pairplot_visuals(df, numeric_cols, title_suffix=""):
-    """
-    Generates a customized PairGrid plot.
-    
-    Logic:
-    - Upper triangle: Correlation values (using corrfunc)
-    - Lower triangle: Scatterplot
-    - Diagonal: KDE plot
+    """Generates a customized pairplot to visualize data relationships.
+
+    This function creates a PairGrid plot with scatterplots on the lower
+    triangle, correlation coefficients on the upper triangle, and kernel
+    density estimates on the diagonal.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame.
+        numeric_cols (list): A list of numeric column names to plot.
+        title_suffix (str, optional): A suffix to add to the plot title.
+
+    Returns:
+        dict: A dictionary containing the base64 encoded pairplot image.
     """
     images = {}
     

@@ -18,9 +18,17 @@ import sys
 import asyncio
 
 def cleaned_dataset_name_split(filename:str) -> Tuple [str, str, str]:
-    """
-    Given a filename, returns the site_name, model_name,
-    and inclusive dates.
+    """Parses a cleaned dataset filename to extract metadata.
+
+    This function takes a filename (e.g., "CLEANED-TVI-BOP-MODEL-20240101-20240601-RAW.csv")
+    and extracts the site name, model name, and inclusive dates.
+
+    Args:
+        filename (str): The filename to parse.
+
+    Returns:
+        Tuple[str, str, str]: A tuple containing the site name, model name,
+        and inclusive dates.
     """
     # Remove the 'CLEANED-' prefix and suffix
     base_name = filename.removeprefix("CLEANED-")
@@ -42,9 +50,20 @@ def cleaned_dataset_name_split(filename:str) -> Tuple [str, str, str]:
     return site_name, model_name, inclusive_dates
 
 def data_cleaning_read_prism_csv(df: pd.DataFrame, project_points: pd.DataFrame):
-    """
-    Takes a PRISM DataFrame and returns a DataFrame with mapped metric names and the original PRISM header.
-    Optimized for performance.
+    """Reads and processes a raw PRISM CSV file for data cleaning.
+
+    This function separates the header from the data, converts the timestamp
+    column to datetime objects, converts data columns to numeric types, and
+    maps the column names to metric names using the provided project points.
+
+    Args:
+        df (pd.DataFrame): The raw DataFrame from the PRISM CSV file.
+        project_points (pd.DataFrame): A DataFrame with 'Name' and 'Metric'
+            columns for mapping.
+
+    Returns:
+        Tuple[pd.DataFrame, pd.DataFrame]: A tuple containing the processed
+        data DataFrame and the original header DataFrame.
     """
     # Extract header rows (metadata)
     df_header = df.iloc[:4, :].copy()
@@ -89,10 +108,17 @@ def data_cleaning_read_prism_csv(df: pd.DataFrame, project_points: pd.DataFrame)
     return df_data, df_header
 
 def scan_folders_structure(root_path: str) -> pd.DataFrame:
-    """
-    Scans the folder structure: Root -> Site -> System -> Sprint -> Model
-    Checks for .dat files existence in relative_deviation folder.
-    Shared by Model Accuracy and Model FPR modules.
+    """Scans a directory structure to find model assets and associated files.
+
+    This function traverses a directory structure (Root > Site > System > Sprint > Model)
+    and identifies the presence of key files required for validation, such as
+    .dat files, raw data, and holdout data.
+
+    Args:
+        root_path (str): The root path of the directory to scan.
+
+    Returns:
+        pd.DataFrame: A DataFrame summarizing the found models and files.
     """
     found_models = []
     root = Path(root_path)
@@ -173,7 +199,18 @@ def scan_folders_structure(root_path: str) -> pd.DataFrame:
     return df
 
 def _generate_html_report(stats_payload, numeric_filters, datetime_filters, plot_images):
-    """Generates HTML content for the report using Jinja2."""
+    """Generates HTML content for a data cleaning report.
+
+    Args:
+        stats_payload (dict): A dictionary of statistics about the data cleaning.
+        numeric_filters (list): A list of numeric filters applied.
+        datetime_filters (list): A list of datetime filters applied.
+        plot_images (list): A list of tuples containing plot titles and base64
+            encoded image data.
+
+    Returns:
+        str: The generated HTML content as a string.
+    """
 
     env = Environment()
     template_str = """
@@ -297,7 +334,17 @@ def _generate_html_report(stats_payload, numeric_filters, datetime_filters, plot
     return html
 
 def generate_simple_report(raw_df: pd.DataFrame, numeric_filters: list, datetime_filters: list, pdf_file_path: Path):
-    """Generates a simple PDF report using Playwright (consistent with other reports)."""
+    """Generates a simple data cleaning PDF report without visualizations.
+
+    This function calculates the impact of the applied filters and generates a
+    PDF report summarizing the statistics and the filters used.
+
+    Args:
+        raw_df (pd.DataFrame): The raw DataFrame before cleaning.
+        numeric_filters (list): The numeric filters that were applied.
+        datetime_filters (list): The datetime filters that were applied.
+        pdf_file_path (Path): The path to save the generated PDF report.
+    """
     # Reuse the full generation logic but with empty metrics list to skip charts
     # But we need to calculate stats first.
 
@@ -370,9 +417,21 @@ def generate_data_cleaning_visualizations(raw_df: pd.DataFrame,
                                           selected_metrics: list,
                                           generate_report: bool,
                                           pdf_file_path: Path = None):
-    """
-    Generates and displays all data cleaning visualizations.
-    Uses Playwright for PDF generation.
+    """Generates and displays data cleaning visualizations and an optional PDF report.
+
+    This function creates a series of plots to visualize the impact of the
+    data cleaning process, including a timeline of removed data and
+    before/after plots for selected metrics. If requested, it also generates
+    a comprehensive PDF report.
+
+    Args:
+        raw_df (pd.DataFrame): The raw DataFrame before cleaning.
+        cleaned_df (pd.DataFrame): The cleaned DataFrame after applying filters.
+        numeric_filters (list): The numeric filters that were applied.
+        datetime_filters (list): The datetime filters that were applied.
+        selected_metrics (list): A list of metric names to generate plots for.
+        generate_report (bool): Whether to generate a PDF report.
+        pdf_file_path (Path, optional): The path to save the PDF report.
     """
     plot_images = [] # List to store (title, base64_string) for PDF
 
@@ -631,7 +690,24 @@ def generate_data_cleaning_visualizations(raw_df: pd.DataFrame,
             st.error(f"Failed to save PDF: {e}")
 
 def split_holdout(raw_df: pd.DataFrame, cleaned_df: pd.DataFrame, split_mark: Union[float, str, pd.Timestamp], date_col: str = "Point Name", verbose: bool = False, remove_header_rows: int = 4) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Timestamp, Dict[str, Dict[str, Any]]]:
-    """Split cleaned_df into train/validation and holdout sets."""
+    """Splits a cleaned DataFrame into training/validation and holdout sets.
+
+    This function splits the data based on a specified split mark, which can
+    be a timestamp or a float representing a fraction of the data.
+
+    Args:
+        raw_df (pd.DataFrame): The raw DataFrame.
+        cleaned_df (pd.DataFrame): The cleaned DataFrame to be split.
+        split_mark (Union[float, str, pd.Timestamp]): The split point.
+        date_col (str, optional): The name of the date column.
+        verbose (bool, optional): Whether to print verbose output.
+        remove_header_rows (int, optional): The number of header rows to remove.
+
+    Returns:
+        Tuple[pd.DataFrame, pd.DataFrame, pd.Timestamp, Dict[str, Dict[str, Any]]]:
+        A tuple containing the training/validation set, the holdout set, the
+        split timestamp, and a dictionary of statistics.
+    """
     df_header = None
     if remove_header_rows > 0:
         df_header = cleaned_df.iloc[:remove_header_rows].reset_index(drop=True)
@@ -727,7 +803,17 @@ def split_holdout(raw_df: pd.DataFrame, cleaned_df: pd.DataFrame, split_mark: Un
     return train_val_df, holdout_df, split_mark, stats
 
 def generate_split_holdout_report(stats: Dict[str, Any], split_mark_used: str, pdf_file_path: Path, fig: plt.figure):
-    """Generates a PDF report with the data split figure and stats tables using Playwright/HTML."""
+    """Generates a PDF report for the holdout split.
+
+    Args:
+        stats (Dict[str, Any]): A dictionary of statistics about the split.
+        split_mark_used (str): The timestamp of the split.
+        pdf_file_path (Path): The path to save the PDF report.
+        fig (plt.figure): The matplotlib figure to include in the report.
+
+    Returns:
+        bool: True if the report was generated successfully, False otherwise.
+    """
     env = Environment()
     template_str = """
     <html>
@@ -810,6 +896,15 @@ def generate_split_holdout_report(stats: Dict[str, Any], split_mark_used: str, p
         return False
 
 def read_prism_csv(df: pd.DataFrame):
+    """Reads a PRISM CSV DataFrame and separates the header and data.
+
+    Args:
+        df (pd.DataFrame): The DataFrame to process.
+
+    Returns:
+        Tuple[pd.DataFrame, pd.DataFrame]: A tuple containing the data
+        DataFrame and the header DataFrame.
+    """
     df_header = df.iloc[:4,:].copy()
     df_data = df.iloc[4:, :].copy()
     first_col_name = df_data.columns[0]
@@ -821,6 +916,16 @@ def read_prism_csv(df: pd.DataFrame):
     return df_data, df_header
 
 def corrfunc(x, y, **kwds):
+    """Calculates and displays Pearson correlation as a heatmap annotation.
+
+    This function is designed to be used with seaborn's `PairGrid` to display
+    the Pearson correlation coefficient on the upper triangle of the plot.
+
+    Args:
+        x (pd.Series): The first variable.
+        y (pd.Series): The second variable.
+        **kwds: Additional keyword arguments.
+    """
     cmap = kwds['cmap']
     norm = kwds['norm']
     ax = plt.gca()
@@ -834,7 +939,19 @@ def corrfunc(x, y, **kwds):
 
 # --- NEW FUNCTIONS FOR TRAIN/VAL SPLITTING ---
 def _generate_html_tvs_report(stats_payload, numeric_filters, datetime_filters, plot_images, title="Data Cleaning Report"):
-    """Generates HTML content for the report using Jinja2."""
+    """Generates HTML content for a training/validation split report.
+
+    Args:
+        stats_payload (dict): A dictionary of statistics about the split.
+        numeric_filters (list): A list of numeric filters applied.
+        datetime_filters (list): A list of datetime filters applied.
+        plot_images (list): A list of tuples containing plot titles and base64
+            encoded image data.
+        title (str, optional): The title of the report.
+
+    Returns:
+        str: The generated HTML content as a string.
+    """
     
     env = Environment()
     template_str = """
@@ -939,8 +1056,16 @@ def _generate_html_tvs_report(stats_payload, numeric_filters, datetime_filters, 
     return html
 
 def generate_tvs_report(stats: Dict[str, Any], plot_images: list, pdf_file_path: Path):
-    """
-    Generates a PDF report for Training/Validation splitting results.
+    """Generates a PDF report for the training/validation split.
+
+    Args:
+        stats (Dict[str, Any]): A dictionary of statistics about the split.
+        plot_images (list): A list of tuples containing plot titles and base64
+            encoded image data.
+        pdf_file_path (Path): The path to save the PDF report.
+
+    Returns:
+        bool: True if the report was generated successfully, False otherwise.
     """
     stats_payload = {
         "Original Rows (Cleaned w/o Outlier)": f"{stats.get('original_len', 0):,}",
@@ -967,12 +1092,21 @@ def generate_tvs_report(stats: Dict[str, Any], plot_images: list, pdf_file_path:
         return False
 
 def generate_tvs_visualizations(df_train: pd.DataFrame, selected_metrics: list, df_val: pd.DataFrame = None, display_plot: bool = True):
-    """
-    Generates side-by-side plots for selected metrics.
-    Plot 1: Time Series (Train)
-    Plot 2: Distribution (Train vs Validation Overlay if df_val provided, else just Train Hist)
-    
-    Returns a list of (title, base64_img) tuples for the report.
+    """Generates visualizations for the training/validation split.
+
+    This function creates side-by-side plots for each selected metric,
+    showing the time series of the training data and the distribution of the
+    training data compared to the validation data.
+
+    Args:
+        df_train (pd.DataFrame): The training DataFrame.
+        selected_metrics (list): A list of metric names to plot.
+        df_val (pd.DataFrame, optional): The validation DataFrame.
+        display_plot (bool, optional): Whether to display the plots in Streamlit.
+
+    Returns:
+        list: A list of tuples containing plot titles and base64 encoded
+        image data.
     """
     plot_images = []
     

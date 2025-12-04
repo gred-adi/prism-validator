@@ -17,7 +17,13 @@ from PIL import Image
 # ==========================================
 
 def add_image_page(pdf: FPDF, image_path: str, plot_title: str) -> None:
-    """Add a new page to the PDF with an image (auto-fit) and a centered title."""
+    """Adds a new page to a PDF with an auto-fitting image and a title.
+
+    Args:
+        pdf (FPDF): The FPDF object.
+        image_path (str): The path to the image file.
+        plot_title (str): The title for the page.
+    """
     PAGE_W = 297
     PAGE_H = 210
     X_MARGIN = 10
@@ -56,6 +62,15 @@ def add_image_page(pdf: FPDF, image_path: str, plot_title: str) -> None:
 
 
 def add_info_row(pdf: FPDF, label: str, value: str, label2: str, value2: str) -> None:
+    """Adds a two-column informational row to the PDF.
+
+    Args:
+        pdf (FPDF): The FPDF object.
+        label (str): The label for the first value.
+        value (str): The first value.
+        label2 (str): The label for the second value.
+        value2 (str): The second value.
+    """
     pdf.set_x(30)
     pdf.set_font("Arial", style="B", size=12)
     pdf.cell(40, 5, label, ln=0)
@@ -67,10 +82,25 @@ def add_info_row(pdf: FPDF, label: str, value: str, label2: str, value2: str) ->
     pdf.cell(0, 5, f"{value2}", ln=True)
     
 def add_dataset_info(pdf: FPDF, max_omr: float, min_omr: float) -> None:
+    """Adds dataset information (min/max OMR) to the PDF.
+
+    Args:
+        pdf (FPDF): The FPDF object.
+        max_omr (float): The maximum OMR value.
+        min_omr (float): The minimum OMR value.
+    """
     pdf.ln(150)
     add_info_row(pdf, "Minimum OMR: ", str(min_omr), "Maximum OMR: ", str(max_omr))
 
 def add_images_from_folder(pdf: FPDF, folder_path: str, ks_df: pd.DataFrame, p_value_threshold: float = 0.05) -> None:
+    """Adds a page for each distribution image in a folder to the PDF.
+
+    Args:
+        pdf (FPDF): The FPDF object.
+        folder_path (str): The path to the folder containing the images.
+        ks_df (pd.DataFrame): The DataFrame with KS test results.
+        p_value_threshold (float, optional): The p-value threshold for consistency.
+    """
     for filename in os.listdir(folder_path):
         if filename.startswith("distribution"):
             pdf.add_page()
@@ -112,6 +142,17 @@ def add_images_from_folder(pdf: FPDF, folder_path: str, ks_df: pd.DataFrame, p_v
             pdf.multi_cell(0, 5, conclusion)
 
 def add_fpr_plot(pdf: FPDF, image_path: str, plot_title: str, fpr_stats_cleaned_omr: dict, fpr_stats_holdout_omr: dict, fpr_stats_raw_omr: dict, fprp_stats_holdout_omr: dict) -> None:
+    """Adds a page with an FPR plot and a summary table to the PDF.
+
+    Args:
+        pdf (FPDF): The FPDF object.
+        image_path (str): The path to the FPR plot image.
+        plot_title (str): The title for the page.
+        fpr_stats_cleaned_omr (dict): FPR stats for cleaned OMR.
+        fpr_stats_holdout_omr (dict): FPR stats for holdout OMR.
+        fpr_stats_raw_omr (dict): FPR stats for raw OMR.
+        fprp_stats_holdout_omr (dict): FPRP stats for holdout OMR.
+    """
     pdf.add_page()
     pdf.set_font("Arial", style="B", size=18)
     pdf.cell(0, 20, plot_title, ln=True, align='C')
@@ -144,8 +185,13 @@ def add_fpr_plot(pdf: FPDF, image_path: str, plot_title: str, fpr_stats_cleaned_
         pdf.ln()
 
 def generate_dataset_description(dataset_info: dict) -> str:
-    """
-    Generate a description for a dataset based on its stats.
+    """Generates a formatted string describing a dataset.
+
+    Args:
+        dataset_info (dict): A dictionary with dataset statistics.
+
+    Returns:
+        str: A formatted string with the dataset description.
     """
     return (
         f"Start Time: {dataset_info['start_time']}<br>"
@@ -167,7 +213,24 @@ def generate_qa_report(
     ks_df_fpath: str,
     datasets_range_fpath: str,
 ) -> None:
-    """Original FPDF generator (kept for compatibility)."""
+    """Generates a QA report PDF using FPDF.
+
+    This function orchestrates the creation of a comprehensive QA report,
+    including performance analysis and consistency checks, using the FPDF library.
+
+    Args:
+        model_name (str): The name of the model.
+        fpr_file_path (str): The path to the FPR files.
+        ks_file_path (str): The path to the KS test files.
+        report_file_path (str): The path to save the report.
+        fpr_stats_cleaned_omr_fpath (str): The path to the cleaned OMR FPR stats.
+        fpr_stats_holdout_omr_fpath (str): The path to the holdout OMR FPR stats.
+        fpr_stats_raw_omr_fpath (str): The path to the raw OMR FPR stats.
+        fprp_stats_holdout_omr_fpath (str): The path to the holdout OMR FPRP stats.
+        data_stats_fpath (str): The path to the data stats file.
+        ks_df_fpath (str): The path to the KS test results CSV.
+        datasets_range_fpath (str): The path to the datasets range file.
+    """
     fpr_stats_cleaned_omr = safe_load_numpy_yaml(fpr_stats_cleaned_omr_fpath)
     fpr_stats_holdout_omr = safe_load_numpy_yaml(fpr_stats_holdout_omr_fpath)
     fpr_stats_raw_omr = safe_load_numpy_yaml(fpr_stats_raw_omr_fpath)
@@ -273,6 +336,17 @@ def generate_qa_report(
 
 
 def generate_summary_fprp(sprint_path: str) -> pd.DataFrame:
+    """Generates a summary DataFrame of FPRP statistics for a sprint.
+
+    This function scans a sprint directory, reads the FPRP statistics for each
+    model, and compiles them into a summary DataFrame.
+
+    Args:
+        sprint_path (str): The path to the sprint directory.
+
+    Returns:
+        pd.DataFrame: A DataFrame with the FPRP summary.
+    """
     data = []
     for model_name in os.listdir(sprint_path):
         if model_name.startswith('.'): continue
@@ -290,6 +364,12 @@ def generate_summary_fprp(sprint_path: str) -> pd.DataFrame:
 
 
 def generate_sprint_summary_report(sprint_path: str, sprint_name: str) -> None:
+    """Generates a summary PDF report for a sprint.
+
+    Args:
+        sprint_path (str): The path to the sprint directory.
+        sprint_name (str): The name of the sprint.
+    """
     pdf = FPDF(orientation="L", unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
@@ -315,7 +395,14 @@ def generate_sprint_summary_report(sprint_path: str, sprint_name: str) -> None:
 # ==========================================
 
 def get_image_base64(path):
-    """Helper to load image as base64 string for embedding in HTML"""
+    """Loads an image and returns it as a base64 encoded string.
+
+    Args:
+        path (str): The path to the image file.
+
+    Returns:
+        str: The base64 encoded image string, or None if the file doesn't exist.
+    """
     if os.path.exists(path):
         with open(path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode("utf-8")
@@ -334,9 +421,27 @@ def generate_qa_report_playwright(
     ks_df_fpath: str,
     datasets_range_fpath: str,
 ) -> bool:
-    """
-    Generates a high-quality PDF report using Playwright (HTML to PDF).
-    Replicates the structure of the original FPDF report but with modern styling.
+    """Generates a QA report PDF using Playwright.
+
+    This function orchestrates the creation of a comprehensive QA report by
+    rendering an HTML template with the provided data and converting it to a
+    PDF using Playwright.
+
+    Args:
+        model_name (str): The name of the model.
+        fpr_file_path (str): The path to the FPR files.
+        ks_file_path (str): The path to the KS test files.
+        report_file_path (str): The path to save the report.
+        fpr_stats_cleaned_omr_fpath (str): The path to the cleaned OMR FPR stats.
+        fpr_stats_holdout_omr_fpath (str): The path to the holdout OMR FPR stats.
+        fpr_stats_raw_omr_fpath (str): The path to the raw OMR FPR stats.
+        fprp_stats_holdout_omr_fpath (str): The path to the holdout OMR FPRP stats.
+        data_stats_fpath (str): The path to the data stats file.
+        ks_df_fpath (str): The path to the KS test results CSV.
+        datasets_range_fpath (str): The path to the datasets range file.
+
+    Returns:
+        bool: True if the report was generated successfully, False otherwise.
     """
     
     # 1. Load Data
