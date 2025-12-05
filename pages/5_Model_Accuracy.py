@@ -370,10 +370,10 @@ st.progress(current_step / len(steps), text=f"Step {current_step}: {steps[curren
 # STEP 1: SCAN & SELECT
 # ==========================================
 if current_step == 1:
-    st.header("Step 1: Scan Directory")
+    st.header("Step 1: Scan Directory and Select Model(s)")
     st.markdown("""
     Select the root folder containing your model hierarchy. 
-    The tool expects the following structure: `Root > Site > System > Sprint > Model > relative_deviation`.
+    The tool expects the following structure: `Root > Site > System > Sprint > Model > dataset`.
     """)
 
     # 1. Folder Input

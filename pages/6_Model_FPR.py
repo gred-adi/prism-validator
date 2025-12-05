@@ -72,13 +72,17 @@ st.progress(current / len(steps), text=f"Step {current}: {steps[current-1]}")
 # STEP 1: SCAN & SELECT
 # ==========================================
 if current == 1:
-    st.header("Step 1: Select Model")
+    st.header("Step 1: Scan Directory and Select Model")
+    st.markdown("""
+    Select the root folder containing your model hierarchy. 
+    The tool expects the following structure: `Root > Site > System > Sprint > Model > relative_deviation`.
+    """)
     
     default_path = st.session_state.get('base_path', os.getcwd())
     root_folder = st.text_input("Root Folder Path", value=default_path)
     
-    if st.button("🔍 Scan Models"):
-        with st.spinner("Scanning..."):
+    if st.button("🔍 Scan Folder Structure"):
+        with st.spinner("Scanning folders..."):
             df = scan_folders_structure(root_folder)
             st.session_state.fpr_scanned_df = df
             

@@ -65,6 +65,9 @@ ALGO_DESCRIPTIONS = {
 # --- Initialize Session State ---
 if 'or_step' not in st.session_state: st.session_state.or_step = 1
 
+# FIX: Initialize global shared states if missing to prevent AttributeError
+if 'survey_df' not in st.session_state: st.session_state.survey_df = None
+
 # Data States
 if 'or_raw_df' not in st.session_state: st.session_state.or_raw_df = None
 if 'or_header' not in st.session_state: st.session_state.or_header = None
