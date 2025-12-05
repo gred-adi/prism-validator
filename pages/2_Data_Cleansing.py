@@ -467,7 +467,7 @@ elif current_step == 2:
     remaining_rows, numeric_removed, date_removed = calculate_impact_breakdown(raw_df, st.session_state.filters, st.session_state.datetime_filters)
     total_removed_rows = total_rows - remaining_rows
     pct_removed = (total_removed_rows / total_rows) * 100 if total_rows > 0 else 0
-    pct_numeric_removed = (remaining_rows / total_rows) * 100 if total_rows > 0 else 0
+    pct_numeric_removed = (numeric_removed / total_rows) * 100 if total_rows > 0 else 0
     pct_date_removed = (date_removed / total_rows) * 100 if total_rows > 0 else 0
     
     # Display Impact Metrics in 4 columns to include breakdown

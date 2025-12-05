@@ -393,7 +393,6 @@ if current_step == 1:
 
     # 3. Display & Selection
     if st.session_state.scanned_models_df is not None and not st.session_state.scanned_models_df.empty:
-        st.subheader("Found Models")
         st.markdown("Select the models you wish to process. **Note:** Only models with a **.dat file** can be processed.")
         
         df = st.session_state.scanned_models_df.copy()
@@ -402,20 +401,23 @@ if current_step == 1:
         col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1:
             site_options = sorted(df['Site'].unique().tolist())
-            selected_sites = st.multiselect("Filter by Site", site_options, default=site_options)
+            selected_sites = st.multiselect("Site", site_options)
         with col_f2:
             system_options = sorted(df['System'].unique().tolist())
-            selected_systems = st.multiselect("Filter by System", system_options, default=system_options)
+            selected_systems = st.multiselect("System", system_options)
         with col_f3:
             sprint_options = sorted(df['Sprint'].unique().tolist())
-            selected_sprints = st.multiselect("Filter by Sprint", sprint_options, default=sprint_options)
+            selected_sprints = st.multiselect("Sprint", sprint_options)
             
-        # Apply Filters
-        filtered_df = df[
-            (df['Site'].isin(selected_sites)) &
-            (df['System'].isin(selected_systems)) &
-            (df['Sprint'].isin(selected_sprints))
-        ].copy()
+        filtered_df = df.copy() 
+
+        # Apply Filters (Only if selected)
+        if selected_sites:
+            filtered_df = df[df['Site'].isin(selected_sites)]
+        if selected_systems:
+            filtered_df = df[df['System'].isin(selected_systems)]
+        if selected_sprints:
+            filtered_df = df[df['Sprint'].isin(selected_sprints)]
         
         # Add visual indicators for the user
         filtered_df['Dat File Found'] = filtered_df['Dat File Found'].apply(lambda x: "✅" if x else "❌")

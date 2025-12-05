@@ -92,6 +92,7 @@ if current == 1:
                 st.success(f"Found {len(df)} model folders.")
             
     if st.session_state.fpr_scanned_df is not None and not st.session_state.fpr_scanned_df.empty:
+
         df = st.session_state.fpr_scanned_df.copy()
         
         c1, c2, c3 = st.columns(3)
@@ -139,6 +140,8 @@ if current == 1:
         
         # Selection Logic
         valid_models_df = df[df['Dataset Found']]
+
+        st.markdown("Select the model you wish to process. **Note:** Only models with **complete .dat and .csv files** can be processed.")
         
         if valid_models_df.empty:
             st.warning("No models with valid 'dataset' folders found in selection.")
