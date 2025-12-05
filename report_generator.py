@@ -250,7 +250,7 @@ def display_report_generation_tab(st, session_state, report_type, validation_fil
 
     overview_df = session_state.get('overview_df')
     if overview_df is None or overview_df.empty:
-        st.warning("No TDT data loaded. Please load TDT files on the Home page.")
+        st.warning("Please upload the TDT files and click 'Generate & Load Files' in the sidebar.")
         return
 
     available_tdts = sorted(overview_df['TDT'].unique())

@@ -187,7 +187,6 @@ tab_list = [
     "Calculation Validation",
     "Attribute Validation",
     "Diagnostics Validation",
-    "Prescriptive Validation",
     "Report Generation"
 ]
 tabs = st.tabs(tab_list)
@@ -216,7 +215,7 @@ with tabs[1]:
     
     prerequisites_met = st.session_state.get('survey_df') is not None
     if not prerequisites_met:
-        st.warning("Please load TDT files on the **Home** page first.")
+        st.warning("Please upload the TDT files and click 'Generate & Load Files' in the sidebar.")
     
     if st.button("Run Point Survey Validation", key="run_point_survey_val", disabled=not prerequisites_met):
         with st.spinner('Running...'):
@@ -308,7 +307,7 @@ with tabs[2]:
     
     prerequisites_met = st.session_state.get('survey_df') is not None
     if not prerequisites_met:
-        st.warning("Please load TDT files on the **Home** page first.")
+        st.warning("Please upload the TDT files and click 'Generate & Load Files' in the sidebar.")
     
     if st.button("Run Calculation Validation", key="run_calc_val", disabled=not prerequisites_met):
         with st.spinner('Running...'):
@@ -382,7 +381,7 @@ with tabs[3]:
     
     prerequisites_met = (st.session_state.get('survey_df') is not None) and (st.session_state.get('diag_df') is not None)
     if not prerequisites_met:
-        st.warning("Please load TDT files on the **Home** page first (this check requires both Survey and Diagnostic data).")
+        st.warning("Please upload the TDT files and click 'Generate & Load Files' in the sidebar.")
     
     if st.button("Run Attribute Validation", key="run_attr_val", disabled=not prerequisites_met):
         with st.spinner('Running...'):
@@ -397,7 +396,7 @@ with tabs[3]:
     results_data = st.session_state.validation_states["tdt_attribute"].get("results")
     
     if not results_data:
-        st.info("Click 'Run Attribute Validation' to see the reports.")
+        st.info("Run the validation to see the results.")
     else:
         # --- Get both reports ---
         function_results = results_data.get("function_validation", {})
@@ -492,7 +491,7 @@ with tabs[4]:
     
     prerequisites_met = st.session_state.get('diag_df') is not None
     if not prerequisites_met:
-        st.warning("Please load TDT files on the **Home** page first.")
+        st.warning("Please upload the TDT files and click 'Generate & Load Files' in the sidebar.")
     
     if st.button("Run Diagnostics Validation", key="run_diag_val", disabled=not prerequisites_met):
         with st.spinner('Running...'):
@@ -575,26 +574,12 @@ with tabs[4]:
 
 
     elif st.session_state.validation_states["tdt_diagnostics"].get("results") is None:
-        st.info("Click 'Run Diagnostics Validation' to see the reports.")
+        st.info("Run the validation to see the results.")
     else:
         st.info("No diagnostic data was found in the TDTs.")
 
 
-# --- Tab 5: Prescriptive Validation (Placeholder) ---
 with tabs[5]:
-    st.header("Prescriptive Validation")
-    st.markdown("Checks for logic in the **Prescriptive** sheets (if they exist).")
-    prerequisites_met = st.session_state.get('survey_df') is not None # Or another df
-    if not prerequisites_met:
-        st.warning("Please load TDT files on the **Home** page first.")
-    
-    if st.button("Run Prescriptive Validation", key="run_presc_val", disabled=not prerequisites_met):
-        with st.spinner('Running...'):
-            st.info("Validation logic for 'Prescriptive' is not yet implemented.")
-
-    # (Display results logic will go here)
-
-with tabs[6]:
     # --- Define Report Generation Configuration ---
     validation_filter_cols = {
         "tdt_point_survey": "TDT",

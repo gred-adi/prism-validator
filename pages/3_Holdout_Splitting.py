@@ -179,13 +179,14 @@ elif current_step == 2:
     st.session_state.holdout_split_pct = split_fraction
     
     total_rows = len(df)
-    holdout_count = int(total_rows * split_fraction)
-    train_count = total_rows - holdout_count
+    target_holdout_count = int(total_rows * split_fraction)
+    target_train_count = total_rows - target_holdout_count
     
     # Determine the split DATE based on the count
-    # We take the timestamp at the split index
+    # We select the last timestamp of the training set to serve as the inclusive cutoff (<=)
     if total_rows > 0:
-        split_date = df.iloc[train_count]['DATETIME']
+        split_idx = max(0, target_train_count - 1)
+        split_date = df.iloc[split_idx]['DATETIME']
     else:
         split_date = datetime.now()
         
@@ -229,41 +230,61 @@ elif current_step == 2:
     st.pyplot(fig)
     plt.close(fig)
     
-# --- Impact Stats Table ---
+    # --- Impact Stats Table ---
     st.markdown("### Segment Details")
     
-    # Calculate detailed stats
+    # Calculate detailed stats consistent with Step 3 logic (Value-based filter)
     if total_rows > 0:
-        # Train / Validation (Index 0 to train_count-1)
-        t_start = df['DATETIME'].iloc[0]
-        t_end_idx = max(0, train_count - 1)
-        t_end = df['DATETIME'].iloc[t_end_idx]
-        t_days = (t_end - t_start).days
+        # Simulate the split exactly as it happens in Step 3/Export
+        t_df = df[df['DATETIME'] <= split_date]
+        h_df = df[df['DATETIME'] > split_date]
         
-        # Holdout (Index train_count to end)
-        h_start_idx = min(train_count, total_rows - 1)
-        h_start = df['DATETIME'].iloc[h_start_idx]
-        h_end = df['DATETIME'].iloc[-1]
-        h_days = (h_end - h_start).days
+        train_count = len(t_df)
+        holdout_count = len(h_df)
+        
+        # Train Stats
+        if not t_df.empty:
+            t_start = t_df['DATETIME'].iloc[0]
+            t_end = t_df['DATETIME'].iloc[-1]
+            t_days = (t_end - t_start).days + 1
+        else:
+            t_start = t_end = pd.NaT
+            t_days = 0
+            
+        # Holdout Stats
+        if not h_df.empty:
+            h_start = h_df['DATETIME'].iloc[0]
+            h_end = h_df['DATETIME'].iloc[-1]
+            h_days = (h_end - h_start).days + 1
+        else:
+            h_start = h_end = pd.NaT
+            h_days = 0
     else:
         t_start = t_end = h_start = h_end = datetime.now()
         t_days = h_days = 0
+        train_count = holdout_count = 0
 
     c1, c2 = st.columns(2)
     
     with c1:
+        t_start_str = t_start.strftime('%Y-%m-%d %H:%M') if pd.notna(t_start) else "N/A"
+        t_end_str = t_end.strftime('%Y-%m-%d %H:%M') if pd.notna(t_end) else "N/A"
+        
         st.info(f"**Train / Validation Set**\n\n"
-                f"📅 **Start:** {t_start.strftime('%Y-%m-%d %H:%M')}\n\n"
-                f"📅 **End:** {t_end.strftime('%Y-%m-%d %H:%M')}\n\n"
+                f"📅 **Start:** {t_start_str}\n\n"
+                f"📅 **End:** {t_end_str}\n\n"
                 f"⏱️ **Duration:** {t_days} days\n\n"
-                f"🔢 **Rows:** {train_count:,} ({(1-split_fraction)*100:.1f}%)")
+                f"🔢 **Rows:** {train_count:,} ({((train_count/total_rows)*100) if total_rows else 0:.1f}%)")
         
     with c2:
+        h_start_str = h_start.strftime('%Y-%m-%d %H:%M') if pd.notna(h_start) else "N/A"
+        h_end_str = h_end.strftime('%Y-%m-%d %H:%M') if pd.notna(h_end) else "N/A"
+        
         st.warning(f"**Holdout Set**\n\n"
-                   f"📅 **Start:** {h_start.strftime('%Y-%m-%d %H:%M')}\n\n"
-                   f"📅 **End:** {h_end.strftime('%Y-%m-%d %H:%M')}\n\n"
+                   f"📅 **Start:** {h_start_str}\n\n"
+                   f"📅 **End:** {h_end_str}\n\n"
                    f"⏱️ **Duration:** {h_days} days\n\n"
-                   f"🔢 **Rows:** {holdout_count:,} ({split_fraction*100:.1f}%)")
+                   f"🔢 **Rows:** {holdout_count:,} ({((holdout_count/total_rows)*100) if total_rows else 0:.1f}%)")
         
     st.markdown("---")
     c_back, c_next = st.columns([1, 5])

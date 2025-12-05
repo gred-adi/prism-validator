@@ -32,6 +32,9 @@ It uses **stratified splitting** based on an operational state metric to ensure 
 # --- Initialize Session State ---
 if 'tvs_step' not in st.session_state: st.session_state.tvs_step = 1
 
+# FIX: Initialize global shared states if missing to prevent AttributeError
+if 'survey_df' not in st.session_state: st.session_state.survey_df = None
+
 # Data States
 if 'tvs_cleaned_w_outlier' not in st.session_state: st.session_state.tvs_cleaned_w_outlier = None
 if 'tvs_cleaned_wo_outlier' not in st.session_state: st.session_state.tvs_cleaned_wo_outlier = None

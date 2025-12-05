@@ -288,8 +288,11 @@ with tabs[1]:
     st.markdown("Compares the `Point Type` for each metric from the TDT **Survey** file against the PRISM **Template** configuration. It identifies mismatches (e.g., 'Analog' vs 'Digital') and metrics missing in either the TDT or PRISM.")
 
     prerequisites_met = st.session_state.db and st.session_state.uploaded_survey_file
-    if not prerequisites_met: st.warning("Please connect to DB and generate the 'Consolidated Survey File'.")
-    
+    if st.session_state.uploaded_survey_file is None:
+        st.warning("Please upload the TDT files and click 'Generate & Load Files' in the sidebar.")
+    if st.session_state.db is None:
+        st.warning("Please connect to the Database in the sidebar.")
+
     if st.button("Run Metric Validation", key="run_metric_validation", disabled=not prerequisites_met):
         with st.spinner('Running...'):
             try:
@@ -355,7 +358,11 @@ with tabs[2]:
     st.markdown("Compares metric details from the TDT **Survey** file against the live PRISM **Project** configuration. It validates the mapping of `Point Name`, `Point Description`, `Function`, `Point Type`, and `Unit` for each metric, highlighting any discrepancies.")
 
     prerequisites_met = st.session_state.db and st.session_state.uploaded_survey_file
-    if not prerequisites_met: st.warning("Please connect to DB and generate the 'Consolidated Survey File'.")
+    if st.session_state.uploaded_survey_file is None:
+        st.warning("Please upload the TDT files and click 'Generate & Load Files' in the sidebar.")
+    if st.session_state.db is None:
+        st.warning("Please connect to the Database in the sidebar.")
+
     if st.button("Run Metric Mapping Validation", key="run_metric_mapping", disabled=not prerequisites_met):
         with st.spinner('Running...'):
             try:
@@ -377,7 +384,11 @@ with tabs[3]:
     st.markdown("Compares the `Filter` logic from the TDT **'Filter Summary'** sheet against the live PRISM **Project** configuration. It checks if the filter conditions (e.g., 'Equal To 0', 'Less Than 50') are identical between the TDT and PRISM for each metric.")
 
     prerequisites_met = st.session_state.db and st.session_state.uploaded_survey_file
-    if not prerequisites_met: st.warning("Please connect to DB and generate the 'Consolidated Survey File'.")
+    if st.session_state.uploaded_survey_file is None:
+        st.warning("Please upload the TDT files and click 'Generate & Load Files' in the sidebar.")
+    if st.session_state.db is None:
+        st.warning("Please connect to the Database in the sidebar.")
+        
     if st.button("Run Filter Validation", key="run_filter_validation", disabled=not prerequisites_met):
         with st.spinner('Running...'):
             try:
@@ -398,8 +409,12 @@ with tabs[4]:
     st.header("Failure Diagnostics Validation (TDT vs PRISM Template)")
     st.markdown("Compares the `Direction` and `Weight` for each metric within a `Failure Mode` from the TDT **Diagnostics** file against the PRISM **Template** configuration. It identifies mismatches in diagnostic logic and weighting.")
 
-    prerequisites_met = st.session_state.db and st.session_state.uploaded_diag_file
-    if not prerequisites_met: st.warning("Please connect to DB and generate the 'Consolidated Failure Diagnostics File'.")
+    prerequisites_met = st.session_state.db and st.session_state.uploaded_survey_file
+    if st.session_state.uploaded_survey_file is None:
+        st.warning("Please upload the TDT files and click 'Generate & Load Files' in the sidebar.")
+    if st.session_state.db is None:
+        st.warning("Please connect to the Database in the sidebar.")
+        
     if st.button("Run Failure Diagnostics Validation", key="run_failure_diagnostics", disabled=not prerequisites_met):
         with st.spinner('Running...'):
             try:
@@ -438,7 +453,8 @@ with tabs[5]:
     st.markdown("Compares the `HIGH ALERT`, `HIGH WARNING`, `LOW WARNING`, and `LOW ALERT` thresholds from the uploaded **Statistics** file against the live PRISM **Project** configuration for 'Absolute Signal Deviation'.")
 
     prerequisites_met = st.session_state.db and st.session_state.uploaded_stats_file
-    if not prerequisites_met: st.warning("Please connect to DB and upload the 'Consolidated Statistics File'.")
+    if not prerequisites_met: st.warning("Please connect to the database and upload the 'Consolidated Statistics File' in the sidebar.")
+    
     if st.button("Run Absolute Deviation Validation", key="run_abs_dev_validation", disabled=not prerequisites_met):
         with st.spinner('Running...'):
             try:

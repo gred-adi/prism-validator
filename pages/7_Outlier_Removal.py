@@ -87,12 +87,6 @@ if 'model_name' not in st.session_state: st.session_state.model_name = ""
 if 'sprint_name' not in st.session_state: st.session_state.sprint_name = ""
 if 'inclusive_dates' not in st.session_state: st.session_state.inclusive_dates = ""
 
-# Check for TDT Data Availability
-if 'survey_df' not in st.session_state or st.session_state.survey_df is None:
-    st.warning("⚠️ **TDT Data Not Found**")
-    st.info("Please go to the **Global Settings** sidebar (on the left), upload your TDT Excel files, and click 'Generate & Load Files'. This is required to map metric names.")
-    st.stop() 
-
 # --- Helper Functions ---
 def next_step(): st.session_state.or_step += 1
 def prev_step(): st.session_state.or_step -= 1
@@ -339,11 +333,15 @@ st.progress(current / len(steps), text=f"Step {current}: {steps[current-1]}")
 # ==========================================
 if current == 1:
     st.header("Step 1: Upload Data")
-    
-    # At this point, survey_df is guaranteed to exist due to the check at the top
+    st.info("Please go to the **Global Settings** sidebar (on the left), upload your TDT Excel files, and click 'Generate & Load Files'. This is required to map metric names.")
+   
+    # TDT/Model Selection
+    if st.session_state.survey_df is None:
+        st.error("❌ TDT Data not found. Please go to the **Global Settings** sidebar and load your TDT files first.")
+        st.stop()
+
     survey_df = st.session_state.survey_df
     
-    # Selection
     c1, c2 = st.columns(2)
     with c1:
         tdt_list = sorted(survey_df['TDT'].unique())

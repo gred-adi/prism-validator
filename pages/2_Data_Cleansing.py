@@ -216,7 +216,12 @@ st.progress(current_step / len(steps), text=f"Step {current_step}: {steps[curren
 # ==========================================
 if current_step == 1:
     st.header("Step 1: Data Ingestion")
-    st.markdown("Upload your raw dataset. The point list mapping will be retrieved automatically from the **TDT Survey** (loaded on the Global Settings sidebar) based on the model name in your file.")
+    st.info("Upload your raw dataset. The point list mapping will be retrieved automatically from the **TDT Survey** (loaded on the Global Settings sidebar) based on the model name in your file.")
+
+    # Ensure survey_df is initialized before checking it
+    if st.session_state.survey_df is None:
+        st.error("❌ TDT Data not found. Please go to the **Global Settings** sidebar and load your TDT files first.")
+        st.stop()
 
     raw_file = st.file_uploader("Upload RAW dataset (.csv)", type=["csv"], accept_multiple_files=False)
     
@@ -236,10 +241,6 @@ if current_step == 1:
         
         # 2. Fetch Point List from TDT Survey (Replaces DB Logic)
         with point_list_container:
-            # Ensure survey_df is initialized before checking it
-            if st.session_state.survey_df is None:
-                st.error("❌ TDT Data not found. Please go to the **Home** page and load your TDT files first.")
-                st.stop()
             
             survey_df = st.session_state.survey_df
             
