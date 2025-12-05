@@ -229,18 +229,40 @@ elif current_step == 2:
     st.pyplot(fig)
     plt.close(fig)
     
-    # --- Impact Stats Table ---
+# --- Impact Stats Table ---
     st.markdown("### Segment Details")
+    
+    # Calculate detailed stats
+    if total_rows > 0:
+        # Train / Validation (Index 0 to train_count-1)
+        t_start = df['DATETIME'].iloc[0]
+        t_end_idx = max(0, train_count - 1)
+        t_end = df['DATETIME'].iloc[t_end_idx]
+        t_days = (t_end - t_start).days
+        
+        # Holdout (Index train_count to end)
+        h_start_idx = min(train_count, total_rows - 1)
+        h_start = df['DATETIME'].iloc[h_start_idx]
+        h_end = df['DATETIME'].iloc[-1]
+        h_days = (h_end - h_start).days
+    else:
+        t_start = t_end = h_start = h_end = datetime.now()
+        t_days = h_days = 0
+
     c1, c2 = st.columns(2)
     
     with c1:
         st.info(f"**Train / Validation Set**\n\n"
-                f"📅 **End:** {split_date.strftime('%Y-%m-%d %H:%M')}\n\n"
+                f"📅 **Start:** {t_start.strftime('%Y-%m-%d %H:%M')}\n\n"
+                f"📅 **End:** {t_end.strftime('%Y-%m-%d %H:%M')}\n\n"
+                f"⏱️ **Duration:** {t_days} days\n\n"
                 f"🔢 **Rows:** {train_count:,} ({(1-split_fraction)*100:.1f}%)")
         
     with c2:
         st.warning(f"**Holdout Set**\n\n"
-                   f"📅 **Start:** {split_date.strftime('%Y-%m-%d %H:%M')}\n\n"
+                   f"📅 **Start:** {h_start.strftime('%Y-%m-%d %H:%M')}\n\n"
+                   f"📅 **End:** {h_end.strftime('%Y-%m-%d %H:%M')}\n\n"
+                   f"⏱️ **Duration:** {h_days} days\n\n"
                    f"🔢 **Rows:** {holdout_count:,} ({split_fraction*100:.1f}%)")
         
     st.markdown("---")
