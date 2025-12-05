@@ -373,7 +373,7 @@ if current_step == 1:
     st.header("Step 1: Scan Directory and Select Model(s)")
     st.markdown("""
     Select the root folder containing your model hierarchy. 
-    The tool expects the following structure: `Root > Site > System > Sprint > Model > dataset`.
+    The tool expects the following structure: `Root > Site > System > Sprint > Model > relative_deviation`.
     """)
 
     # 1. Folder Input
