@@ -37,8 +37,12 @@ cd prism-validator
 **Step 2: Initialize the Development Environment**
   
   Prerequisites: You'll need uv installed before you can initialize the development environment.
-  1. Open a terminal in the `prism-validator` directory.
-  2. Run the following command to initialize the development environment:
+  1. Open a `cmd` terminal in the `prism-validator` directory.
+  2. Create a new virtual environment using Python 3.10:
+     ```
+     uv venv --python 3.10
+     ```
+  3. Run the following command to initialize the development environment:
      ```
      uv init
      ```
